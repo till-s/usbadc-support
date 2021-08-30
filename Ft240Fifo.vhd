@@ -99,27 +99,6 @@ architecture rtl of Ft240Fifo is
    signal rdb             : std_logic;
    signal wr              : std_logic;
 
-   component chipscope_ila is
-      PORT (
-         CONTROL : INOUT STD_LOGIC_VECTOR(35 DOWNTO 0);
-         CLK     : IN STD_LOGIC;
-         TRIG0   : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
-         TRIG1   : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
-         TRIG2   : IN STD_LOGIC_VECTOR(7 DOWNTO 0)
-      );
-   end component chipscope_ila;
-
-   component chipscope_icon is
-      PORT (
-         control0 : out std_logic_vector(35 downto 0)
-      );
-   end component chipscope_icon;
-
-   signal ila_trg0 : std_logic_vector( 7 downto 0) := (others => '0');
-   signal ila_trg1 : std_logic_vector( 7 downto 0) := (others => '0');
-   signal ila_trg2 : std_logic_vector( 7 downto 0) := (others => '0');
-   signal ila_ctrl : std_logic_vector(35 downto 0);
-
 begin
 
    U_RXE_TXF_SYNC : entity work.SynchronizerBit
@@ -228,30 +207,5 @@ begin
    fifoWR  <= wr;
    fifoWDT <= r.wdataBuf;
    fifoIOT <= not wr;
-
-   ila_trg0(0) <= fifoRXE;
-   ila_trg0(1) <= rdb;
-   ila_trg0(2) <= r.rdataVld;
-   ila_trg0(3) <= rrdy;
-
-   ila_trg0(4) <= fifoTXF;
-   ila_trg0(5) <= wr;
-   ila_trg0(6) <= wvld;
-   ila_trg0(7) <= r.wdataRdy;
-
-   U_ICON : component chipscope_icon
-      port map (
-         control0 => ila_ctrl
-      );
-
-   U_ILA : component chipscope_ila
-      port map(
-         CONTROL => ila_ctrl,
-         CLK     => clk,
-         TRIG0   => ila_trg0,
-         TRIG1   => ila_trg1,
-         TRIG2   => ila_trg2
-      );
-
 
 end architecture rtl;
