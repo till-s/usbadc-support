@@ -46,18 +46,20 @@ architecture rtl of Ft240Fifo is
    -- make the pulse wider by the min. sestup time (very conservative).
    constant RD_SETUP_MIN_C       : real := 20.0E-9;
 
-   constant RD_PULSE_WIDTH_C     : integer := integer( ceil( RD_SETUP_MIN_C + RD_PULSE_WIDTH_MIN_C ) ); 
+   -- count from RD_PULSE_WIDTH_C downto 0 -> subtract 1
+   constant RD_PULSE_WIDTH_C     : integer := integer( ceil( RD_SETUP_MIN_C + RD_PULSE_WIDTH_MIN_C ) ) - 1; 
 
    -- RXE needs some time to change after a readout; plus, the signal
    -- has to trickle through the synchronizer
    -- TXF actually has identical timing requirements; thus, we use
    -- the same logic for generating cycles;
-   constant HANDSHAKE_INVAL_C    : integer := integer( ceil( 25.0E-9 * CLOCK_FREQ_G ) ) + SYNC_STAGES_C;
+   -- count from HANDSHAKE_INVAL_C downto 0 -> subtract 1; handshakeStable is registered -> subtrace an extra 1
+   constant HANDSHAKE_INVAL_C    : integer := integer( ceil( 25.0E-9 * CLOCK_FREQ_G ) ) + SYNC_STAGES_C - 2;
 
-   constant RD_CNT_LD_C          : integer := integer( ceil( log2( real( max( RD_PULSE_WIDTH_C, HANDSHAKE_INVAL_C ) ) ) ) );
+   constant RD_CNT_LD_C          : integer := integer( floor( log2( real( max( RD_PULSE_WIDTH_C, HANDSHAKE_INVAL_C ) ) ) ) ) + 1;
 
    -- subtract one cycle because handshakeStable is registered
-   constant HSK_STBL_CNT_C       : unsigned(RD_CNT_LD_C - 1 downto 0) := to_unsigned( HANDSHAKE_INVAL_C - 2, RD_CNT_LD_C );
+   constant HSK_STBL_CNT_C       : unsigned(RD_CNT_LD_C - 1 downto 0) := to_unsigned( HANDSHAKE_INVAL_C, RD_CNT_LD_C );
 
    type   MuxState        is ( IDLE, READ, WRITE );
 
