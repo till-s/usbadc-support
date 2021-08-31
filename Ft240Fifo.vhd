@@ -47,7 +47,7 @@ architecture rtl of Ft240Fifo is
    constant RD_SETUP_MIN_C       : real := 20.0E-9;
 
    -- count from RD_PULSE_WIDTH_C downto 0 -> subtract 1
-   constant RD_PULSE_WIDTH_C     : integer := integer( ceil( RD_SETUP_MIN_C + RD_PULSE_WIDTH_MIN_C ) ) - 1; 
+   constant RD_PULSE_WIDTH_C     : integer := integer( ceil( RD_SETUP_MIN_C + RD_PULSE_WIDTH_MIN_C ) ) - 1;
 
    -- RXE needs some time to change after a readout; plus, the signal
    -- has to trickle through the synchronizer
@@ -130,7 +130,7 @@ begin
          v.rdataVld := '0';
       end if;
 
-      -- buffer wdata 
+      -- buffer wdata
       if ( (r.wdataRdy and wvld) = '1' ) then
          v.wdataRdy := '0';
          v.wdataBuf := wdat;
