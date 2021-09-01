@@ -171,7 +171,7 @@ begin
 
          if ( v.pulseMux /= IDLE ) then
             v.pulse := '0';
-            v.dly   := to_unsigned(RD_PULSE_WIDTH_C - 1, r.dly'length);
+            v.dly   := to_unsigned(RD_PULSE_WIDTH_C, r.dly'length);
          end if;
       end if;
 
