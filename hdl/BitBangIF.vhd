@@ -25,9 +25,7 @@ entity BitBangIF is
       wrdy         : in  std_logic;
 
       bbo          : out std_logic_vector(7 downto 0);
-      bbi          : in  std_logic_vector(7 downto 0);
-
-      dbg          : out std_logic_vector(7 downto 0)
+      bbi          : in  std_logic_vector(7 downto 0)
    );
 end entity BitBangIF;
 
@@ -160,8 +158,5 @@ begin
    wvld <= r.wvld;
    wdat <= r.wdat;
    bbo  <= r.bbo;
-
-   dbg(6 downto 0)  <= bbiSync(6 downto 0);
-   dbg(7)           <= '1' when sclInEqualsOut else '0';
 
 end architecture rtl;
