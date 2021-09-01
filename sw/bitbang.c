@@ -655,6 +655,18 @@ int st;
 	return st;
 }
 
+static int sz2bsz(int sz)
+{
+	if ( sz <= 4*1024 ) {
+		return 4*1024;
+	} else if ( sz <= 32*1024 ) {
+		return 32*1024;
+	} else if ( sz <= 64*1024 ) {
+		return 64*1024;
+	}
+	return 512*1024;
+}
+
 int
 at25_block_erase(int fd, unsigned addr, size_t sz)
 {
@@ -842,13 +854,84 @@ bail:
 	return rval;
 }
 
+static int
+fileMap(const char *progFile,  uint8_t **mapp, off_t *sizp, off_t creatsz)
+{
+int             progfd    = -1;
+int             rval      = -1;
+struct stat     sb;
+
+	if ( progFile && ( MAP_FAILED == (void*)*mapp ) ) {
+
+		if ( (progfd = open( progFile, (O_RDWR | O_CREAT), 0664 )) < 0 ) {
+			perror("unable to open program file");
+			goto bail;	
+		}
+		if ( creatsz && ftruncate( progfd, creatsz ) ) {
+			perror("fileMap(): ftruncate failed");
+			goto bail;
+		}
+		if ( fstat( progfd, &sb ) ) {
+			perror("unable to fstat program file");
+			goto bail;
+		}
+		*mapp = (uint8_t*) mmap( 0, sb.st_size, ( PROT_WRITE | PROT_READ ), MAP_SHARED, progfd, 0 );
+		if ( MAP_FAILED == (void*) *mapp ) {
+			perror("unable to map program file");
+			goto bail;
+		}
+		*sizp = sb.st_size;
+	}
+
+	rval = 0;
+
+bail:
+	if ( progfd >= 0 ) {
+		close( progfd );
+	}
+	return rval;
+}
+
+
+static void usage(const char *nm)
+{
+	printf("usage: %s [-hvDI!?] [-d usb-dev] [-S SPI_flashCmd] [-a flash_addr] [-f flash_file] [register] [values...]\n", nm);
+	printf("   -S cmd{,cmd}       : commands to execute on 25DF041 SPI flash (see below).\n");
+	printf("   -f flash-file      : file to write/verify when operating on SPI flash.\n");
+    printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
+    printf("   -?                 : instead of programming the flash verify its contents against a file (-f also required).\n");
+	printf("   -a address         : start-address for SPI flash opertions [0].\n");
+	printf("   -I                 : address I2C (47CVB02 DAC). Supply register address and values (when writing).\n");
+	printf("   -D                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
+	printf("   -d usb-device      : usb-device [/dev/ttyUSB0].\n");
+	printf("   -I                 : test I2C (47CVB02 DAC).\n");
+	printf("   -h                 : this message.\n");
+	printf("   -v                 : increase verbosity level\n");
+	printf("\n");
+	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
+	printf("       Id             : read and print ID bytes.\n");
+	printf("       St             : read and print status.\n");
+	printf("       Rd<size>       : read and print <size> bytes [100] (starting at -a <addr>)\n");
+    printf("       Wena           : enable write/erase -- needed for erasing; the programming operation does this implicitly\n");
+    printf("       Wdis           : disable write/erase (programming operation still implicitly enables writing).\n");
+    printf("       Erase<size>    : erase a block of <size> bytes. Starting address (-a) is down-aligned to block\n");
+    printf("                        size and <size> is up-aligned to block size: 4k, 32k, 64k or entire chip.\n");
+    printf("                        <size> may be omitted if '-f' is given. The file size will be used...\n");
+	printf("\n");
+    printf("Example: erase and write 'foo.bit' starting at address 0x10000:\n");
+	printf("\n");
+    printf("   %s -a 0x10000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
+}
+    
+	
 int main(int argc, char **argv)
 {
 const char        *devn      = "/dev/ttyUSB0";
 int                fd        = -1;
 int                rval      = 1;
 unsigned           speed     = 115200;
-unsigned char      buf[256];
+uint8_t           *buf       = 0;
+unsigned           buflen    = 100;
 int                i;
 int                reg       =  0;
 int                val       = -1;
@@ -865,17 +948,17 @@ char              *test_spi  = 0;
 unsigned           flashAddr = 0;
 unsigned          *u_p;
 char              *progFile  = 0;
-int                progfd    = -1;
 uint8_t           *progMap   = (uint8_t*)MAP_FAILED;
 off_t              progSize  = 0;
 int                doit      = 0;
 
-	while ( (opt = getopt(argc, argv, "vd:DIS:a:f:!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "hvd:DIS:a:f:!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
-			default: fprintf(stderr, "Unknown option -%c\n", opt); return 1;
+            case 'h': usage(argv[0]);             return 0;
+			default : fprintf(stderr, "Unknown option -%c (use -h for help)\n", opt); return 1;
 			case 'd': devn = optarg;              break;
-			case 'D': dac  = 1;                   break;
+			case 'D': dac  = 1; test_i2c = 1;     break;
 			case 'v': bb_debug++;                 break;
 			case 'I': test_i2c = 1;               break;
 			case 'S': test_spi = strdup(optarg);  break;
@@ -904,74 +987,72 @@ int                doit      = 0;
 		goto bail;
 	}
 
-	if ( progFile ) {
-		struct stat sb;
-		int         cmd;
-		if ( (progfd = open( progFile, O_RDONLY )) < 0 ) {
-			perror("unable to open program file");
-			goto bail;	
-		}
-		if ( fstat( progfd, &sb ) ) {
-			perror("unable to fstat program file");
-			goto bail;
-		}
-		progSize = sb.st_size;
-		progMap  = (uint8_t*) mmap( 0, progSize, PROT_READ, MAP_SHARED, progfd, 0 );
-		if ( MAP_FAILED == (void*)progMap ) {
-			perror("unable to map program file");
-			goto bail;
-		}
-		close( progfd );
-		progfd = -1;
-
-		printf("Programming '%s' (0x%lx / %ld bytes) to address 0x%x in flash\n",
-			progFile,
-			(unsigned long)progSize,
-			(unsigned long)progSize,
-			flashAddr);
-		if ( ! doit ) {
-			printf("... bailing out -- please use -! to proceed or -? to just verify the flash\n");
-			goto bail;
-		}
-
-		if ( doit < 0 ) {
-			cmd = AT25_CHECK_VERIFY;
-		} else {
-			cmd = AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY;
-		}
-		
-		if ( at25_prog(fd, flashAddr, progMap, progSize, cmd) < 0 ) {
-			fprintf(stderr, "Programming flash failed\n");
-			goto bail;
-		}
+	if ( ! (buf = malloc(buflen)) ) {
+		perror("No memory");
+		goto bail;
 	}
-
 
 	if ( test_spi ) {
 		char *wrk;
 		char *op;
 
-		op = test_spi;
-		while ( (op = strtok_r( op, ",", &wrk )) ) {
+		for ( op = test_spi; (op = strtok_r( op, ",", &wrk )); op = 0 /* for strtok_r */  ) {
 
 			if ( strstr(op, "Id") ) {
 				if ( at25_id(fd) < 0 ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Rd") ) {
-				if ( (i = bb_spi_read(fd, flashAddr, buf, sizeof(buf))) < 0 ) {
+
+				uint8_t *maddr;
+				off_t    msize;
+
+				i = buflen;
+
+				if ( strlen(op) > 2 && 1 != sscanf(op, "Rd%i", &i) ) {
+					fprintf(stderr, "Skipping '%s' -- expected format 'Rd<xxx>' with xxx a number\n", op);
+					continue;
+				}
+
+				if ( 0 == i ) {
+					fprintf(stderr, "Skipping read of zero bytes\n");
+					continue;
+				}
+
+				if ( progFile ) {
+					if ( fileMap(progFile,  &progMap, &progSize, i) ) {
+						goto bail;
+					}
+					maddr = progMap;
+					msize = progSize;
+				} else {
+					if ( i != buflen ) {
+						buf    = 0;
+						buflen = i;
+						if ( ! (buf = malloc( buflen )) ) {
+							perror("No memory to alloc buffer");
+							goto bail;
+						}
+					}
+					maddr = buf;
+					msize = buflen;
+				}
+
+				if ( (i = bb_spi_read(fd, flashAddr, maddr, msize)) < 0 ) {
 					goto bail;
 				}
 
-				if ( i != sizeof(buf) ) {
-					printf("Incomplete read; only got %d out of %d\n", i, (unsigned)sizeof(buf));
+				if ( i != msize ) {
+					printf("Incomplete read; only got %d out of %d\n", i, (unsigned)msize);
 				}
 
-				for ( i = 0; i < sizeof(buf); i++ ) {
-					printf("0x%02x ", buf[i]);
-					if ( (i & 0xf) == 0xf ) printf("\n");
+				if ( ! progFile ) {
+					for ( i = 0; i < msize; i++ ) {
+						printf("0x%02x ", maddr[i]);
+						if ( (i & 0xf) == 0xf ) printf("\n");
+					}
+					printf("\n");
 				}
-				printf("\n");
 			} else if ( strstr(op, "St") ) {
 				if ( (i = at25_status( fd )) < 0 ) {
 					goto bail;
@@ -986,19 +1067,67 @@ int                doit      = 0;
 					goto bail;
 				}
 			} else if ( strstr(op, "Prog") ) {
-				for ( i = 0; i < sizeof(buf); i++ ) {
-					buf[i] = i;
+				unsigned cmd;
+
+				if ( ! progFile ) {
+					fprintf(stderr, "Prog requires a file name (use -f; -h for help)\n");
+					goto bail;
 				}
-				if ( at25_prog(fd, flashAddr, buf, i, (AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY) ) ) {
-					fprintf(stderr, "at25_prog() failed\n");
+
+				printf("Programming '%s' (0x%lx / %ld bytes) to address 0x%x in flash\n",
+						progFile,
+						(unsigned long)progSize,
+						(unsigned long)progSize,
+						flashAddr);
+				if ( ! doit ) {
+					printf("... bailing out -- please use -! to proceed or -? to just verify the flash\n");
+					continue;
+				}
+
+				if ( doit < 0 ) {
+					cmd = AT25_CHECK_VERIFY;
+				} else {
+					cmd = AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY;
+				}
+
+				if ( fileMap(progFile,  &progMap, &progSize, 0) ) {
+					goto bail;
+				}
+
+				if ( at25_prog(fd, flashAddr, progMap, progSize, cmd) < 0 ) {
+					fprintf(stderr, "Programming flash failed\n");
 					goto bail;
 				}
 			} else if ( strstr(op, "Erase") ) {
-				if ( 1 != sscanf(op, "Erase%i", &i) ) {
+
+				unsigned aligned;
+
+				if ( doit < 0 ) {
+					printf("Erase: skipping during verify (-?)\n");
+					continue;
+				}
+
+
+				if ( progFile ) {
+					if ( fileMap(progFile,  &progMap, &progSize, 0) ) {
+						goto bail;
+					}
+					i = progSize;
+				} else if ( 1 != sscanf(op, "Erase%i", &i) ) {
 					fprintf(stderr, "Skipping '%s' -- expected format 'Erase<xxx>' with xxx a number\n", op);
 					continue;
 				}
-				if ( at25_block_erase(fd, flashAddr, i) < 0 ) {
+
+                i       = sz2bsz( i );
+                aligned = flashAddr & ~ (i-1);
+				printf("Erasing 0x%x/%d bytes from address 0x%x\n", i, i, aligned);
+
+				if ( doit <= 0 ) {
+					printf("... bailing out -- please use -! to proceed or -? to just verify the flash\n");
+					continue;
+				}
+
+				if ( at25_block_erase(fd, aligned, i) < 0 ) {
 					fprintf(stderr, "at25_block_erase(%d) failed\n", i);
 					goto bail;
 				}
@@ -1008,7 +1137,6 @@ int                doit      = 0;
 				fprintf(stderr, "Skipping unrecognized SPI command '%s'\n", op);
 			}
 
-			op = 0; /* for strtok_r */
 		}
 	}
 
@@ -1063,12 +1191,11 @@ bail:
 	if ( fd >= 0 ) {
 		bb_close( fd );
 	}
-	if ( progfd >= 0 ) {
-		close( progfd );
-	}
 	if ( (void*)progMap != MAP_FAILED ) {
 		munmap( (void*)progMap, progSize );
 	}
+	if ( buf ) {
+		free( buf );
+	}
 	return rval;
 }
-

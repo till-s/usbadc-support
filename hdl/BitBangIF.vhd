@@ -25,13 +25,15 @@ entity BitBangIF is
       wrdy         : in  std_logic;
 
       bbo          : out std_logic_vector(7 downto 0);
-      bbi          : in  std_logic_vector(7 downto 0)
+      bbi          : in  std_logic_vector(7 downto 0);
+
+      dbg          : out std_logic_vector(7 downto 0)
    );
 end entity BitBangIF;
 
 architecture rtl of BitBangIF is
 
-   constant I2C_HPER_C    : integer := integer( ceil ( 1.0*CLOCK_FREQ_G/I2C_FREQ_G/2.0 ) ) - 1;
+   constant I2C_HPER_C    : integer := integer( ceil ( 0.5*CLOCK_FREQ_G/I2C_FREQ_G ) ) - 1;
    constant I2C_TIMO_C    : integer := integer( ceil ( 0.2*CLOCK_FREQ_G ) ) - 1;
    constant I2C_LD_TIMO_C : integer := integer( floor( log2( real( I2C_TIMO_C ) ) ) )  + 1;
 
@@ -59,6 +61,10 @@ architecture rtl of BitBangIF is
 
 begin
 
+   assert false report "HPER " & integer'image(I2C_HPER_C) severity warning;
+   assert false report "TIMO " & integer'image(I2C_TIMO_C) severity warning;
+   assert false report "LDTM " & integer'image(I2C_LD_TIMO_C) severity warning;
+
    GEN_SYNC : if ( I2C_SCL_G >= 0 and I2C_SCL_G < 8 ) generate
 
       signal sclSync : std_logic;
@@ -71,7 +77,7 @@ begin
          )
          port map (
             clk         => clk,
-            rst         => clk,
+            rst         => rst,
             datInp(0)   => bbi(I2C_SCL_G),
             datOut(0)   => sclSync
          );
@@ -113,16 +119,15 @@ begin
       -- handle timeout
       v.i2c_timo := r.i2c_timo - 1;
 
-      -- can we receive new data ?
-      rrdyLoc := not v.wvld;
+      -- block reception of new data 
+      rrdyLoc := '0';
 
       -- if i2c_timeo is already 0 then this logic reverts the decrement
       if ( r.i2c_timo < (I2C_TIMO_C - I2C_HPER_C) ) then
          if ( sclInEqualsOut or (r.i2c_timo = 0) ) then
             v.i2c_timo := (others => '0');
-         else
-            -- still delaying
-            rrdyLoc := '0';
+            -- OK to receive new data (if register is currently emptied or already empty)
+            rrdyLoc := not v.wvld;
          end if;
       end if;
 
@@ -132,6 +137,9 @@ begin
          -- record inputs
          v.wdat := bbiSync;
          v.wvld := '1';
+         if ( i2cDis = '0' ) then
+            v.i2c_timo := to_unsigned(I2C_TIMO_C, v.i2c_timo'length);
+         end if;
       end if;
 
       rrdy <= rrdyLoc;
@@ -152,5 +160,8 @@ begin
    wvld <= r.wvld;
    wdat <= r.wdat;
    bbo  <= r.bbo;
+
+   dbg(6 downto 0)  <= bbiSync(6 downto 0);
+   dbg(7)           <= '1' when sclInEqualsOut else '0';
 
 end architecture rtl;
