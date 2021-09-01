@@ -88,14 +88,14 @@ uint8_t v = SPI_MASK | I2C_MASK;
 int
 bb_xfer(int fd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
-size_t  i, rlen, wlen, rtodo, wtodo;
-uint8_t dummy [MAXDEPTH];
-uint8_t zerbuf[MAXDEPTH];
-const uint8_t *twrk = tbuf;
-uint8_t *rwrk = rbuf;
-int     flgs;
-int     rval = -1;
-fd_set  rfds, wfds;
+const uint8_t      *twrk = tbuf;
+uint8_t            *rwrk = rbuf;
+int                 rval = -1;
+size_t              i, rlen, wlen, rtodo, wtodo;
+uint8_t             dummy [MAXDEPTH];
+uint8_t             zerbuf[MAXDEPTH];
+int                 flgs;
+fd_set              rfds, wfds;
 
 	wtodo = rtodo = len;
 
@@ -114,8 +114,7 @@ fd_set  rfds, wfds;
 	}
 
 	
-
-	while ( rtodo > 0 || wtodo > 0 ) {
+	while ( (rtodo > 0) || (wtodo > 0) ) {
 
 	    FD_ZERO( &rfds );
 		FD_ZERO( &wfds );
@@ -138,7 +137,7 @@ fd_set  rfds, wfds;
 			FD_SET( fd, &wfds );
 		}
 
-		i = select( fd + 1, &rfds, &wfds, 0, 0 );
+		i = pselect( fd + 1, &rfds, &wfds, 0, 0, 0 );
 
 		if ( i <= 0 ) {
 			if ( 0 == i ) {
@@ -179,7 +178,7 @@ fd_set  rfds, wfds;
 				int k;
 				printf("bb_xfer - read:\n<=");
 				for ( k = 0; k < i; k++ ) {
-					printf("0x%02x ", twrk[k]);
+					printf("0x%02x ", rwrk[k]);
 					if ( (k&0xf) == 0xf ) {
 						printf("\n<=");
 					}
