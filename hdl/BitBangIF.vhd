@@ -102,7 +102,7 @@ begin
 
    end generate GEN_NO_SYNC;
 
-   P_COMB : process ( r, rdat, rvld, wrdy, bbiSync, sclInEqualsOut ) is
+   P_COMB : process ( r, rdat, rvld, wrdy, bbiSync, sclInEqualsOut, i2cDis ) is
       variable v       : RegType;
       variable rrdyLoc : std_logic;
 
