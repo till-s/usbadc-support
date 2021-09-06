@@ -13,32 +13,33 @@ entity ByteDeStuffer is
       datInp  : in  std_logic_vector(COMMA_G'range);
       vldInp  : in  std_logic;
       rdyInp  : out std_logic;
-      sofOut  : out std_logic;
+      lstOut  : out std_logic;
       datOut  : out std_logic_vector(COMMA_G'range);
       vldOut  : out std_logic;
-      rdyOut  : in  std_logic
+      rdyOut  : in  std_logic;
+      synOut  : out std_logic
    );
 end entity ByteDeStuffer;
 
 architecture rtl of ByteDeStuffer is
 
-   -- special cases: 
+   -- special cases:
    --   - message starts with comma -> , esc ,
    --   - message starts with ESC   -> , esc esc
 
-   type StateType is (INIT, RUN);
+   type StateType is (INIT, SYNC, RUN, ESC);
 
    type RegType is record
-      esc     : boolean;
-      sof     : std_logic;
       dat     : std_logic_vector(COMMA_G'range);
+      vld     : std_logic;
+      synced  : std_logic;
       state   : StateType;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
-      esc     => false,
-      sof     => '0',
       dat     => (others => 'X'),
+      vld     => '0',
+      synced  => '0',
       state   => INIT
    );
 
@@ -57,48 +58,64 @@ begin
 
    P_CMB : process (r, datInp, vldInp, isCom, isEsc, rdyOut) is
       variable v   : RegType;
-      variable d   : std_logic_vector(datInp'range);
-      variable vld : std_logic;
       variable rdy : std_logic;
+      variable lst : std_logic;
    begin
       v   := r;
 
-      -- combinatorial MUXes for rdyInp, vldOut, datOut
-      rdy := rdyOut;
-      vld := vldInp;
-      d   := datInp;
-
-      v.sof := '0';
+      -- combinatorial MUX for rdyInp, lstOut
+      rdy := not r.vld;
+      lst := '0';
 
       case ( r.state ) is
          when INIT  =>
-            vld := '0';
-            rdy := '1';
-            if ( (vldInp = '1') ) then
-               v.esc   := isEsc;
-               v.state := RUN;
+            if ( ( vldInp = '1' ) and ( rdy = '1' ) ) then
+               if ( not isEsc ) then
+                  v.state := SYNC;
+               end if;
+            end if;
+
+         when SYNC  =>
+            if ( ( vldInp = '1' ) and ( rdy = '1' ) ) then
+               if ( isEsc ) then
+                  v.state  := INIT;
+               elsif ( isCom ) then
+                  v.state  := RUN;
+                  v.synced := '1';
+               end if;
             end if;
 
          when RUN   =>
-            if ( (vldInp and rdyOut) = '1' ) then
-               v.esc   := isEsc;
-               if ( isCom ) then
-                  if ( not r.esc ) then
-                     vld   := '0';
-                     v.sof := '1';
-                  end if;
-               elsif ( isEsc ) then
-                  if ( not r.esc ) then
-                     vld   := '0';
-                     v.sof := r.sof; -- restore across this escape
-                  end if;
+            if ( rdyOut = '1' ) then
+               rdy   := '1';
+               v.vld := '0';
+            end if;
+            if ( (vldInp and rdy) = '1' ) then
+               if ( isEsc ) then
+                  v.vld   := '0';
+                  v.state := ESC;
+               elsif ( isCom ) then
+                  v.vld   := '0';
+                  lst     := '1';
+               else
+                  v.vld   := '1';
+                  v.dat   := datInp;
                end if;
+            end if;
+
+         when ESC   =>
+            if ( ( vldInp = '1' ) and ( rdy = '1' ) ) then
+               v.vld   := '1';
+               v.dat   := datInp;
+               v.state := RUN;
             end if;
       end case;
 
       rdyInp <= rdy;
-      vldOut <= vld;
-      datOut <= d;
+      vldOut <= r.vld;
+      datOut <= r.dat;
+      lstOut <= lst;
+
       rin    <= v;
    end process P_CMB;
 
@@ -113,6 +130,6 @@ begin
       end if;
    end process P_SEQ;
 
-   sofOut <= r.sof;
+   synOut <= r.synced;
 
 end architecture rtl;

@@ -13,7 +13,7 @@ entity ByteStuffer is
       datInp  : in  std_logic_vector(COMMA_G'range);
       vldInp  : in  std_logic;
       rdyInp  : out std_logic;
-      sofInp  : in  std_logic;
+      lstInp  : in  std_logic;
       datOut  : out std_logic_vector(COMMA_G'range);
       vldOut  : out std_logic;
       rdyOut  : in  std_logic
@@ -26,18 +26,18 @@ architecture rtl of ByteStuffer is
    --   - message starts with comma -> , esc ,
    --   - message starts with ESC   -> , esc esc
 
-   type StateType is (FWD, STUFF);
+   type StateType is (FWD, STUFF, LST);
 
    type RegType is record
       dat     : std_logic_vector(COMMA_G'range);
+      lst     : std_logic;
       state   : StateType;
-      sofSpc  : boolean; -- first byte is a comma or ESC
    end record RegType;
 
    constant REG_INIT_C : RegType := (
       dat     => (others => 'X'),
-      state   => FWD,
-      sofSpc  => false
+      lst     => 'X',
+      state   => FWD
    );
 
    signal r      : RegType := REG_INIT_C;
@@ -53,7 +53,7 @@ begin
    isCom <= (datInp = COMMA_G);
    isEsc <= (datInp = ESCAP_G);
 
-   P_CMB : process (r, datInp, vldInp, isCom, isEsc, sofInp, rdyOut) is
+   P_CMB : process (r, datInp, vldInp, isCom, isEsc, lstInp, rdyOut) is
       variable v   : RegType;
       variable d   : std_logic_vector(datInp'range);
       variable vld : std_logic;
@@ -70,39 +70,39 @@ begin
          when FWD   =>
             if ( (vldInp and rdyOut) = '1' ) then
                -- might have some work to do
-               if ( (sofInp = '1') or isCom or isEsc ) then
+               if ( isCom or isEsc ) then
                   -- hold data
                   v.dat   := datInp;
-                  if ( (sofInp = '1') ) then
-                     d       := COMMA_G;
-                     if ( isCom or isEsc ) then
-                        v.sofSpc  := true;
-                     end if;
-                  else
-                     d       := ESCAP_G;
-                  end if;
+                  v.lst   := lstInp;
+                  d       := ESCAP_G;
                   v.state := STUFF;
                   rdy     := '0';
                   vld     := '1';
+               elsif ( lstInp = '1' ) then
+                  v.state := LST;
+                  rdy     := '0';
                end if;
             end if;
 
          when STUFF =>
             vld := '1';
             d   := r.dat;
-            if ( r.sofSpc ) then
-               -- if the first octet was 'special' (ESC or comma) then
-               -- we must escape it
-               d := ESCAP_G;
-            end if;
             if ( (vld and rdyOut) = '1' ) then
-               if ( r.sofSpc ) then
-                  rdy      := '0';
-                  v.sofSpc := false;
+               if ( ( r.lst = '1' ) ) then
+                  v.state := LST;
+                  rdy     := '0';
                else
                   v.state := FWD;
                end if;
             end if;
+
+         when LST =>
+            vld := '1';
+            d   := COMMA_G;
+            if ( (vld and rdyOut) = '1' ) then
+               v.state := FWD;
+            end if;
+            
       end case;
 
       rdyInp <= rdy;
