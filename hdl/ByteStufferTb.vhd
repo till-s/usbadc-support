@@ -11,6 +11,8 @@ architecture rtl of ByteStufferTb is
    constant COMMA_C : std_logic_vector(7 downto 0) := x"00";
    constant ESCAP_C : std_logic_vector(7 downto 0) := x"01";
 
+   constant EXPECTED_OCTS_C : natural              := 1040;
+
    type   TestArray is array (natural range <>) of natural range 0 to 255;
 
    constant testVec : TestArray := (
@@ -85,17 +87,21 @@ architecture rtl of ByteStufferTb is
    signal run : boolean   := true;
 
    type   EPType is record
-      d : std_logic_vector(7 downto 0);
-      v : std_logic;
-      s : std_logic;
-      n : natural;
+      d       : std_logic_vector(7 downto 0);
+      v       : std_logic;
+      s       : std_logic;
+      n       : natural;
+      nTxFram : natural;
+      nTxOcts : natural;
    end record EPType;
 
    constant EP_INIT_C : EPType := (
-      d => (others => 'X'),
-      v => '0',
-      s => '0',
-      n => 0
+      d       => (others => 'X'),
+      v       => '0',
+      s       => '0',
+      n       =>  0,
+      nTxFram =>  0,
+      nTxOcts =>  0
    );
 
    signal xmit   : EPType := EP_INIT_C;
@@ -110,7 +116,11 @@ architecture rtl of ByteStufferTb is
    signal vldOutX: std_logic;
    signal lstOutX: std_logic;
    signal rdyOutX: std_logic                    := '1';
-   signal nTxFram: natural                      := 0;
+   signal nRxFram: natural                      := 0;
+   signal nRxOcts: natural                      := 0;
+
+   signal rxSyncd: std_logic;
+   signal rstTst : std_logic := '0';
 
    function to_hstring(x : std_logic_vector) return string is
       constant hl : natural := ( x'length + 3 ) / 4;
@@ -165,9 +175,15 @@ architecture rtl of ByteStufferTb is
      while ( (ept.v and rdyInp) = '0' ) loop
         wait until rising_edge( clk );
      end loop;
-     ept.d <= (others => 'X');
-     ept.s <= 'X';
-     ept.v <= '0';
+     if ( rxSyncd = '1' ) then
+        ept.nTxOcts <= ept.nTxOcts + 1;
+        if ( lst = '1' ) then
+           ept.nTxFram <= ept.nTxFram + 1;
+        end if;
+     end if;
+     ept.d   <= (others => 'X');
+     ept.s   <= 'X';
+     ept.v   <= '0';
    end procedure sendCmd;
 
    constant GEN_DESTUFF_C : boolean := true;
@@ -230,7 +246,18 @@ report "sending " & integer'image(testVec(i)) & " l " & integer'image(l) & " lst
          sendCmd(xmit, v, lst, dly);
       end loop;
 
-      run <= false;
+      wait until rising_edge( clk ); -- let octet counter stabilize
+
+      report integer'image(xmit.nTxOcts) & " octets sent #######################";
+
+      W_DONE : for i in 1 to 1000 loop
+         wait until rising_edge( clk );
+      end loop W_DONE;
+
+      -- never get here if RX process stops the test
+
+      report "Test FAILED -- won't finish" severity failure;
+
       wait;
    end process P_TST;
 
@@ -266,7 +293,6 @@ G_NO_DESTUFF: if ( not GEN_DESTUFF_C ) generate
 end generate G_NO_DESTUFF;
 
 G_DESTUFF: if ( GEN_DESTUFF_C ) generate
-      signal numFrames : natural := 0;
       signal dly       : natural := 0;
       signal tst       : integer := -1;
       signal flen      : natural := 0;
@@ -274,14 +300,25 @@ G_DESTUFF: if ( GEN_DESTUFF_C ) generate
    P_REPX : process ( clk ) is
    begin
       if ( rising_edge( clk ) ) then
+         if ( nRxOcts = EXPECTED_OCTS_C ) then
+            if ( nRxOcts /= xmit.nTxOcts ) then
+               report "Test FAILED: Mismatching TX (" & integer'image(xmit.nTxOcts) & ") and RX octets" severity failure;
+            end if;
+            if ( nRxFram /= xmit.nTxFram ) then
+               report "Test FAILED: Mismatching TX and RX frames" severity failure;
+            end if;
+            report "TEST PASSED";
+            run <= false;
+         end if;
          if ( ( vldOutX and rdyOutX) = '1' ) then
+            nRxOcts <= nRxOcts + 1;
             if ( lstOutX = '1' ) then
                if ( datOutX = x"FF" ) then
                   tst  <= 0;
                   flen <= 0;
                end if;
-               numFrames <= numFrames + 1;
-               report "Read -- destuffed: " & to_hstring( datOutX ) & " L (" & integer'image(numFrames + 1 ) & ")";
+               nRxFram <= nRxFram + 1;
+               report "Read -- destuffed: " & to_hstring( datOutX ) & " L (" & integer'image(nRxFram + 1 ) & ")";
             else
                report "Read -- destuffed: " & to_hstring( datOutX );
             end if;
@@ -332,8 +369,18 @@ G_DESTUFF: if ( GEN_DESTUFF_C ) generate
          lstOut => lstOutX,
          datOut => datOutX,
          vldOut => vldOutX,
-         rdyOut => rdyOutX
+         rdyOut => rdyOutX,
+         synOut => rxSyncd,
+         rstOut => rstTst
       );
+
+   P_CHECK_RST : process ( clk ) is
+   begin
+      if ( rising_edge( clk ) ) then
+         assert (rstTst = '0') report "Test FAILED -- spurious reset" severity error;
+      end if;
+   end process P_CHECK_RST;
+
 end generate G_DESTUFF;
 
 

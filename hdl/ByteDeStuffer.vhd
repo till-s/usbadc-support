@@ -17,7 +17,9 @@ entity ByteDeStuffer is
       datOut  : out std_logic_vector(COMMA_G'range);
       vldOut  : out std_logic;
       rdyOut  : in  std_logic;
-      synOut  : out std_logic
+      synOut  : out std_logic;
+      -- sequence of empty frames ,, asserts rstOut
+      rstOut  : out std_logic
    );
 end entity ByteDeStuffer;
 
@@ -30,17 +32,19 @@ architecture rtl of ByteDeStuffer is
    type StateType is (INIT, SYNC, RUN, ESC);
 
    type RegType is record
+      state   : StateType;
       dat     : std_logic_vector(COMMA_G'range);
       vld     : std_logic;
       synced  : std_logic;
-      state   : StateType;
+      lst     : std_logic;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
+      state   => INIT,
       dat     => (others => 'X'),
       vld     => '0',
       synced  => '0',
-      state   => INIT
+      lst     => '0'
    );
 
    signal r      : RegType := REG_INIT_C;
@@ -101,6 +105,7 @@ begin
                   v.vld   := '1';
                   v.dat   := datInp;
                end if;
+               v.lst := lst;
             end if;
 
          when ESC   =>
@@ -115,6 +120,7 @@ begin
       vldOut <= r.vld;
       datOut <= r.dat;
       lstOut <= lst;
+      rstOut <= (lst and r.lst);
 
       rin    <= v;
    end process P_CMB;
