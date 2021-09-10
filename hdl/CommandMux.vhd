@@ -72,21 +72,21 @@ begin
             rdy         := '1';
             v.obLstSeen := false;
             if ( busIb.vld = '1' ) then
-               v.state := CMD;
-               v.cmd   := busIb;
+               v.state     := CMD;
+               v.cmd       := busIb;
             end if;
 
          when CMD  =>
 
             if ( sel < NUM_CMDS_G ) then
-               rdyMuxedOb(sel) <= rdyOb;
                busOb           <= busMuxedOb(sel);
+               rdyMuxedOb(sel) <= rdyOb;
 
                if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
                   v.obLstSeen := true;
                end if;
             else
-               v.obLstSeen := true;
+               v.obLstSeen := true; -- fake reply
             end if;
 
             if ( r.cmd.lst = '1' ) then
@@ -111,19 +111,21 @@ begin
 
          when FWD  =>
             if ( sel < NUM_CMDS_G ) then
+               busMuxedIb(sel) <= busIb;
+               rdy             := rdyMuxedIb(sel);
+
+               -- in FWD state we always forward inbound traffic (otherwise we'd be in WAI); however, we
+               -- must stop outbound traffic after outbound 'lst' was seen
                if ( not r.obLstSeen ) then
-                  busMuxedIb(sel) <= busIb;
-                  rdy             := rdyMuxedIb(sel);
-               end if;
+                  rdyMuxedOb(sel) <= rdyOb;
+                  busOb           <= busMuxedOb(sel);
 
-               rdyMuxedOb(sel) <= rdyOb;
-               busOb           <= busMuxedOb(sel);
-
-               if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
-                  v.obLstSeen := true;
+                  if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
+                     v.obLstSeen := true;
+                  end if;
                end if;
             else
-               rdy         := '1'; -- drop CMD
+               rdy         := '1';  -- drop
                v.obLstSeen := true; -- pretend we've seen it
             end if;
 
@@ -144,10 +146,6 @@ begin
             end if;
                
       end case;
-
-      if ( r.obLstSeen and (sel < NUM_CMDS_G) ) then
-         busOb.vld <= '0';
-      end if;
 
       rdyIb  <= rdy;
       rin    <= v;
