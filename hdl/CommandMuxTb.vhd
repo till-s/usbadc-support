@@ -9,7 +9,7 @@ end entity CommandMuxTb;
 
 architecture sim of CommandMuxTb is
 
-   constant N_CMDS_C : natural := 3;
+   constant N_CMDS_C : natural := 4;
 
    signal clk : std_logic := '0';
    signal rst : std_logic := '0';
@@ -26,6 +26,9 @@ architecture sim of CommandMuxTb is
 
    signal run : boolean      := true;
 
+   signal bbi : std_logic_vector(7 downto 0) := x"FF";
+   signal bbo : std_logic_vector(7 downto 0) := x"FF";
+
    procedure x(
       signal   mst : inout SimpleBusMst;
       constant dat : std_logic_vector(7 downto 0);
@@ -41,6 +44,20 @@ architecture sim of CommandMuxTb is
       end loop;
       mst.vld <= '0';
    end procedure x;
+
+   type Slv8Array is array (natural range <>) of std_logic_vector(7 downto 0);
+
+   constant bbFeed : Slv8Array := (
+       x"10",
+       x"21",
+       x"30",
+       x"41",
+       x"50",
+       x"63",
+       x"72",
+       x"81",
+       x"90"
+   );
 
 begin
    P_CLK : process is
@@ -79,7 +96,27 @@ begin
          rdyMuxedOb   => ro
       );
 
+   U_BB : entity work.CommandBitBang
+      generic map (
+         CLOCK_FREQ_G => 4.0E5
+      )
+      port map (
+         clk          => clk,
+         rst          => rst,
+
+         mIb          => mi(3),
+         rIb          => ri(3),
+
+         mOb          => mo(3),
+         rOb          => ro(3),
+
+         bbi          => bbi,
+         bbo          => bbo
+      );
+
+
    P_FEED : process is
+      variable lst : std_logic;
    begin
       x(src, x"00");
       x(src, x"01");
@@ -102,6 +139,20 @@ begin
       x(src, x"04", '1');
       x(src, x"01");
       x(src, x"02", '1');
+
+      x(src, x"13");
+      for i in bbFeed'range loop
+         if ( i = bbFeed'high ) then
+            lst := '1';
+         else
+            lst := '0';
+         end if;
+         x(src, bbFeed(i), lst);
+         if ( i mod 3 = 0 ) then
+            wait until rising_edge( clk );
+            wait until rising_edge( clk );
+         end if;
+      end loop;
       run <= false;
       wait;
    end process P_FEED;
@@ -109,6 +160,8 @@ begin
    GEN_RX : for i in mi'low to mi'high + 1 generate
          signal valid, ready, last : std_logic;
          signal data               : std_logic_vector(7 downto 0);
+         signal lst                : std_logic := '1';
+         signal foocnt             : integer   := -10;
    begin
 
       G_M1 : if ( i <= mi'high ) generate
@@ -131,6 +184,30 @@ begin
          if ( rising_edge( clk ) ) then
             if ( (valid and ready) = '1') then
                report "Channel " & integer'image(i) & ": got " & integer'image(to_integer(unsigned(data))) & " lst: " & std_logic'image( last );
+
+               if ( i > mi'high ) then
+                  if ( lst = '1' ) then
+                     if (data(3 downto 0) = x"3") then
+                        foocnt <= -1;
+                     end if;
+                  end if;
+                  lst <= last;
+
+                  if ( foocnt >= -1 ) then
+                     if ( foocnt = bbFeed'high ) then
+                        foocnt <= -10;
+                     else
+                        foocnt <= foocnt + 1;
+                     end if;
+
+                     if ( foocnt >= 0 ) then
+                        report integer'image(foocnt) &
+                               " GOT " & integer'image(to_integer(unsigned(data))) &
+                               " EXP " & integer'image(to_integer(unsigned(not bbFeed(foocnt)))) ;
+                        assert( bbFeed(foocnt) = not data ) report "BBI mismatch" severity failure;
+                     end if;
+                  end if;
+               end if;
             end if;
          end if;
       end process P_REP;
@@ -140,7 +217,7 @@ begin
    mo(0) <= mi(0);
    ri(0) <= ro(0);
 
-   mo(1).dat <= x"0f";
+   mo(1).dat <= mi(1).dat;
    mo(1).vld <= '1';
    mo(1).lst <= '1';
    
@@ -168,6 +245,7 @@ begin
          if ( (mi(2).vld and ri(2)) = '1' ) then
             if ( mo(2).vld = '0' ) then
                mo(2).vld <= '1';
+               mo(2).dat <= mi(2).dat;
                mo(2).lst <= '0';
                dly       <= 4;
             end if;
@@ -176,6 +254,13 @@ begin
    end process P_MO2;
 
    end block B_MO2;
+
+   bbi <= not bbo;
+
+   P_BBMON : process (bbo) is
+   begin
+      report "BBO: " & std_logic'image(bbo(1)) & std_logic'image(bbo(0));
+   end process P_BBMON;
    
 
 end architecture sim;
