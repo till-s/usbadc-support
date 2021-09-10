@@ -9,16 +9,20 @@ end entity CommandMuxTb;
 
 architecture sim of CommandMuxTb is
 
-   constant N_CMDS_C : natural := 2;
+   constant N_CMDS_C : natural := 3;
 
    signal clk : std_logic := '0';
    signal rst : std_logic := '0';
 
-   signal m   : SimpleBusMstArray(N_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
-   signal r   : std_logic_vector (N_CMDS_C - 1 downto 0) := (others => '1');
+   signal mi  : SimpleBusMstArray(N_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
+   signal mo  : SimpleBusMstArray(N_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
+   signal ri  : std_logic_vector (N_CMDS_C - 1 downto 0) := (others => '1');
+   signal ro  : std_logic_vector (N_CMDS_C - 1 downto 0) := (others => '1');
 
    signal src : SimpleBusMst := SIMPLE_BUS_MST_INIT_C;
-   signal rdy : std_logic    := '0';
+   signal snk : SimpleBusMst := SIMPLE_BUS_MST_INIT_C;
+   signal srcR: std_logic    := '0';
+   signal snkR: std_logic    := '0';
 
    signal run : boolean      := true;
 
@@ -32,7 +36,7 @@ architecture sim of CommandMuxTb is
       mst.vld <= '1';
       mst.lst <= lst;
       wait until rising_edge( clk );
-      while ( (mst.vld and rdy) = '0' ) loop
+      while ( (mst.vld and srcR) = '0' ) loop
          wait until rising_edge( clk );
       end loop;
       mst.vld <= '0';
@@ -63,10 +67,16 @@ begin
          clk          => clk,
          rst          => rst,
          busIb        => src,
-         rdyIb        => rdy,
+         rdyIb        => srcR,
 
-         busOb        => m,
-         rdyOb        => r
+         busOb        => snk,
+         rdyOb        => snkR,
+
+         busMuxedIb   => mi,
+         rdyMuxedIb   => ri,
+
+         busMuxedOb   => mo,
+         rdyMuxedOb   => ro
       );
 
    P_FEED : process is
@@ -81,6 +91,8 @@ begin
       x(src, x"00");
       x(src, x"00", '1');
       x(src, x"01", '1');
+      x(src, x"02");
+      x(src, x"02", '1');
       x(src, x"01");
       x(src, x"02");
       wait until rising_edge(clk);
@@ -88,25 +100,82 @@ begin
       wait until rising_edge(clk);
       x(src, x"03");
       x(src, x"04", '1');
+      x(src, x"01");
+      x(src, x"02", '1');
       run <= false;
       wait;
    end process P_FEED;
 
-   GEN_RX : for i in m'range generate
+   GEN_RX : for i in mi'low to mi'high + 1 generate
+         signal valid, ready, last : std_logic;
+         signal data               : std_logic_vector(7 downto 0);
+   begin
+
+      G_M1 : if ( i <= mi'high ) generate
+         valid <= mi(i).vld;
+         ready <= ri(i);
+         last  <= mi(i).lst;
+         data  <= mi(i).dat;
+      end generate G_M1;
+
+      G_M2 : if ( i  > mi'high ) generate
+         valid <= snk.vld;
+         ready <= snkR;
+         last  <= snk.lst;
+         data  <= snk.dat;
+         snkR  <= '1';
+      end generate G_M2;
 
       P_REP : process ( clk ) is
       begin
          if ( rising_edge( clk ) ) then
-            r(i) <= '1';
-            if ( (m(i).vld = '1') and (r(i) = '1') ) then
-               report "Channel " & integer'image(i) & ": got " & integer'image(to_integer(unsigned(m(i).dat))) & " lst: " & std_logic'image( m(i).lst );
-               if (i = 0) then
-                  r(i) <= '0';
-               end if;
+            if ( (valid and ready) = '1') then
+               report "Channel " & integer'image(i) & ": got " & integer'image(to_integer(unsigned(data))) & " lst: " & std_logic'image( last );
             end if;
          end if;
       end process P_REP;
 
    end generate GEN_RX;
+
+   mo(0) <= mi(0);
+   ri(0) <= ro(0);
+
+   mo(1).dat <= x"0f";
+   mo(1).vld <= '1';
+   mo(1).lst <= '1';
+   
+   ri(1)     <= '1';
+
+   ri(2)     <= '1';
+
+   B_MO2 : block is
+      signal dly : natural := 0;
+   begin
+
+   P_MO2 : process ( clk ) is
+   begin
+      if ( rising_edge( clk ) ) then
+         mo(2).dat <= std_logic_vector(to_unsigned(dly, 8));
+         if ( dly = 0 ) then
+            mo(2).vld <= '0';
+         else
+            if (dly = 1) then
+               mo(2).lst <= '1';
+            end if;
+            dly <= dly - 1;
+         end if;
+            
+         if ( (mi(2).vld and ri(2)) = '1' ) then
+            if ( mo(2).vld = '0' ) then
+               mo(2).vld <= '1';
+               mo(2).lst <= '0';
+               dly       <= 4;
+            end if;
+         end if;
+      end if;
+   end process P_MO2;
+
+   end block B_MO2;
+   
 
 end architecture sim;
