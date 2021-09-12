@@ -16,10 +16,10 @@ entity CommandBitBang is
       clk          : in  std_logic;
       rst          : in  std_logic;
       
-      mIb          : in  SimpleBusMst;
+      mIb          : in  SimpleBusMstType;
       rIb          : out std_logic;
 
-      mOb          : out SimpleBusMst;
+      mOb          : out SimpleBusMstType;
       rOb          : in  std_logic;
 
       bbo          : out std_logic_vector(7 downto 0);
@@ -34,13 +34,13 @@ architecture rtl of CommandBitBang is
    type RegType is record
       state         : StateType;
       cmd           : std_logic_vector(7 downto 0);
-      lstSeen       : boolean;
+      lstSeen       : std_logic;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
       state         => ECHO,
       cmd           => (others => '0'),
-      lstSeen       => false
+      lstSeen       => '0'
    );
 
    signal r               : RegType := REG_INIT_C;
@@ -68,13 +68,17 @@ begin
    begin
       v := r;
 
+      mOb.dat <= mIb.dat;
+      mOb.vld <= mIb.vld;
+      mOb.lst <= r.lstSeen;
+
+      rIb     <= rOb;
+      rvld    <= '0';
+      wrdy    <= '1'; -- drop - just in case
+
       case ( r.state ) is
          when ECHO =>
-            mOb       <= mIb;
-            rIb       <= rOb;
-            rvld      <= '0';
-            wrdy      <= '1'; -- drop - just in case
-            v.lstSeen := false;
+            v.lstSeen := '0';
             if ( (rOb and mIb.vld) = '1' ) then
                v.cmd := mIb.dat;
                if ( mIb.lst /= '1' ) then
@@ -84,10 +88,9 @@ begin
          when FWD  =>
             mOb.dat <= wdat;
             mOb.vld <= wvld;
-            mOb.lst <= '0';
             wrdy    <= rOb;
 
-            if ( not r.lstSeen ) then
+            if ( r.lstSeen = '0' ) then
                rvld    <= mIb.vld;
                rIb     <= rrdy;
             else
@@ -96,17 +99,17 @@ begin
             end if;
 
             if ( (rrdy and mIb.vld and mIb.lst) = '1' ) then
-               v.lstSeen := true;
+               v.lstSeen := '1';
             end if;
 
-            if ( ( ( rOb and wvld ) = '1' ) and r.lstSeen ) then
-               mOb.lst <= '1';
-               v.state := ECHO;
+            if ( ( rOb and wvld and r.lstSeen ) = '1' ) then
+               v.state   := ECHO;
+               v.lstSeen := '0';
             end if;
 
       end case;
 
-      rin  <= v;
+      rin     <= v;
    end process P_COMB;
 
    P_SEQ : process ( clk ) is

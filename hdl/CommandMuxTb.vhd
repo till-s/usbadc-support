@@ -19,8 +19,8 @@ architecture sim of CommandMuxTb is
    signal ri  : std_logic_vector (N_CMDS_C - 1 downto 0) := (others => '1');
    signal ro  : std_logic_vector (N_CMDS_C - 1 downto 0) := (others => '1');
 
-   signal src : SimpleBusMst := SIMPLE_BUS_MST_INIT_C;
-   signal snk : SimpleBusMst := SIMPLE_BUS_MST_INIT_C;
+   signal src : SimpleBusMstType                         := SIMPLE_BUS_MST_INIT_C;
+   signal snk : SimpleBusMstType                         := SIMPLE_BUS_MST_INIT_C;
    signal srcR: std_logic    := '0';
    signal snkR: std_logic    := '0';
 
@@ -30,7 +30,7 @@ architecture sim of CommandMuxTb is
    signal bbo : std_logic_vector(7 downto 0) := x"FF";
 
    procedure x(
-      signal   mst : inout SimpleBusMst;
+      signal   mst : inout SimpleBusMstType;
       constant dat : std_logic_vector(7 downto 0);
       constant lst : std_logic := '0'
    ) is

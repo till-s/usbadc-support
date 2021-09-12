@@ -11,10 +11,10 @@ entity CommandMux is
    port (
       clk          : in  std_logic;
       rst          : in  std_logic;
-      busIb        : in  SimpleBusMst;
+      busIb        : in  SimpleBusMstType;
       rdyIb        : out std_logic;
 
-      busOb        : out SimpleBusMst;
+      busOb        : out SimpleBusMstType;
       rdyOb        : in  std_logic;
 
       busMuxedIb   : out SimpleBusMstArray(NUM_CMDS_G - 1 downto 0);
@@ -32,7 +32,7 @@ architecture rtl of CommandMux is
 
    type RegType      is record
       state     : StateType;
-      cmd       : SimpleBusMst;
+      cmd       : SimpleBusMstType;
       obLstSeen : boolean;
    end record RegType;
 
@@ -46,6 +46,7 @@ architecture rtl of CommandMux is
    signal     rin : RegType;
 
 begin
+
    P_COMB : process ( r, busIb, rdyMuxedIb, busMuxedOb, rdyOb ) is
       variable v   : RegType;
       variable sel : SelType;
@@ -56,7 +57,7 @@ begin
       v   := r;
 
       for i in busMuxedIb'range loop
-         busMuxedIb(i).vld <= '0';
+         busMuxedIb(i) <= SIMPLE_BUS_MST_INIT_C;
       end loop;
 
       rdy := '0';
@@ -65,7 +66,7 @@ begin
 
       -- drain unselected channels
       rdyMuxedOb <= (others => '1');
-      busOb.vld  <= '0';
+      busOb      <= SIMPLE_BUS_MST_INIT_C;
 
       case ( r.state ) is
          when IDLE =>

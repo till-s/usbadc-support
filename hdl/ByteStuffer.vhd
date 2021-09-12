@@ -35,7 +35,7 @@ architecture rtl of ByteStuffer is
    end record RegType;
 
    constant REG_INIT_C : RegType := (
-      dat     => (others => 'X'),
+      dat     => (COMMA_G'high downto COMMA_G'low   => 'X'),
       lst     => 'X',
       state   => FWD
    );

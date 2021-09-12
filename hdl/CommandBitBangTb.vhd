@@ -14,17 +14,17 @@ architecture sim of CommandBitBangTb is
    signal clk : std_logic := '0';
    signal rst : std_logic := '0';
 
-   signal src : SimpleBusMst := SIMPLE_BUS_MST_INIT_C;
-   signal snk : SimpleBusMst := SIMPLE_BUS_MST_INIT_C;
-   signal srcR: std_logic    := '0';
-   signal snkR: std_logic    := '1';
+   signal src : SimpleBusMstType := SIMPLE_BUS_MST_INIT_C;
+   signal snk : SimpleBusMstType := SIMPLE_BUS_MST_INIT_C;
+   signal srcR: std_logic        := '0';
+   signal snkR: std_logic        := '1';
 
    signal bb  : std_logic_vector(7 downto 0);
 
-   signal run : boolean      := true;
+   signal run : boolean          := true;
 
    procedure x(
-      signal   mst : inout SimpleBusMst;
+      signal   mst : inout SimpleBusMstType;
       constant dat : std_logic_vector(7 downto 0);
       constant lst : std_logic := '0'
    ) is

@@ -41,7 +41,7 @@ architecture rtl of ByteDeStuffer is
 
    constant REG_INIT_C : RegType := (
       state   => INIT,
-      dat     => (others => 'X'),
+      dat     => (COMMA_G'high downto COMMA_G'low => 'X'),
       vld     => '0',
       synced  => '0',
       lst     => '0'
