@@ -20,7 +20,9 @@ static void usage(const char *nm)
 	printf("   -d usb-device      : usb-device [/dev/ttyUSB0].\n");
 	printf("   -I                 : test I2C (47CVB02 DAC).\n");
 	printf("   -h                 : this message.\n");
-	printf("   -v                 : increase verbosity level\n");
+	printf("   -v                 : increase verbosity level.\n");
+	printf("   -V                 : dump firmware version.\n");
+	printf("   -A                 : dump ADC buffer (raw).\n");
 	printf("\n");
 	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
 	printf("       Id             : read and print ID bytes.\n");
@@ -28,6 +30,7 @@ static void usage(const char *nm)
 	printf("       Rd<size>       : read and print <size> bytes [100] (starting at -a <addr>)\n");
     printf("       Wena           : enable write/erase -- needed for erasing; the programming operation does this implicitly\n");
     printf("       Wdis           : disable write/erase (programming operation still implicitly enables writing).\n");
+    printf("       Prog           : program flash.\n");
     printf("       Erase<size>    : erase a block of <size> bytes. Starting address (-a) is down-aligned to block\n");
     printf("                        size and <size> is up-aligned to block size: 4k, 32k, 64k or entire chip.\n");
     printf("                        <size> may be omitted if '-f' is given. The file size will be used...\n");
@@ -55,9 +58,9 @@ const char        *devn      = "/dev/ttyUSB0";
 FWInfo            *fw        = 0;
 int                fd        = -1;
 int                rval      = 1;
-unsigned           speed     = 115200;
+unsigned           speed     = 115200; /* not sure this really matters */
 uint8_t           *buf       = 0;
-unsigned           buflen    = 100;
+unsigned           buflen    = 8192;
 int                i;
 int                reg       =  0;
 int                val       = -1;
@@ -79,14 +82,16 @@ off_t              progSize  = 0;
 int                doit      = 0;
 int                debug     = 0;
 int                fwVersion = 0;
+int                dumpAdc   = 0;
 
-	while ( (opt = getopt(argc, argv, "hvVd:DIS:a:f:!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "hvAVd:DIS:a:f:!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);             return 0;
 			default : fprintf(stderr, "Unknown option -%c (use -h for help)\n", opt); return 1;
 			case 'd': devn = optarg;              break;
 			case 'D': dac  = 1; test_i2c = 1;     break;
+			case 'A': dumpAdc = 1;                break;
 			case 'v': debug++;                    break;
 			case 'V': fwVersion= 1;               break;
 			case 'I': test_i2c = 1;               break;
@@ -143,6 +148,25 @@ int                fwVersion = 0;
 			}
 			printf("\n");
 		}
+	}
+
+	if ( dumpAdc ) {
+		uint8_t cmd = 0x02;
+		int     j;
+		i = fifoXferFrame( fd, &cmd, 0, 0, buf, buflen );
+		if ( i > 0 ) {
+			printf("ADC Data (cmd ret: 0x%02" PRIx8 ")\n", cmd);
+			for ( j = 0; j < i; j++ ) {
+				printf("0x%02" PRIx8 " ", buf[j]);
+				if ( 0xf == ( j & 0xf) ) {
+					printf("\n");
+				}
+			}
+			if ( (j & 0xf) ) {
+				printf("\n");
+			}
+		}
+		
 	}
 
 	if ( test_spi ) {
