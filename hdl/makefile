@@ -90,6 +90,15 @@ MaxAdc.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.
 CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o
 CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 
+
+GITVERSION:=$(shell git rev-parse --short=8 HEAD)
+
+GitVersionPkg.vhd: GitVersionPkg.vhd.in .FORCE
+	echo $(GITVERSION)
+	@if [ ! -f $@ -o $@ -ot $< ] || ! grep -q $(GITVERSION) $@ ; then echo DOIT; sed -e 's/#SUBST#/$(GITVERSION)/' < $< > $@; else echo SKIP; fi
+
+.PHONY: .FORCE
+
 clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb
-	$(RM) dump.ghw work-obj*.cf e~*.o
+	$(RM) dump.ghw work-obj*.cf e~*.o GitVersionPkg.vhd

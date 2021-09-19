@@ -3,6 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 use work.CommandMuxPkg.all;
+use work.GitVersionPkg.all;
 
 entity CommandWrapper is
    generic (
@@ -62,10 +63,10 @@ architecture rtl of CommandWrapper is
    signal   deStufferAbort    : std_logic;
 
    constant VERSION_C : Slv8Array := (
-      0 => x"af",
-      1 => x"fe",
-      2 => x"ca",
-      3 => x"fe"
+      0 => GIT_VERSION_C(31 downto 24),
+      1 => GIT_VERSION_C(23 downto 16),
+      2 => GIT_VERSION_C(15 downto  8),
+      3 => GIT_VERSION_C( 7 downto  0)
    );
 
    signal verAddr     : integer range -1 to VERSION_C'high := -1;
