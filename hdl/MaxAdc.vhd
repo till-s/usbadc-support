@@ -10,7 +10,8 @@ use     unisim.vcomponents.all;
 entity MaxADC is
    generic (
       ADC_CLOCK_FREQ_G : real    := 130.0E6;
-      MEM_DEPTH_G      : natural := 1024
+      MEM_DEPTH_G      : natural := 1024;
+      ONE_MEM_G        : boolean := true
    );
    port (
       adcClk      : in  std_logic;
@@ -42,9 +43,12 @@ architecture rtl of MaxADC is
    subtype  RamAddr   is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
    subtype  RamWord   is std_logic_vector(7 downto 0);
+   subtype  RamDWord  is std_logic_vector(15 downto 0);
 
    constant END_ADDR_C      : RamAddr := to_unsigned( MEM_DEPTH_G mod 2**RamAddr'length, RamAddr'length);
+
    type     RamArray  is array (MEM_DEPTH_G - 1 downto 0) of RamWord;
+   type     RamDArray is array (MEM_DEPTH_G - 1 downto 0) of RamDWord;
 
    type     StateType is (ECHO, HDR, READ);
 
@@ -76,12 +80,6 @@ architecture rtl of MaxADC is
    signal chnlAData : std_logic_vector(7 downto 0);
    signal chnlBData : std_logic_vector(7 downto 0);
 
-   signal DPRAMA    : RamArray;
-   signal DPRAMB    : RamArray;
-
-   signal waddrA    : RamAddr := (others => '0');
-   signal waddrB    : RamAddr := (others => '0');
-
    signal chnlAClkL : std_logic;
    signal chnlBClkL : std_logic;
 
@@ -92,6 +90,9 @@ architecture rtl of MaxADC is
    signal dcmRst    : std_Logic := '0';
 
    signal memClk    : std_logic;
+
+   signal rdatA     : std_logic_vector(7 downto 0);
+   signal rdatB     : std_logic_vector(7 downto 0);
 
    signal chnlADataResynced : std_logic_vector(7 downto 0);
 
@@ -188,19 +189,60 @@ begin
       chnlBData <= adcData;
    end generate;
 
-   waddrB <= waddrA;
+   GEN_TWOMEM_G : if ( not ONE_MEM_G ) generate
+      signal DPRAMA    : RamArray;
+      signal DPRAMB    : RamArray;
 
-   P_WR_AB : process ( memClk ) is
+      signal waddrA    : RamAddr := (others => '0');
+      signal waddrB    : RamAddr := (others => '0');
    begin
-      if ( rising_edge( memClk ) ) then
-         chnlADataResynced            <= chnlAData;
-         DPRAMB( to_integer(waddrB) ) <= chnlBData;
-         DPRAMA( to_integer(waddrA) ) <= chnlADataResynced;
-         waddrA                       <= waddrA + 1;
-      end if;
-   end process P_WR_AB;
 
-   P_RD_COMB : process (r, busIb, rdyOb, DPRAMA, DPRAMB) is
+      waddrB <= waddrA;
+
+      P_WR_AB : process ( memClk ) is
+      begin
+         if ( rising_edge( memClk ) ) then
+            chnlADataResynced            <= chnlAData;
+            DPRAMB( to_integer(waddrB) ) <= chnlBData;
+            DPRAMA( to_integer(waddrA) ) <= chnlADataResynced;
+            if ( waddrA = END_ADDR_C ) then
+               waddrA                    <= (others => '0');
+            else
+               waddrA                       <= waddrA + 1;
+            end if;
+         end if;
+      end process P_WR_AB;
+
+      rdatA <= DPRAMA(to_integer(r.raddr));
+      rdatB <= DPRAMB(to_integer(r.raddr));
+
+   end generate GEN_TWOMEM_G;
+
+   GEN_ONEMEM_G : if ( ONE_MEM_G ) generate
+      signal DPRAMD    : RamDArray;
+      signal waddr     : RamAddr := (others => '0');
+   begin
+
+      P_WR_AB : process ( memClk ) is
+      begin
+         if ( rising_edge( memClk ) ) then
+            chnlADataResynced           <= chnlAData;
+            DPRAMD( to_integer(waddr) ) <= chnlADataResynced & chnlBData;
+            if ( waddr = END_ADDR_C ) then
+               waddr                    <= (others => '0');
+            else
+               waddr                    <= waddr + 1;
+            end if;
+         end if;
+
+      end process P_WR_AB;
+
+      rdatA <= DPRAMD( to_integer( r.raddr ) )( 7 downto  0);
+      rdatB <= DPRAMD( to_integer( r.raddr ) )(15 downto  8);
+
+   end generate GEN_ONEMEM_G;
+    
+   P_RD_COMB : process (r, busIb, rdyOb, rdatA, rdatB) is
       variable v : RegType;
    begin
       v     := r;
@@ -240,8 +282,8 @@ begin
                      v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(r.taddr(r.taddr'left downto 8));
                   end if;
                   -- prefetch/register
-                  v.rdatA := DPRAMA(to_integer(r.raddr));
-                  v.rdatB := DPRAMB(to_integer(r.raddr));
+                  v.rdatA := rdatA;
+                  v.rdatB := rdatB;
                   v.raddr := r.raddr + 1;
                else
                   v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1); 
@@ -254,8 +296,8 @@ begin
                v.anb := not r.anb;
                if ( r.anb ) then
                   v.busOb.dat := r.rdatB(r.rdatB'left downto r.rdatB'left - v.busOb.dat'length + 1);
-                  v.rdatA     := DPRAMA(to_integer(r.raddr));
-                  v.rdatB     := DPRAMB(to_integer(r.raddr));
+                  v.rdatA     := rdatA;
+                  v.rdatB     := rdatB;
                   if ( r.raddr = END_ADDR_C ) then
                      v.lstDly    := '1';
                      v.busOb.lst := r.lstDly;

@@ -61,26 +61,32 @@ begin
    isEsc <= (datInp = ESCAP_G);
 
    P_CMB : process (r, datInp, vldInp, isCom, isEsc, rdyOut) is
-      variable v   : RegType;
-      variable rdy : std_logic;
-      variable lst : std_logic;
+      variable v    : RegType;
+      variable rdyI : std_logic;
+      variable vldO : std_logic;
+      variable rstO : std_logic;
+      variable lstO : std_logic;
    begin
       v   := r;
 
-      -- combinatorial MUX for rdyInp, lstOut
-      rdy := not r.vld;
-      lst := '0';
+      -- combinatorial MUXes for rdyInp, vldOut, rstOut, lstOut
+      rdyI := not r.vld;
+      vldO := r.vld and vldInp;
+      rstO := '0';
+      lstO := '0';
 
       case ( r.state ) is
          when INIT  =>
-            if ( ( vldInp = '1' ) and ( rdy = '1' ) ) then
+            rdyI := '1';
+            if ( vldInp = '1' ) then
                if ( not isEsc ) then
                   v.state := SYNC;
                end if;
             end if;
 
          when SYNC  =>
-            if ( ( vldInp = '1' ) and ( rdy = '1' ) ) then
+            rdyI := '1';
+            if ( vldInp = '1' ) then
                if ( isEsc ) then
                   v.state  := INIT;
                elsif ( isCom ) then
@@ -90,37 +96,44 @@ begin
             end if;
 
          when RUN   =>
-            if ( rdyOut = '1' ) then
-               rdy   := '1';
-               v.vld := '0';
+            -- can consume data if register is empty or output is ready
+            rdyI := ( not r.vld ) or rdyOut;
+            if ( ( vldInp = '1' ) and isEsc ) then
+               -- must not let them consume the data in the
+               -- storage register
+               vldO := '0';
             end if;
-            if ( (vldInp and rdy) = '1' ) then
-               if ( isEsc ) then
-                  v.vld   := '0';
+            if ( ( vldInp and rdyI ) = '1' ) then
+               -- handle input data
+               if ( isCom ) then
+                  lstO  := '1';
+                  -- if the data register is empty this means
+                  -- there was an empty frame; assert reset
+                  rstO  := not r.vld;
+                  v.vld := '0';
+               elsif ( isEsc ) then
                   v.state := ESC;
-               elsif ( isCom ) then
-                  v.vld   := '0';
-                  lst     := '1';
                else
-                  v.vld   := '1';
+                  -- consume and register new data
                   v.dat   := datInp;
+                  v.vld   := '1';
                end if;
-               v.lst := lst;
             end if;
 
          when ESC   =>
-            if ( ( vldInp = '1' ) and ( rdy = '1' ) ) then
+            rdyI := ( not r.vld ) or rdyOut;
+            if ( ( vldInp = '1' ) and ( rdyI = '1' ) ) then
                v.vld   := '1';
                v.dat   := datInp;
                v.state := RUN;
             end if;
       end case;
 
-      rdyInp <= rdy;
-      vldOut <= r.vld;
+      rdyInp <= rdyI;
+      vldOut <= vldO;
       datOut <= r.dat;
-      lstOut <= lst;
-      rstOut <= (lst and r.lst);
+      lstOut <= lstO;
+      rstOut <= rstO;
 
       rin    <= v;
    end process P_CMB;

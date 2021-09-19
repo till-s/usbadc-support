@@ -68,35 +68,35 @@ begin
 
       case ( r.state ) is
          when FWD   =>
+            if ( ( vldInp = '1' ) and ( isCom or isEsc ) ) then
+               d       := ESCAP_G;
+            end if;
             if ( (vldInp and rdyOut) = '1' ) then
                -- might have some work to do
                if ( isCom or isEsc ) then
                   -- hold data
                   v.dat   := datInp;
                   v.lst   := lstInp;
-                  d       := ESCAP_G;
                   v.state := STUFF;
-                  rdy     := '0';
-                  vld     := '1';
                elsif ( lstInp = '1' ) then
                   v.state := LST;
-                  rdy     := '0';
                end if;
             end if;
 
          when STUFF =>
+            rdy := '0';
             vld := '1';
             d   := r.dat;
             if ( (vld and rdyOut) = '1' ) then
                if ( ( r.lst = '1' ) ) then
                   v.state := LST;
-                  rdy     := '0';
                else
                   v.state := FWD;
                end if;
             end if;
 
          when LST =>
+            rdy := '0';
             vld := '1';
             d   := COMMA_G;
             if ( (vld and rdyOut) = '1' ) then

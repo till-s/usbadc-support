@@ -11,7 +11,7 @@ architecture rtl of ByteStufferTb is
    constant COMMA_C : std_logic_vector(7 downto 0) := x"00";
    constant ESCAP_C : std_logic_vector(7 downto 0) := x"01";
 
-   constant EXPECTED_OCTS_C : natural              := 1040;
+   constant EXPECTED_OCTS_C : natural              := 1041;
 
    type   TestArray is array (natural range <>) of natural range 0 to 255;
 
@@ -246,6 +246,9 @@ report "sending " & integer'image(testVec(i)) & " l " & integer'image(l) & " lst
          sendCmd(xmit, v, lst, dly);
       end loop;
 
+      -- make sure last frame ends
+      sendCmd(xmit, x"44", lst => '1');
+
       wait until rising_edge( clk ); -- let octet counter stabilize
 
       report integer'image(xmit.nTxOcts) & " octets sent #######################";
@@ -323,7 +326,7 @@ G_DESTUFF: if ( GEN_DESTUFF_C ) generate
                report "Read -- destuffed: " & to_hstring( datOutX );
             end if;
 
-            if ( tst >= 0 ) then
+            if ( tst >= 0 and tst < testVec'length ) then
                if ( lstOutX = '1' ) then
                   assert flen = 0
                      report "Frame length mismatch"

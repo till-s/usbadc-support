@@ -42,10 +42,53 @@ architecture rtl of CommandMux is
       obLstSeen => false
    );
 
-   signal     r   : RegType := REG_INIT_C;
-   signal     rin : RegType;
+   signal     r               : RegType := REG_INIT_C;
+   signal     rin             : RegType;
+
+   signal     rdyLoc          : std_logic;
+   signal     busObLoc        : SimpleBusMstType;
+
+   signal     t0              : std_logic_vector(7 downto 0) := (others => '0');
+   signal     t1              : std_logic_vector(7 downto 0) := (others => '0');
+   signal     t2              : std_logic_vector(7 downto 0) := (others => '0');
+   signal     t3              : std_logic_vector(7 downto 0) := (others => '0');
 
 begin
+
+   t0    <= busIb.dat;
+
+   t1(0) <= busIb.vld;
+   t1(1) <= rdyLoc;
+   t1(2) <= busIb.lst;
+
+   process( r ) is
+   begin
+      if ( r.obLstSeen ) then
+         t1(3) <= '1';
+      else
+         t1(3) <= '0';
+      end if;
+   end process;
+
+   t1(5 downto 4) <= std_logic_vector(to_unsigned(StateType'pos(r.state), 2));
+
+   t2    <= busObLoc.dat;
+
+   t3(0) <= busObLoc.vld;
+   t3(1) <= rdyOb;
+   t3(2) <= busObLoc.lst;
+   t3(6 downto 4) <= r.cmd.dat(2 downto 0);
+
+   GEN_ILA : if ( false ) generate
+   U_ILA : entity work.ILAWrapper
+      port map (
+         clk  => clk,
+         trg0 => t0,
+         trg1 => t1,
+         trg2 => t2,
+         trg3 => t3
+      );
+   end generate;
 
    P_COMB : process ( r, busIb, rdyMuxedIb, busMuxedOb, rdyOb ) is
       variable v   : RegType;
@@ -66,7 +109,7 @@ begin
 
       -- drain unselected channels
       rdyMuxedOb <= (others => '1');
-      busOb      <= SIMPLE_BUS_MST_INIT_C;
+      busObLoc   <= SIMPLE_BUS_MST_INIT_C;
 
       case ( r.state ) is
          when IDLE =>
@@ -80,7 +123,7 @@ begin
          when CMD  =>
 
             if ( sel < NUM_CMDS_G ) then
-               busOb           <= busMuxedOb(sel);
+               busObLoc        <= busMuxedOb(sel);
                rdyMuxedOb(sel) <= rdyOb;
 
                if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
@@ -119,7 +162,7 @@ begin
                -- must stop outbound traffic after outbound 'lst' was seen
                if ( not r.obLstSeen ) then
                   rdyMuxedOb(sel) <= rdyOb;
-                  busOb           <= busMuxedOb(sel);
+                  busObLoc        <= busMuxedOb(sel);
 
                   if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
                      v.obLstSeen := true;
@@ -141,14 +184,14 @@ begin
          when WAI => -- wait for outgoing frame to pass
             -- WAI can only be entered if sel < NUM_CMDS_G
             rdyMuxedOb(sel) <= rdyOb;
-            busOb           <= busMuxedOb(sel);
+            busObLoc        <= busMuxedOb(sel);
             if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
                v.state := IDLE;
             end if;
                
       end case;
 
-      rdyIb  <= rdy;
+      rdyLoc <= rdy;
       rin    <= v;
 
    end process P_COMB;
@@ -163,5 +206,8 @@ begin
          end if;
       end if;
    end process P_SEQ;
+
+   rdyIb <= rdyLoc;
+   busOb <= busObLoc;
 
 end architecture rtl;

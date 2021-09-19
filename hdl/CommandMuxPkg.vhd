@@ -5,6 +5,8 @@ use ieee.math_real.all;
 
 package CommandMuxPkg is
 
+   type Slv8Array is array(integer range <>) of std_logic_vector(7 downto 0);
+
    type SimpleBusMstType is record
       vld : std_logic;
       lst : std_logic;
