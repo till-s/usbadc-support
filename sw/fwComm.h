@@ -4,15 +4,22 @@
 #include <sys/types.h>
 #include <stdint.h>
 
+#include "cmdXfer.h"
+
 struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
 typedef enum   BBMode { BB_MODE_I2C, BB_MODE_SPI } BBMode;
 
+typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_BB_I2C, FW_CMD_BB_SPI } FWCmd;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+uint8_t
+fw_get_cmd(FWCmd abstractCmd);
 
 void
 fw_set_debug(FWInfo *fw, int level);
@@ -23,17 +30,23 @@ fw_set_mode(FWInfo *fw, BBMode mode);
 FWInfo *
 fw_open(const char *devn, unsigned speed, BBMode mode);
 
+FWInfo *
+fw_open_fd(int fd, BBMode mode);
+
 void
 fw_close(FWInfo *fw);
 
 int
 bb_i2c_start(FWInfo *fw, int restart);
 
-int
-bb_i2c_read(FWInfo *fw, uint8_t *buf, size_t len);
+/* set 'I2C_READ' when writing the i2c address */
+#define I2C_READ (1<<0)
 
 int
 bb_i2c_write(FWInfo *fw, uint8_t *buf, size_t len);
+
+int
+bb_i2c_read(FWInfo *fw, uint8_t *buf, size_t len);
 
 int
 bb_i2c_stop(FWInfo *fw);
