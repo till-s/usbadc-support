@@ -11,6 +11,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include "cmdXfer.h"
+
 #undef  SLOW_ALGO
 
 #define CS_SHFT   0
@@ -18,11 +20,8 @@
 #define MOSI_SHFT 2
 #define MISO_SHFT 3
 
-#define MODE_SHFT 6
-
-#define SPI_MASK  (0xf0 | (1<<MODE_SHFT))
-
-#define I2C_MASK  (0xC1 & ~(1<<MODE_SHFT))
+#define SPI_MASK  (0xf0)
+#define I2C_MASK  (0xC1)
 
 #define SDA_SHFT  4
 #define SCL_SHFT  5
@@ -30,171 +29,79 @@
 
 #define I2C_READ 1
 
-static int bb_debug = 0;
+/* Must match firmware */
+#define FW_CMD_BB          0x01
+#define FW_CMD_BB_I2C_DIS (1<<4)
 
-int bb_open(const char *devn, unsigned speed)
+typedef struct BBInfo {
+	int        fd;
+	uint8_t    cmd;
+	int        debug;
+} BBInfo;
+
+typedef enum BBMode { BB_MODE_I2C, BB_MODE_SPI } BBMode;
+
+int
+bb_xfer(BBInfo *bb, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
+
+void
+bb_set_debug(BBInfo *bb, int level)
 {
-int                rval = -1;
-int                fd   = -1;
-char               msg[256];
-struct termios     atts;
+	bb->debug = level;
+}
 
-	if ( (fd = open(devn, O_RDWR)) < 0 ) {
-		snprintf(msg, sizeof(msg), "unable open device '%s'", devn);
-		perror(msg);
-		goto bail;
+
+void
+bb_set_mode(BBInfo *bb, BBMode mode)
+{
+	switch ( mode ) {
+		case BB_MODE_SPI: bb->cmd |=   FW_CMD_BB_I2C_DIS; break;
+		case BB_MODE_I2C: bb->cmd &= ~ FW_CMD_BB_I2C_DIS; break;
+		default: break;
+	}
+}
+
+BBInfo *
+bb_open(const char *devn, unsigned speed, BBMode mode)
+{
+BBInfo *rv;
+int     fd = fifoOpen( devn, speed );
+
+	if ( fd < 0 ) {
+		return 0;
 	}
 
-	if ( tcgetattr( fd, &atts ) ) {
-		perror( "tcgetattr failed" );
-		goto bail;
+	if ( ! (rv = malloc(sizeof(*rv))) ) {
+		perror("bb_open(): no memory");
+		return 0;
 	}
 
-	cfmakeraw( &atts );
-	if ( cfsetspeed( &atts, speed ) ) {
-		perror( "cfsetspeed failed" );
-		goto bail;
-	}
-
-	if ( tcsetattr( fd, TCSANOW, &atts ) ) {
-		perror( "tcgetattr failed" );
-		goto bail;
-	}
-
-	rval = fd;
-	fd   = -1;	if ( fd >= 0 ) {
-		close( fd );
-	}
-
-
-bail:
-	if ( fd >= 0 ) {
-		close( fd );
-	}
-	return rval;
+	rv->fd    = fd;
+	rv->cmd   = FW_CMD_BB;
+	rv->debug = 0;
+	bb_set_mode( rv, mode );
+	return rv;
 }
 
 void
-bb_close(int fd)
+bb_close(BBInfo *bb)
 {
 uint8_t v = SPI_MASK | I2C_MASK;
-	write( fd, &v, sizeof(v) );
-	close( fd );
+	if ( bb ) {
+		bb_xfer(bb, &v, &v, sizeof(v) );
+		fifoClose( bb->fd );
+		free( bb );
+	}
 }
 
 #define DEPTH    512 /* fifo depth */
 #define MAXDEPTH 500
 
 int
-bb_xfer(int fd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+bb_xfer(BBInfo *bb, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
-const uint8_t      *twrk = tbuf;
-uint8_t            *rwrk = rbuf;
-int                 rval = -1;
-size_t              i, rlen, wlen, rtodo, wtodo;
-uint8_t             dummy [MAXDEPTH];
-uint8_t             zerbuf[MAXDEPTH];
-int                 flgs;
-fd_set              rfds, wfds;
-
-	wtodo = rtodo = len;
-
-	if ( -1 == (flgs = fcntl( fd, F_GETFL )) ) {
-		perror("fcntl(F_GETFL) failed");
-		return -1;
-	}
-
-	if ( -1 == fcntl( fd, F_SETFL, (flgs | O_NONBLOCK) ) ) {
-		perror("fcntl(F_SETFL,O_NONBLOCK) failed");
-		return -1;
-	}
-
-	if ( ! tbuf ) {
-		memset(zerbuf, 0, len > sizeof(zerbuf) ? sizeof(zerbuf) : len);
-	}
-
-	
-	while ( (rtodo > 0) || (wtodo > 0) ) {
-
-	    FD_ZERO( &rfds );
-		FD_ZERO( &wfds );
-
-		wlen = wtodo > MAXDEPTH ? MAXDEPTH : wtodo;
-		rlen = rtodo > MAXDEPTH ? MAXDEPTH : rtodo;
-
-		if ( ! tbuf ) {
-			twrk = zerbuf;
-		}
-
-		if ( ! rbuf ) {
-			rwrk = dummy;
-		}
-
-		if ( rlen > 0 ) {
-			FD_SET( fd, &rfds );
-		}
-		if ( wlen > 0 ) {
-			FD_SET( fd, &wfds );
-		}
-
-		i = pselect( fd + 1, &rfds, &wfds, 0, 0, 0 );
-
-		if ( i <= 0 ) {
-			if ( 0 == i ) {
-				fprintf(stderr, "Hmm - select returned 0\n");
-				sleep(1);
-				continue;
-			}
-			perror("select failure");
-			goto bail;
-		}
-
-		if ( FD_ISSET( fd, &wfds ) ) {
-			if ( (i = write(fd, twrk, wlen)) <= 0 ) {
-				perror("Writing to FIFO failed");
-				goto bail;
-			}
-			if ( bb_debug > 1 ) {
-				int k;
-				printf("bb_xfer - wrote:\n=>");
-				for ( k = 0; k < i; k++ ) {
-					printf("0x%02x ", twrk[k]);
-					if ( (k&0xf) == 0xf ) {
-						printf("\n=>");
-					}
-				}
-				printf("\n");
-			}
-			twrk  += i;
-			wtodo -= i;
-		}
-
-		if ( FD_ISSET( fd, &rfds ) ) {
-			if ( (i = read(fd, rwrk, rlen)) <= 0 ) {
-				perror("Reading from FIFO failed");
-				goto bail;
-			}
-			if ( bb_debug > 1 ) {
-				int k;
-				printf("bb_xfer - read:\n<=");
-				for ( k = 0; k < i; k++ ) {
-					printf("0x%02x ", rwrk[k]);
-					if ( (k&0xf) == 0xf ) {
-						printf("\n<=");
-					}
-				}
-				printf("\n");
-			}
-			rwrk  += i;
-			rtodo -= i;
-		}
-	}
-
-	rval = 0;
-
-bail:
-	fcntl( fd, F_SETFL, flgs );
-	return rval;
+uint8_t cmdLoc = bb->cmd;
+	return fifoXferFrame( bb->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 ) < 0 ? -1 : 0;
 }
 
 static void pr_i2c_dbg(uint8_t tbyte, uint8_t rbyte)
@@ -205,42 +112,42 @@ static void pr_i2c_dbg(uint8_t tbyte, uint8_t rbyte)
 }
 
 int
-bb_i2c_set(int fd, int scl, int sda)
+bb_i2c_set(BBInfo *bb, int scl, int sda)
 {
 uint8_t bbbyte =  ((scl ? 1 : 0) << SCL_SHFT) | ((sda ? 1 : 0) << SDA_SHFT) | I2C_MASK;
 uint8_t x = bbbyte;
 
-	if ( bb_xfer( fd, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( bb_xfer( bb, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "bb_i2c_set: unable to set levels\n");
 		return -1;
 	}
-	if ( bb_debug ) {
+	if ( bb->debug ) {
 		pr_i2c_dbg(x, bbbyte);
 	}
 	return bbbyte;
 }
 
 int
-bb_i2c_start(int fd, int restart)
+bb_i2c_start(BBInfo *bb, int restart)
 {
 
-	if ( bb_debug ) {
+	if ( bb->debug ) {
 		printf("bb_i2c_start:\n");
 	}
 	if ( restart ) {
-		if ( bb_i2c_set(fd, 0, 1 ) < 0 ) {
+		if ( bb_i2c_set(bb, 0, 1 ) < 0 ) {
 			return -1;
 		}
-		if ( bb_i2c_set(fd, 1, 1) < 0 ) {
+		if ( bb_i2c_set(bb, 1, 1) < 0 ) {
 			return -1;
 		}
 	}
 
-	if ( bb_i2c_set(fd, 1, 0) < 0 ) {
+	if ( bb_i2c_set(bb, 1, 0) < 0 ) {
 		return -1;
 	}
 
-	if ( bb_i2c_set(fd, 0, 0) < 0 ) {
+	if ( bb_i2c_set(bb, 0, 0) < 0 ) {
 		return -1;
 	}
 
@@ -248,107 +155,57 @@ bb_i2c_start(int fd, int restart)
 }
 
 int
-bb_i2c_stop(int fd)
+bb_i2c_stop(BBInfo *bb)
 {
-	if ( bb_debug ) {
+	if ( bb->debug ) {
 		printf("bb_i2c_stop:\n");
 	}
-	if ( bb_i2c_set(fd, 1, 0) < 0 ) {
+	if ( bb_i2c_set( bb, 1, 0 ) < 0 ) {
 		return -1;
 	}
 
-	if ( bb_i2c_set(fd, 1, 1) < 0 ) {
+	if ( bb_i2c_set( bb, 1, 1 ) < 0 ) {
 		return -1;
 	}
 	return 0;
 }
 
 int
-bb_i2c_bit(int fd, int val)
+bb_i2c_bit(BBInfo *bb, int val)
 {
 int got;
 
-	if ( bb_debug ) {
+	if ( bb->debug ) {
 		printf("bb_i2c_bit:\n");
 	}
-	if ( bb_i2c_set(fd, 0, val) < 0 ) {
+	if ( bb_i2c_set( bb, 0, val ) < 0 ) {
 		return -1;
 	}
-	if ( (got = bb_i2c_set(fd, 1, val)) < 0 ) {
+	if ( ( got = bb_i2c_set( bb, 1, val ) ) < 0 ) {
 		return -1;
 	}
-	if ( bb_i2c_set(fd, 0, val) < 0 ) {
+	if ( bb_i2c_set( bb, 0, val ) < 0 ) {
 		return -1;
 	}
 	return !! (got & (1<<SDA_SHFT));
 }
 
 int
-bb_spi_cs(int fd, int val)
+bb_spi_cs(BBInfo *bb, int val)
 {
 uint8_t bbbyte = ( ((val ? 1 : 0) << CS_SHFT) | (0 << SCLK_SHFT) ) | SPI_MASK;
 
-	if ( bb_xfer( fd, &bbbyte, 0, 1 ) < 0 ) {
+	if ( bb_xfer( bb, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "Unable to set CS %d\n", !!val);
 		return -1;
 	}
 	return 0;
 }
 
-int
-bb_spi_bit(int fd, int val)
-{
-uint8_t bbbyte = ( ((val ? 1 : 0) << MOSI_SHFT) | (0 << SCLK_SHFT) | (0 << CS_SHFT) ) | SPI_MASK ;
-
-	if ( bb_xfer( fd, &bbbyte, 0, 1 ) < 0 ) {
-		fprintf(stderr, "Unable to send bit (SCLK low)\n");
-		return -1;
-	}
-
-    /* raise SCLK */
-	bbbyte |= (1<<SCLK_SHFT);
-
-	if ( bb_xfer( fd, &bbbyte, &bbbyte, 1 ) < 0 ) {
-		fprintf(stderr, "Unable to send bit (SCLK low)\n");
-		return -1;
-	}
-
-	return !!(bbbyte & (1 << MISO_SHFT));
-}
-
-#define MSBIT 0x80
-
-#ifdef SLOW_ALGO
-int
-bb_spi_xfer_nocs(int fd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
-{
-size_t  i, j;
-int     got;
-uint8_t bbuf;
-
-	for ( i = 0; i < len; i++ ) {
-		bbuf = tbuf ? tbuf[i] : 0;
-		for ( j = 0; j < 8*sizeof(tbuf[0]); j++ ) {
-			got = bb_spi_bit(fd, !!(bbuf & MSBIT));
-			if ( got < 0 ) {
-				fprintf(stderr, "Sending bit #%d of octet %d failed\n", (unsigned)j, (unsigned)i);
-				return -1;
-			}
-			bbuf = ( (bbuf << 1) | (got ? 1 : 0) ) & 0xff;
-		}
-		if ( rbuf ) {
-			rbuf[i] = bbuf;
-		}
-	}
-
-	return len;
-}
-
-#else
 #define BUF_BRK 1024
 
 int
-bb_spi_xfer_nocs(int fd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+bb_spi_xfer_nocs(BBInfo *bb, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
 uint8_t *xbuf = malloc(BUF_BRK*8*2);
 uint8_t *p;
@@ -376,7 +233,7 @@ uint8_t  v;
 			p += j;
 		}
 
-		if ( bb_xfer( fd, xbuf, xbuf, xlen*2*8 ) ) {
+		if ( bb_xfer( bb, xbuf, xbuf, xlen*2*8 ) ) {
 			fprintf(stderr, "bb_spi_xfer_nocs(): bb_xfer failed\n");
 			goto bail;
 		}
@@ -406,20 +263,19 @@ bail:
 	free( xbuf );
 	return rval;
 }
-#endif
 
 int
-bb_spi_xfer(int fd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+bb_spi_xfer(BBInfo *bb, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
 int got;
 
-	if ( bb_spi_cs(fd, 0) ) {
+	if ( bb_spi_cs( bb, 0 ) ) {
 		return -1;
 	}
 
-	got = bb_spi_xfer_nocs(fd, tbuf, rbuf, len);
+	got = bb_spi_xfer_nocs( bb, tbuf, rbuf, len );
 
-	if ( bb_spi_cs(fd, 1) ) {
+	if ( bb_spi_cs( bb, 1 ) ) {
 		return -1;
 	}
 
@@ -428,19 +284,9 @@ int got;
 
 /* XFER 9 bits (lsbit is ACK) */
 int
-bb_i2c_xfer(int fd, uint16_t val)
+bb_i2c_xfer(BBInfo *bb, uint16_t val)
 {
 int i;
-#ifdef SLOW_ALGO
-int got;
-	for ( i = 0; i < 9; i++ ) {
-		if ( (got = bb_i2c_bit(fd, (val & (1<<8)) )) < 0 ) {
-			fprintf(stderr, "bb_i2c_xfer failed (bit %i)\n", i);
-			return -1;
-		}
-		val = (val << 1) | got;
-	}
-#else
 uint8_t xbuf[3*9];
 uint8_t rbuf[3*9];
 	for ( i = 0; i < 3*9; i+= 3 ) {
@@ -451,7 +297,7 @@ uint8_t rbuf[3*9];
 		xbuf[i + 2] = (I2C_MASK | (0 << SCL_SHFT) | sda); 
 		val <<= 1;
 	}
-	if ( bb_xfer( fd, xbuf, rbuf, sizeof(xbuf)) ) {
+	if ( bb_xfer( bb, xbuf, rbuf, sizeof(xbuf)) ) {
 		fprintf(stderr, "bb_i2c_xfer failed\n");
 		return -1;
 	}
@@ -459,18 +305,17 @@ uint8_t rbuf[3*9];
 	for ( i = 0; i < 3*9; i+= 3 ) {
 		val = (val<<1) | ( ( rbuf[i+2] & ( 1 << SDA_SHFT ) ) ? 1 : 0 );
 	}
-	if ( bb_debug ) {
+	if ( bb->debug ) {
 		for ( i = 0; i < 3*9; i++ ) {
 			pr_i2c_dbg(xbuf[i], rbuf[i]);
 		}
 	}
-#endif
 	
 	return val & 0x1FF;
 }
 
 int
-bb_i2c_read(int fd, uint8_t *buf, size_t len)
+bb_i2c_read(BBInfo *bb, uint8_t *buf, size_t len)
 {
 uint16_t v;
 int      got;
@@ -478,7 +323,7 @@ size_t   i;
 	for ( i = 0; i < len; i++ ) {
 		/* ACK all but the last bit */
 		v = ( 0xff << 1 ) | (i == len - 1 ? I2C_NAK : 0);
-		if ( (got = bb_i2c_xfer(fd, v)) < 0 ) {
+		if ( ( got = bb_i2c_xfer( bb, v ) ) < 0 ) {
 			return -1;
 		}
 		buf[i] = ( got >> 1 ) & 0xff;
@@ -487,17 +332,17 @@ size_t   i;
 }
 
 int
-bb_i2c_write(int fd, uint8_t *buf, size_t len)
+bb_i2c_write(BBInfo *bb, uint8_t *buf, size_t len)
 {
 uint16_t v;
 int      got;
 size_t   i;
 	for ( i = 0; i < len; i++ ) {
 		v = ( buf[i] << 1 ) | I2C_NAK; /* set ACK when sending; releases to the slave */
-		if ( (got = bb_i2c_xfer(fd, v)) < 0 ) {
+		if ( ( got = bb_i2c_xfer( bb, v ) ) < 0 ) {
 			return -1;
 		}
-		if ( (got & I2C_NAK) ) {
+		if ( ( got & I2C_NAK ) ) {
 			fprintf(stderr, "bb_i2c_write - byte %i received NAK\n", (unsigned)i);
 			return i;
 		}
@@ -523,7 +368,7 @@ size_t   i;
 #define AT25_ST_EPE        0x20
 
 int
-at25_id(int fd)
+at25_id(BBInfo *bb)
 {
 uint8_t buf[128];
 int     i;
@@ -534,7 +379,7 @@ int     i;
 	buf[3] = 0x00;
 	buf[4] = 0x00;
 
-	if ( bb_spi_xfer( fd, buf, buf + 0x10, 5 ) < 0 ) {
+	if ( bb_spi_xfer( bb, buf, buf + 0x10, 5 ) < 0 ) {
 		return -1;
 	}
 
@@ -546,7 +391,7 @@ int     i;
 }
 
 int
-bb_spi_read(int fd, unsigned addr, uint8_t *rbuf, size_t len)
+bb_spi_read(BBInfo *bb, unsigned addr, uint8_t *rbuf, size_t len)
 {
 uint8_t  hdr[10];
 unsigned hlen = 0;
@@ -558,31 +403,31 @@ int      rval = -1;
 	hdr[hlen++] = (addr >>  0) & 0xff;
 	hdr[hlen++] = 0x00; /* dummy     */
 
-	if ( bb_spi_cs(fd, 0) < 0 ) {
+	if ( bb_spi_cs( bb, 0 ) < 0 ) {
 		return -1;
 	}
 
-	if ( bb_spi_xfer_nocs(fd, hdr, 0, hlen) != hlen ) {
+	if ( bb_spi_xfer_nocs( bb, hdr, 0, hlen ) != hlen ) {
 		fprintf(stderr,"bb_spi_read -- sending header failed\n");
 		goto bail;
 	}
 
-	if ( (rval = bb_spi_xfer_nocs(fd, 0, rbuf, len)) != len ) {
+	if ( ( rval = bb_spi_xfer_nocs( bb, 0, rbuf, len ) ) != len ) {
 		fprintf(stderr,"bb_spi_read -- receiving data failed or incomplete\n");
 		goto bail;
 	} 
 
 bail:
-	bb_spi_cs(fd, 1);
+	bb_spi_cs( bb, 1 );
 	return rval;
 }
 
 int
-at25_status(int fd)
+at25_status(BBInfo *bb)
 {
 uint8_t buf[2];
 	buf[0] = AT25_OP_STATUS;
-	if ( bb_spi_xfer( fd, buf, buf, sizeof(buf) ) < 0 ) {
+	if ( bb_spi_xfer( bb, buf, buf, sizeof(buf) ) < 0 ) {
 		fprintf(stderr, "at25_status: bb_spi_xfer failed\n");
 		return -1;
 	}
@@ -590,7 +435,7 @@ uint8_t buf[2];
 }
 
 int
-at25_cmd_2(int fd, uint8_t cmd, int arg)
+at25_cmd_2(BBInfo *bb, uint8_t cmd, int arg)
 {
 uint8_t buf[2];
 int     len = 0;
@@ -600,7 +445,7 @@ int     len = 0;
 		buf[len++] = arg;
 	}
 
-	if ( bb_spi_xfer(fd, buf, 0, len) < 0 ) {
+	if ( bb_spi_xfer( bb, buf, 0, len ) < 0 ) {
 		fprintf(stderr, "at25_cmd_2(0x%02x) transfer failed\n", cmd);
 		return -1;
 	}
@@ -608,45 +453,45 @@ int     len = 0;
 }
 
 int
-at25_cmd_1(int fd, uint8_t cmd)
+at25_cmd_1(BBInfo *bb, uint8_t cmd)
 {
-	return at25_cmd_2( fd, cmd, -1 );
+	return at25_cmd_2( bb, cmd, -1 );
 }
 
 int
-at25_write_ena(int fd)
+at25_write_ena(BBInfo *bb)
 {
-	return at25_cmd_1( fd, AT25_OP_WRITE_ENA );
+	return at25_cmd_1( bb, AT25_OP_WRITE_ENA );
 }
 
 int
-at25_write_dis(int fd)
+at25_write_dis(BBInfo *bb)
 {
-	return at25_cmd_1( fd, AT25_OP_WRITE_DIS );
+	return at25_cmd_1( bb, AT25_OP_WRITE_DIS );
 }
 
 int
-at25_global_unlock(int fd)
+at25_global_unlock(BBInfo *bb)
 {
 	/* must se write-enable again; global_unlock clears that bit */
-	return   at25_write_ena( fd )
-          || at25_cmd_2    ( fd, AT25_OP_STATUS_WR, 0x00 )
-          || at25_write_ena( fd );
+	return   at25_write_ena( bb )
+          || at25_cmd_2    ( bb, AT25_OP_STATUS_WR, 0x00 )
+          || at25_write_ena( bb );
 }
 
 int
-at25_global_lock(int fd)
+at25_global_lock(BBInfo *bb)
 {
-	return at25_write_ena( fd ) || at25_cmd_2( fd, AT25_OP_STATUS_WR, 0x3c );
+	return at25_write_ena( bb ) || at25_cmd_2( bb, AT25_OP_STATUS_WR, 0x3c );
 }
 
 int
-at25_status_poll( int fd )
+at25_status_poll(BBInfo *bb)
 {
 int st;
 		/* poll status */
 	do { 
-		if ( (st = at25_status( fd )) < 0 ) {
+		if ( (st = at25_status( bb )) < 0 ) {
 			fprintf(stderr, "at25_status_poll() - failed to read status\n");
 			break;
 		}
@@ -668,7 +513,7 @@ static int sz2bsz(int sz)
 }
 
 int
-at25_block_erase(int fd, unsigned addr, size_t sz)
+at25_block_erase(BBInfo *bb, unsigned addr, size_t sz)
 {
 uint8_t op = AT25_OP_ERASE_ALL; 
 
@@ -693,12 +538,12 @@ int     l, st;
 		buf[l++] = (addr >>  0) & 0xff;
 	}
 
-	if ( bb_spi_xfer( fd, buf, 0, l ) < 0 ) {
+	if ( bb_spi_xfer( bb, buf, 0, l ) < 0 ) {
 		fprintf(stderr, "at25_block_erase() -- sending command failed\n"); 
 		return -1;
 	}
 
-	if ( (st = at25_status_poll( fd )) < 0 ) {
+	if ( (st = at25_status_poll( bb )) < 0 ) {
 		fprintf(stderr, "at25_block_erase() -- unable to poll status\n");
 		return -1;
 	}
@@ -716,7 +561,7 @@ int     l, st;
 #define AT25_CHECK_VERIFY 2
 #define AT25_EXEC_PROG    4
 
-static int verify(int fd, unsigned addr, const uint8_t *cmp, size_t len)
+static int verify(BBInfo *bb, unsigned addr, const uint8_t *cmp, size_t len)
 {
 uint8_t   buf[2048];
 int       mismatch = 0;
@@ -726,7 +571,7 @@ int       got,i;
 
 		for ( wrk = len, wrkAddr = addr; wrk > 0; wrk -= got, wrkAddr += got ) {
 			x =  wrk > sizeof(buf) ? sizeof(buf) : wrk;
-			got = bb_spi_read( fd, wrkAddr, buf, x );
+			got = bb_spi_read( bb, wrkAddr, buf, x );
 			if ( got <= 0 ) {
 				fprintf(stderr, "at25_prog() verification failed -- unable to read back\n");
 				return got;
@@ -751,7 +596,7 @@ int       got,i;
 }
 
 int
-at25_prog(int fd, unsigned addr, const uint8_t *data, size_t len, int check)
+at25_prog(BBInfo *bb, unsigned addr, const uint8_t *data, size_t len, int check)
 {
 uint8_t        buf[2048];
 unsigned       wrkAddr;
@@ -762,12 +607,12 @@ int            st;
 const uint8_t *src;
 
 	if ( (check & AT25_CHECK_ERASED) ) {
-		if ( verify(fd, addr, 0, len) )
+		if ( verify( bb, addr, 0, len ) )
 			return -1;
 	}
 
 	if ( (check & AT25_EXEC_PROG) ) {
-		if ( at25_global_unlock( fd ) ) {
+		if ( at25_global_unlock( bb ) ) {
 			fprintf(stderr, "at25_prog() -- write-enable failed\n");
 			return -1;
 		}
@@ -778,7 +623,7 @@ const uint8_t *src;
 
 		while ( wrk > 0 ) {
 
-			if ( bb_spi_cs( fd, 0 ) ) {
+			if ( bb_spi_cs( bb, 0 ) ) {
 				fprintf(stderr, "at25_prog() - failed to assert CSb\n");
 				goto bail;
 			}
@@ -796,23 +641,23 @@ const uint8_t *src;
 			buf[i++] = (wrkAddr >> 16) & 0xff;
 			buf[i++] = (wrkAddr >>  8) & 0xff;
 			buf[i++] = (wrkAddr >>  0) & 0xff;
-			if ( bb_spi_xfer_nocs( fd, buf, 0, i ) < 0 ) {
+			if ( bb_spi_xfer_nocs( bb, buf, 0, i ) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to transmit address\n");
 				goto bail;
 			}
-			if ( bb_spi_xfer_nocs( fd, src, 0, x ) < 0 ) {
+			if ( bb_spi_xfer_nocs( bb, src, 0, x ) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to transmit data\n");
 				goto bail;
 			}
 
 			/* this triggers the write */
-			if ( bb_spi_cs( fd, 1 ) ) {
+			if ( bb_spi_cs( bb, 1 ) ) {
 				fprintf(stderr, "at25_prog() - failed to de-assert CSb\n");
 				goto bail;
 			}
 
 
-			if ( (st = at25_status_poll( fd )) < 0 ) {
+			if ( (st = at25_status_poll( bb )) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to poll status\n");
 				goto bail;
 			}
@@ -823,7 +668,7 @@ const uint8_t *src;
 			}
 
 			/* programming apparently disables writing */
-			at25_write_ena  ( fd ); /* just in case... */
+			at25_write_ena  ( bb ); /* just in case... */
 
 			printf("%c", '.'); fflush(stdout);
 
@@ -836,7 +681,7 @@ const uint8_t *src;
 	}
 
 	if ( (check & AT25_CHECK_VERIFY) ) {
-		if ( verify(fd, addr, data, len) ) {
+		if ( verify( bb, addr, data, len ) ) {
 			goto bail;
 		}
 	}
@@ -845,11 +690,11 @@ const uint8_t *src;
 	
 bail:
 	if ( (check & AT25_EXEC_PROG) ) {
-		at25_global_lock( fd ); /* if this succeeds it clears the write-enable bit */
-		at25_write_dis  ( fd ); /* just in case... */
+		at25_global_lock( bb ); /* if this succeeds it clears the write-enable bit */
+		at25_write_dis  ( bb ); /* just in case... */
 	}
 
-	bb_spi_cs( fd, 1 );     /* just in case... */
+	bb_spi_cs( bb, 1 );     /* just in case... */
 
 	return rval;
 }
@@ -927,7 +772,7 @@ static void usage(const char *nm)
 int main(int argc, char **argv)
 {
 const char        *devn      = "/dev/ttyUSB0";
-int                fd        = -1;
+BBInfo            *bb        = 0;
 int                rval      = 1;
 unsigned           speed     = 115200;
 uint8_t           *buf       = 0;
@@ -951,6 +796,7 @@ char              *progFile  = 0;
 uint8_t           *progMap   = (uint8_t*)MAP_FAILED;
 off_t              progSize  = 0;
 int                doit      = 0;
+int                debug     = 0;
 
 	while ( (opt = getopt(argc, argv, "hvd:DIS:a:f:!?")) > 0 ) {
 		u_p = 0;
@@ -959,7 +805,7 @@ int                doit      = 0;
 			default : fprintf(stderr, "Unknown option -%c (use -h for help)\n", opt); return 1;
 			case 'd': devn = optarg;              break;
 			case 'D': dac  = 1; test_i2c = 1;     break;
-			case 'v': bb_debug++;                 break;
+			case 'v': debug++;                    break;
 			case 'I': test_i2c = 1;               break;
 			case 'S': test_spi = strdup(optarg);  break;
 			case 'a': u_p      = &flashAddr;      break;
@@ -983,7 +829,7 @@ int                doit      = 0;
 		return 1;
 	}
 
-	if ( (fd = bb_open(devn, speed)) < 0 ) {
+	if ( ! (bb = bb_open(devn, speed, BB_MODE_SPI)) ) {
 		goto bail;
 	}
 
@@ -999,7 +845,7 @@ int                doit      = 0;
 		for ( op = test_spi; (op = strtok_r( op, ",", &wrk )); op = 0 /* for strtok_r */  ) {
 
 			if ( strstr(op, "Id") ) {
-				if ( at25_id(fd) < 0 ) {
+				if ( at25_id( bb ) < 0 ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Rd") ) {
@@ -1038,7 +884,7 @@ int                doit      = 0;
 					msize = buflen;
 				}
 
-				if ( (i = bb_spi_read(fd, flashAddr, maddr, msize)) < 0 ) {
+				if ( ( i = bb_spi_read( bb, flashAddr, maddr, msize ) ) < 0 ) {
 					goto bail;
 				}
 
@@ -1054,16 +900,16 @@ int                doit      = 0;
 					printf("\n");
 				}
 			} else if ( strstr(op, "St") ) {
-				if ( (i = at25_status( fd )) < 0 ) {
+				if ( (i = at25_status( bb )) < 0 ) {
 					goto bail;
 				}
 				printf("SPI Flash status: 0x%02x\n", i);
 			} else if ( strstr(op, "Wena") ) {
-				if ( at25_global_unlock( fd ) ) {
+				if ( at25_global_unlock( bb ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Wdis") ) {
-				if ( at25_global_lock( fd ) ) {
+				if ( at25_global_lock( bb ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Prog") ) {
@@ -1094,7 +940,7 @@ int                doit      = 0;
 					goto bail;
 				}
 
-				if ( at25_prog(fd, flashAddr, progMap, progSize, cmd) < 0 ) {
+				if ( at25_prog( bb, flashAddr, progMap, progSize, cmd ) < 0 ) {
 					fprintf(stderr, "Programming flash failed\n");
 					goto bail;
 				}
@@ -1127,7 +973,7 @@ int                doit      = 0;
 					continue;
 				}
 
-				if ( at25_block_erase(fd, aligned, i) < 0 ) {
+				if ( at25_block_erase( bb, aligned, i) < 0 ) {
 					fprintf(stderr, "at25_block_erase(%d) failed\n", i);
 					goto bail;
 				}
@@ -1138,6 +984,7 @@ int                doit      = 0;
 			}
 
 		}
+
 	}
 
 
@@ -1145,24 +992,26 @@ int                doit      = 0;
 
 		sla = dac ? 0xc2 : 0xd4;
 
-		bb_i2c_start(fd, 0);
+		bb_set_mode( bb, BB_MODE_I2C );
+
+		bb_i2c_start( bb, 0 );
 
 		if ( reg < 0 && dac ) {
 			/* reset */
 			buf[0] = 0x00;
 			buf[1] = 0x06;
-			bb_i2c_write(fd, buf, 2);
+			bb_i2c_write( bb, buf, 2 );
 		} else {
 			if ( val < 0 ) {
 				/* read */
 				buf[0] = sla;
 				buf[1] = dac ? ( 0x06 | ((reg&0x1f) << 3) ) : reg;
-				bb_i2c_write(fd, buf, 2);
-				bb_i2c_start(fd, 1);
+				bb_i2c_write( bb, buf, 2 );
+				bb_i2c_start( bb, 1 );
 				buf[0] = sla | I2C_READ;
-				bb_i2c_write(fd, buf, 1);
+				bb_i2c_write( bb, buf, 1 );
 				rdl    = dac ? 2 : 1;
-				bb_i2c_read(fd, buf, rdl);
+				bb_i2c_read( bb, buf, rdl );
 			} else {
 				wrl    = 0;
 				buf[wrl++] = sla;
@@ -1171,10 +1020,10 @@ int                doit      = 0;
 					buf[wrl++] = (val >> 8) & 0xff;
 				}
 				buf[wrl++] = (val >> 0) & 0xff;
-				bb_i2c_write(fd, buf, wrl);
+				bb_i2c_write( bb, buf, wrl );
 			}
 		}
-		bb_i2c_stop(fd);
+		bb_i2c_stop( bb );
 
 		if ( rdl ) {
 			printf("reg: 0x%x: 0x", reg);
@@ -1183,13 +1032,15 @@ int                doit      = 0;
 			}
 			printf("\n");
 		}
+
+		bb_set_mode( bb, BB_MODE_SPI );
 	}
 
 	rval = 0;
 
 bail:
-	if ( fd >= 0 ) {
-		bb_close( fd );
+	if ( bb ) {
+		bb_close( bb );
 	}
 	if ( (void*)progMap != MAP_FAILED ) {
 		munmap( (void*)progMap, progSize );
