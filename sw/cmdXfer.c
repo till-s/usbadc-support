@@ -22,6 +22,8 @@ static int fifoDebug = 1;
 
 typedef enum { RX, ESC, DONE } RxState;
 
+/* Basic communication with the USB-FIFO (FT245), byte-stuffer/de-stuffer and command multiplexer in firmware */
+
 int fifoOpen(const char *devn, unsigned speed)
 {
 int                rval = -1;
@@ -124,7 +126,17 @@ size_t rval = 0;
 }
 
 int
-xferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen)
+fifoSetDebug(int val)
+{
+int oldVal = fifoDebug;
+	if ( val >= 0 ) {
+		fifoDebug = val;
+	}
+	return oldVal;
+}
+
+int
+fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen)
 {
 uint8_t tbufs[MAXLEN];
 uint8_t rbufs[MAXLEN];
@@ -188,7 +200,7 @@ int     cmdReadback = 0;
 				prb( "Sending:", tbufs+puts, tlens );
 			}
 			if ( (i = write(fd, tbufs + puts, tlens)) <= 0 ) {
-				perror("xferFrame: writing FIFO failed");
+				perror("fifoXferFrame: writing FIFO failed");
 				goto bail;
 			}
 			puts  += i;
@@ -196,7 +208,7 @@ int     cmdReadback = 0;
 		}
 		if ( FD_ISSET( fd, &rfds ) ) {
 			if ( (i = read(fd, rbufs, rlens)) <= 0 ) {
-				perror("xferFrame: reading FIFO failed");
+				perror("fifoXferFrame: reading FIFO failed");
 				goto bail;
 			}
 			if ( fifoDebug > 0 ) {
@@ -206,7 +218,7 @@ int     cmdReadback = 0;
 				if ( ESC != state && COMMA == rbufs[j] ) {
 					state = DONE;
 					if ( j + 1 < i ) {
-						fprintf(stderr, "xferFrame: WARNING -- receved comma but there are extra data\n");
+						fprintf(stderr, "fifoXferFrame: WARNING -- receved comma but there are extra data\n");
 						break;
 					}
 				} else if ( ESC != state && ESCAP == rbufs[j] ) {
@@ -219,7 +231,7 @@ int     cmdReadback = 0;
 					} else {
 						if ( got >= rlen ) {
 							if ( ! warned ) {
-								fprintf(stderr, "xferFrame: RX buffer too small; truncating frame\n");
+								fprintf(stderr, "fifoXferFrame: RX buffer too small; truncating frame\n");
 								warned = 1;
 							}
 						} else {
@@ -237,26 +249,3 @@ int     cmdReadback = 0;
 bail:
 	return -1;
 }
-
-#ifdef TEST
-
-int
-main(int argc, char **argv)
-{
-uint8_t rbuf[20];
-
-int fd = fifoOpen("/dev/ttyUSB0", 230400/2);
-int got,i;
-
-	if ( fd < 0 ) {
-		return 1;
-	}
-
-	got = xferFrame(fd, 0x10, 0, 0, rbuf, sizeof(rbuf));
-	for ( i = 0; i < got; i++ ) {
-		printf("0x%02x\n", rbuf[i]);
-	}
-	
-}
-
-#endif
