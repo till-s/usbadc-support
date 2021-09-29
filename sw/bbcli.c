@@ -15,8 +15,8 @@ static void usage(const char *nm)
     printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
     printf("   -?                 : instead of programming the flash verify its contents against a file (-f also required).\n");
 	printf("   -a address         : start-address for SPI flash opertions [0].\n");
-	printf("   -I                 : address I2C (47CVB02 DAC). Supply register address and values (when writing).\n");
-	printf("   -D                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
+	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
+	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
 	printf("   -d usb-device      : usb-device [/dev/ttyUSB0].\n");
 	printf("   -I                 : test I2C (47CVB02 DAC).\n");
 	printf("   -h                 : this message.\n");
