@@ -215,7 +215,7 @@ int                dumpAdc   = 0;
 					msize = buflen;
 				}
 
-				if ( ( i = bb_spi_read( fw, flashAddr, maddr, msize ) ) < 0 ) {
+				if ( ( i = at25_spi_read( fw, flashAddr, maddr, msize ) ) < 0 ) {
 					goto bail;
 				}
 

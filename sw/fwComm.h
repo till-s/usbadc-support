@@ -56,7 +56,7 @@ int
 bb_spi_xfer(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
 
 int
-bb_spi_read(FWInfo *fw, unsigned addr, uint8_t *rbuf, size_t len);
+at25_spi_read(FWInfo *fw, unsigned addr, uint8_t *rbuf, size_t len);
 
 int
 at25_id(FWInfo *fw);

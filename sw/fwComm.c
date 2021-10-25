@@ -379,7 +379,7 @@ int     i;
 }
 
 int
-bb_spi_read(FWInfo *fw, unsigned addr, uint8_t *rbuf, size_t len)
+at25_spi_read(FWInfo *fw, unsigned addr, uint8_t *rbuf, size_t len)
 {
 uint8_t  hdr[10];
 unsigned hlen = 0;
@@ -396,12 +396,12 @@ int      rval = -1;
 	}
 
 	if ( bb_spi_xfer_nocs( fw, hdr, 0, hlen ) != hlen ) {
-		fprintf(stderr,"bb_spi_read -- sending header failed\n");
+		fprintf(stderr,"at25_spi_read -- sending header failed\n");
 		goto bail;
 	}
 
 	if ( ( rval = bb_spi_xfer_nocs( fw, 0, rbuf, len ) ) != len ) {
-		fprintf(stderr,"bb_spi_read -- receiving data failed or incomplete\n");
+		fprintf(stderr,"at25_spi_read -- receiving data failed or incomplete\n");
 		goto bail;
 	} 
 
@@ -543,7 +543,7 @@ int       got,i;
 
 		for ( wrk = len, wrkAddr = addr; wrk > 0; wrk -= got, wrkAddr += got ) {
 			x =  wrk > sizeof(buf) ? sizeof(buf) : wrk;
-			got = bb_spi_read( fw, wrkAddr, buf, x );
+			got = at25_spi_read( fw, wrkAddr, buf, x );
 			if ( got <= 0 ) {
 				fprintf(stderr, "at25_prog() verification failed -- unable to read back\n");
 				return got;
