@@ -28,6 +28,7 @@
 #define FW_CMD_BB_ADC      (2<<4)
 #define FW_CMD_BB_PGA      (3<<4)
 #define FW_CMD_BB_I2C      (4<<4)
+#define FW_CMD_ADCBUF      0x02
 
 struct FWInfo {
 	int        fd;
@@ -50,6 +51,7 @@ fw_get_cmd(FWCmd aCmd)
 {
 	switch ( aCmd ) {
 		case FW_CMD_VERSION: return FW_CMD_VER;
+		case FW_CMD_ADC_BUF: return FW_CMD_ADCBUF;
 		case FW_CMD_BB_SPI : return FW_CMD_BB | FW_CMD_BB_FLASH;
 		case FW_CMD_BB_I2C : return FW_CMD_BB | FW_CMD_BB_I2C;
 	}

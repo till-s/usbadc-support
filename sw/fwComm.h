@@ -10,7 +10,7 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_BB_I2C, FW_CMD_BB_SPI } FWCmd;
+typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI } FWCmd;
 
 #ifdef __cplusplus
 extern "C" {

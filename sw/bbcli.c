@@ -151,7 +151,7 @@ int                dumpAdc   = 0;
 	}
 
 	if ( dumpAdc ) {
-		uint8_t cmd = 0x02;
+		uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF );
 		int     j;
 		i = fifoXferFrame( fd, &cmd, 0, 0, buf, buflen );
 		if ( i > 0 ) {
