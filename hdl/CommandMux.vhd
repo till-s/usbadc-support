@@ -3,6 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 use work.CommandMuxPkg.all;
+use work.ILAWrapperPkg.all;
 
 entity CommandMux is
    generic (
@@ -80,7 +81,7 @@ begin
    t3(6 downto 4) <= r.cmd.dat(2 downto 0);
 
    GEN_ILA : if ( false ) generate
-   U_ILA : entity work.ILAWrapper
+   U_ILA : component ILAWrapper
       port map (
          clk  => clk,
          trg0 => t0,

@@ -9,7 +9,7 @@ GHDLFLAGS=
 # Default target
 all: commandwrappertb commandwrappersim
 
-OBJS=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o MaxAdc.o CommandWrapper.o
+OBJS=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o MaxAdc.o CommandWrapper.o ILAWrapperPkg.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -49,7 +49,7 @@ SFifo.o: SFifo.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 ByteDeStuffer.o: ByteDeStuffer.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-CommandMux.o: CommandMux.vhd
+CommandMux.o: CommandMux.vhd ILAWrapperPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 SynchronizerBit.o: SynchronizerBit.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
@@ -66,6 +66,9 @@ CommandWrapper.o: CommandWrapper.vhd
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperSim.o: CommandWrapperSim.vhd $(OBJS) SimPty.o SimPtyIO.o
+	$(GHDL) -a $(GHDLFLAGS) $<
+
+%.o: %.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 
 SimPtyIO.o: SimPtyIO.cc
