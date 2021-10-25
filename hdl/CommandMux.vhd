@@ -28,7 +28,7 @@ end entity CommandMux;
 
 architecture rtl of CommandMux is
 
-   subtype SelType   is natural range 0 to 2**NUM_CMD_BITS_C - 1;
+   subtype SelType   is natural range 0 to NUM_CMDS_G - 1;
    type    StateType is (IDLE, CMD, FWD, WAI);
 
    type RegType      is record
@@ -94,10 +94,11 @@ begin
    -- ise doesn't seem to handle nested records.
    -- (Got warnings about r.cmd missing from sensitivity list)
    P_COMB : process ( r, r.cmd, busIb, rdyMuxedIb, busMuxedOb, rdyOb ) is
-      variable v   : RegType;
-      variable sel : SelType;
-      variable rdy : std_logic;
-      variable ns  : StateType;
+      variable v     : RegType;
+      variable sel   : SelType;
+      variable selOK : boolean;
+      variable rdy   : std_logic;
+      variable ns    : StateType;
    begin
 
       v   := r;
@@ -106,9 +107,11 @@ begin
          busMuxedIb(i) <= SIMPLE_BUS_MST_INIT_C;
       end loop;
 
-      rdy := '0';
+      rdy   := '0';
 
-      sel := SelType( to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0))) );
+      selOK := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0))) < NUM_CMDS_G;
+      sel   := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0)));
+      
 
       -- drain unselected channels
       rdyMuxedOb <= (others => '1');
@@ -125,7 +128,7 @@ begin
 
          when CMD  =>
 
-            if ( sel < NUM_CMDS_G ) then
+            if ( selOK ) then
                busObLoc        <= busMuxedOb(sel);
                rdyMuxedOb(sel) <= rdyOb;
 
@@ -146,7 +149,7 @@ begin
                ns := FWD;
             end if;
 
-            if ( sel < NUM_CMDS_G ) then
+            if ( selOK ) then
                busMuxedIb(sel) <= r.cmd;
                -- we know 'vld' is asserted
                if ( rdyMuxedIb(sel) = '1' ) then
@@ -157,7 +160,7 @@ begin
             end if;
 
          when FWD  =>
-            if ( sel < NUM_CMDS_G ) then
+            if ( selOK ) then
                busMuxedIb(sel) <= busIb;
                rdy             := rdyMuxedIb(sel);
 
@@ -185,7 +188,7 @@ begin
             end if;
 
          when WAI => -- wait for outgoing frame to pass
-            -- WAI can only be entered if sel < NUM_CMDS_G
+            -- WAI can only be entered if sel < NUM_CMDS_G aka selOK
             rdyMuxedOb(sel) <= rdyOb;
             busObLoc        <= busMuxedOb(sel);
             if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
