@@ -30,6 +30,7 @@ entity CommandWrapper is
 
       bbo          : out std_logic_vector(7 downto 0);
       bbi          : in  std_logic_vector(7 downto 0);
+      subCmdBB     : out SubCommandBBType;
 
       adcClk       : in  std_logic;
       adcRst       : in  std_logic := '0';
@@ -203,7 +204,8 @@ begin
              rOb          => readysOb(CMD_BB_IDX_C),
     
              bbi          => bbi,
-             bbo          => bbo
+             bbo          => bbo,
+             subCmd       => subCmdBB
           );
     end generate G_BITBANG;
     

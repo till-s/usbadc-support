@@ -23,7 +23,11 @@
 /* Must match firmware */
 #define FW_CMD_VER         0x00
 #define FW_CMD_BB          0x01
-#define FW_CMD_BB_I2C_DIS (1<<4)
+#define FW_CMD_BB_NONE     (0<<4)
+#define FW_CMD_BB_FLASH    (1<<4)
+#define FW_CMD_BB_ADC      (2<<4)
+#define FW_CMD_BB_PGA      (3<<4)
+#define FW_CMD_BB_I2C      (4<<4)
 
 struct FWInfo {
 	int        fd;
@@ -33,7 +37,7 @@ struct FWInfo {
 };
 
 static int
-fw_xfer(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
+fw_xfer(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
 
 void
 fw_set_debug(FWInfo *fw, int level)
@@ -46,24 +50,13 @@ fw_get_cmd(FWCmd aCmd)
 {
 	switch ( aCmd ) {
 		case FW_CMD_VERSION: return FW_CMD_VER;
-		case FW_CMD_BB_SPI : return FW_CMD_BB | FW_CMD_BB_I2C_DIS;
-		case FW_CMD_BB_I2C : return FW_CMD_BB;
-	}
-}
-
-
-void
-fw_set_mode(FWInfo *fw, BBMode mode)
-{
-	switch ( mode ) {
-		case BB_MODE_SPI: FW_CMD_BB | FW_CMD_BB_I2C_DIS; break;
-		case BB_MODE_I2C: FW_CMD_BB;                     break;
-		default: break;
+		case FW_CMD_BB_SPI : return FW_CMD_BB | FW_CMD_BB_FLASH;
+		case FW_CMD_BB_I2C : return FW_CMD_BB | FW_CMD_BB_I2C;
 	}
 }
 
 FWInfo *
-fw_open(const char *devn, unsigned speed, BBMode mode)
+fw_open(const char *devn, unsigned speed)
 {
 int     fd = fifoOpen( devn, speed );
 FWInfo *rv;
@@ -72,7 +65,7 @@ FWInfo *rv;
 		return 0;
 	}
 
-	rv = fw_open_fd( fd, mode );
+	rv = fw_open_fd( fd );
 	if ( rv ) {
 		rv->ownFd = 1;
 	}
@@ -80,7 +73,7 @@ FWInfo *rv;
 }
 
 FWInfo *
-fw_open_fd(int fd, BBMode mode)
+fw_open_fd(int fd)
 {
 FWInfo *rv;
 
@@ -92,7 +85,6 @@ FWInfo *rv;
 	rv->fd    = fd;
 	rv->cmd   = FW_CMD_BB;
 	rv->debug = 0;
-	fw_set_mode( rv, mode );
 	return rv;
 }
 
@@ -101,7 +93,7 @@ fw_close(FWInfo *fw)
 {
 uint8_t v = SPI_MASK | I2C_MASK;
 	if ( fw ) {
-		fw_xfer(fw, &v, &v, sizeof(v) );
+		fw_xfer(fw, FW_CMD_BB_NONE, &v, &v, sizeof(v) );
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
 		}
@@ -113,9 +105,9 @@ uint8_t v = SPI_MASK | I2C_MASK;
 #define MAXDEPTH 500
 
 static int
-fw_xfer(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+fw_xfer(FWInfo *fw, uint8_t subCmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
-uint8_t cmdLoc = fw->cmd;
+uint8_t cmdLoc = fw->cmd | subCmd;
 	return fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 ) < 0 ? -1 : 0;
 }
 
@@ -132,7 +124,7 @@ bb_i2c_set(FWInfo *fw, int scl, int sda)
 uint8_t bbbyte =  ((scl ? 1 : 0) << SCL_SHFT) | ((sda ? 1 : 0) << SDA_SHFT) | I2C_MASK;
 uint8_t x = bbbyte;
 
-	if ( fw_xfer( fw, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( fw_xfer( fw, FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "bb_i2c_set: unable to set levels\n");
 		return -1;
 	}
@@ -145,8 +137,6 @@ uint8_t x = bbbyte;
 int
 bb_i2c_start(FWInfo *fw, int restart)
 {
-	fw_set_mode( fw, BB_MODE_I2C );
-
 	if ( fw->debug ) {
 		printf("bb_i2c_start:\n");
 	}
@@ -191,7 +181,7 @@ bb_spi_cs(FWInfo *fw, int val)
 {
 uint8_t bbbyte = ( ((val ? 1 : 0) << CS_SHFT) | (0 << SCLK_SHFT) ) | SPI_MASK;
 
-	if ( fw_xfer( fw, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( fw_xfer( fw, FW_CMD_BB_FLASH, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "Unable to set CS %d\n", !!val);
 		return -1;
 	}
@@ -229,7 +219,7 @@ uint8_t  v;
 			p += j;
 		}
 
-		if ( fw_xfer( fw, xbuf, xbuf, xlen*2*8 ) ) {
+		if ( fw_xfer( fw, FW_CMD_BB_FLASH, xbuf, xbuf, xlen*2*8 ) ) {
 			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer failed\n");
 			goto bail;
 		}
@@ -293,7 +283,7 @@ uint8_t rbuf[3*9];
 		xbuf[i + 2] = (I2C_MASK | (0 << SCL_SHFT) | sda); 
 		val <<= 1;
 	}
-	if ( fw_xfer( fw, xbuf, rbuf, sizeof(xbuf)) ) {
+	if ( fw_xfer( fw, FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf)) ) {
 		fprintf(stderr, "bb_i2c_xfer failed\n");
 		return -1;
 	}

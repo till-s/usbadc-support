@@ -22,6 +22,8 @@ entity CommandBitBang is
       mOb          : out SimpleBusMstType;
       rOb          : in  std_logic;
 
+      subCmd       : out SubCommandBBType;
+
       bbo          : out std_logic_vector(7 downto 0);
       bbi          : in  std_logic_vector(7 downto 0)
    );
@@ -33,7 +35,7 @@ architecture rtl of CommandBitBang is
 
    type RegType is record
       state         : StateType;
-      cmd           : std_logic_vector(7 downto 0);
+      cmd           : SubCommandBBType;
       lstSeen       : std_logic;
    end record RegType;
 
@@ -55,13 +57,9 @@ architecture rtl of CommandBitBang is
 
    signal i2cDis          : std_logic;
 
-   constant I2C_DIS_BIT_C : natural := 4;
-
 begin
 
-   assert I2C_DIS_BIT_C >= NUM_CMD_BITS_C;
-
-   i2cDis <= r.cmd( I2C_DIS_BIT_C );
+   subCmd <= r.cmd;
 
    P_COMB : process ( r, mIb, rOb, wdat, wvld, rrdy ) is
       variable v       : RegType;
@@ -76,11 +74,17 @@ begin
       rvld    <= '0';
       wrdy    <= '1'; -- drop - just in case
 
+      if ( r.cmd = CMD_BB_I2C_C ) then
+         i2cDis <= '0';
+      else
+         i2cDis <= '1';
+      end if;
+
       case ( r.state ) is
          when ECHO =>
             v.lstSeen := '0';
             if ( (rOb and mIb.vld) = '1' ) then
-               v.cmd := mIb.dat;
+               v.cmd := mIb.dat(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C);
                if ( mIb.lst /= '1' ) then
                   v.state := FWD;
                end if;
@@ -105,6 +109,7 @@ begin
             if ( ( rOb and wvld and r.lstSeen ) = '1' ) then
                v.state   := ECHO;
                v.lstSeen := '0';
+               v.cmd     := CMD_BB_NONE_C;
             end if;
 
       end case;

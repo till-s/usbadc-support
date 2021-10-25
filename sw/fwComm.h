@@ -10,8 +10,6 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-typedef enum   BBMode { BB_MODE_I2C, BB_MODE_SPI } BBMode;
-
 typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_BB_I2C, FW_CMD_BB_SPI } FWCmd;
 
 #ifdef __cplusplus
@@ -24,14 +22,11 @@ fw_get_cmd(FWCmd abstractCmd);
 void
 fw_set_debug(FWInfo *fw, int level);
 
-void
-fw_set_mode(FWInfo *fw, BBMode mode);
+FWInfo *
+fw_open(const char *devn, unsigned speed);
 
 FWInfo *
-fw_open(const char *devn, unsigned speed, BBMode mode);
-
-FWInfo *
-fw_open_fd(int fd, BBMode mode);
+fw_open_fd(int fd);
 
 void
 fw_close(FWInfo *fw);

@@ -126,7 +126,7 @@ int                dumpAdc   = 0;
 	}
 
 	if ( test_spi || test_i2c ) {
-		if ( ! (fw = fw_open_fd(fd, BB_MODE_SPI)) ) {
+		if ( ! (fw = fw_open_fd(fd)) ) {
 			goto bail;
 		}
 		fw_set_debug( fw, debug );
@@ -323,8 +323,6 @@ int                dumpAdc   = 0;
 
 		sla = dac ? 0xc2 : 0xd4;
 
-		fw_set_mode( fw, BB_MODE_I2C );
-
 		bb_i2c_start( fw, 0 );
 
 		if ( reg < 0 && dac ) {
@@ -363,8 +361,6 @@ int                dumpAdc   = 0;
 			}
 			printf("\n");
 		}
-
-		fw_set_mode( fw, BB_MODE_SPI );
 	}
 
 	rval = 0;

@@ -25,6 +25,14 @@ package CommandMuxPkg is
    -- command 0xF is reserved
    constant NUM_CMD_MAX_C  : natural := 2**NUM_CMD_BITS_C - 1;
 
+   subtype  SubCommandBBType  is std_logic_vector(2 downto 0);
+
+   constant CMD_BB_NONE_C     : SubCommandBBType := SubCommandBBType( to_unsigned( 0, SubCommandBBType'length ) );
+   constant CMD_BB_SPI_ROM_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 1, SubCommandBBType'length ) );
+   constant CMD_BB_SPI_ADC_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 2, SubCommandBBType'length ) );
+   constant CMD_BB_SPI_PGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 3, SubCommandBBType'length ) );
+   constant CMD_BB_I2C_C      : SubCommandBBType := SubCommandBBType( to_unsigned( 4, SubCommandBBType'length ) );
+
    function numBits(constant x : integer) return integer;
 
 end package CommandMuxPkg;
