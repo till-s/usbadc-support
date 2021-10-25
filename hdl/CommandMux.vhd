@@ -90,7 +90,9 @@ begin
       );
    end generate;
 
-   P_COMB : process ( r, busIb, rdyMuxedIb, busMuxedOb, rdyOb ) is
+   -- ise doesn't seem to handle nested records.
+   -- (Got warnings about r.cmd missing from sensitivity list)
+   P_COMB : process ( r, r.cmd, busIb, rdyMuxedIb, busMuxedOb, rdyOb ) is
       variable v   : RegType;
       variable sel : SelType;
       variable rdy : std_logic;
@@ -105,7 +107,7 @@ begin
 
       rdy := '0';
 
-      sel := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0)));
+      sel := SelType( to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0))) );
 
       -- drain unselected channels
       rdyMuxedOb <= (others => '1');

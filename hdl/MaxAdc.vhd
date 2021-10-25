@@ -242,7 +242,9 @@ begin
 
    end generate GEN_ONEMEM_G;
     
-   P_RD_COMB : process (r, busIb, rdyOb, rdatA, rdatB) is
+   -- ise doesn't seems to properly handle nested records
+   -- (getting warning about r.busOb missing from sensitivity list)
+   P_RD_COMB : process (r, r.busOb, busIb, rdyOb, rdatA, rdatB) is
       variable v : RegType;
    begin
       v     := r;
