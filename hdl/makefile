@@ -100,6 +100,8 @@ GitVersionPkg.vhd: GitVersionPkg.vhd.in .FORCE
 	echo $(GITVERSION)
 	@if [ ! -f $@ -o $@ -ot $< ] || ! grep -q $(GITVERSION) $@ ; then echo DOIT; sed -e 's/#SUBST#/$(GITVERSION)/' < $< > $@; else echo SKIP; fi
 
+git: GitVersionPkg.vhd
+
 .PHONY: .FORCE
 
 clean:
