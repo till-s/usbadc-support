@@ -6,6 +6,7 @@
 #include <getopt.h>
 
 #include "fwComm.h"
+#include "fwUtil.h"
 
 static void usage(const char *nm)
 {

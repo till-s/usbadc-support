@@ -1,7 +1,4 @@
 #include <stdio.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 
@@ -22,14 +19,14 @@
 #define I2C_NAK   1
 
 /* Must match firmware */
-#define FW_CMD_VER         0x00
-#define FW_CMD_BB          0x01
-#define FW_CMD_BB_NONE     (0<<4)
-#define FW_CMD_BB_FLASH    (1<<4)
-#define FW_CMD_BB_ADC      (2<<4)
-#define FW_CMD_BB_PGA      (3<<4)
-#define FW_CMD_BB_I2C      (4<<4)
-#define FW_CMD_ADCBUF      0x02
+#define BITS_FW_CMD_VER         0x00
+#define BITS_FW_CMD_BB          0x01
+#define BITS_FW_CMD_BB_NONE     (0<<4)
+#define BITS_FW_CMD_BB_FLASH    (1<<4)
+#define BITS_FW_CMD_BB_ADC      (2<<4)
+#define BITS_FW_CMD_BB_PGA      (3<<4)
+#define BITS_FW_CMD_BB_I2C      (4<<4)
+#define BITS_FW_CMD_ADCBUF      0x02
 
 struct FWInfo {
 	int        fd;
@@ -53,22 +50,34 @@ fw_set_debug(FWInfo *fw, int level)
 static uint8_t
 spi_get_subcmd(SPIDev type)
 {
+uint8_t rval;
+
 	switch ( type ) {
-		case SPI_FLASH : return FW_CMD_BB_FLASH;
-		case SPI_ADC   : return FW_CMD_BB_ADC;
-		case SPI_PGA   : return FW_CMD_BB_PGA;
+		case SPI_FLASH : rval = BITS_FW_CMD_BB_FLASH;
+		break;
+		case SPI_ADC   : rval = BITS_FW_CMD_BB_ADC;
+		break;
+		case SPI_PGA   : rval = BITS_FW_CMD_BB_PGA;
+		break;
 	}
+	return rval;
 }
 
 uint8_t
 fw_get_cmd(FWCmd aCmd)
 {
+uint8_t rval;
 	switch ( aCmd ) {
-		case FW_CMD_VERSION: return FW_CMD_VER;
-		case FW_CMD_ADC_BUF: return FW_CMD_ADCBUF;
-		case FW_CMD_BB_SPI : return FW_CMD_BB | FW_CMD_BB_FLASH;
-		case FW_CMD_BB_I2C : return FW_CMD_BB | FW_CMD_BB_I2C;
+		case FW_CMD_VERSION: rval = BITS_FW_CMD_VER;
+		break;
+		case FW_CMD_ADC_BUF: rval = BITS_FW_CMD_ADCBUF;
+		break;
+		case FW_CMD_BB_SPI : rval = BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
+		break;
+		case FW_CMD_BB_I2C : rval = BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
+		break;
 	}
+	return rval;
 }
 
 FWInfo *
@@ -99,7 +108,7 @@ FWInfo *rv;
 	}
 
 	rv->fd    = fd;
-	rv->cmd   = FW_CMD_BB;
+	rv->cmd   = BITS_FW_CMD_BB;
 	rv->debug = 0;
 	return rv;
 }
@@ -109,7 +118,7 @@ fw_close(FWInfo *fw)
 {
 uint8_t v = SPI_MASK | I2C_MASK;
 	if ( fw ) {
-		fw_xfer(fw, FW_CMD_BB_NONE, &v, &v, sizeof(v) );
+		fw_xfer(fw, BITS_FW_CMD_BB_NONE, &v, &v, sizeof(v) );
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
 		}
@@ -140,7 +149,7 @@ bb_i2c_set(FWInfo *fw, int scl, int sda)
 uint8_t bbbyte =  ((scl ? 1 : 0) << SCL_SHFT) | ((sda ? 1 : 0) << SDA_SHFT) | I2C_MASK;
 uint8_t x = bbbyte;
 
-	if ( fw_xfer( fw, FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( fw_xfer( fw, BITS_FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "bb_i2c_set: unable to set levels\n");
 		return -1;
 	}
@@ -313,7 +322,7 @@ uint8_t rbuf[3*9];
 		xbuf[i + 2] = (I2C_MASK | (0 << SCL_SHFT) | sda); 
 		val <<= 1;
 	}
-	if ( fw_xfer( fw, FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf)) ) {
+	if ( fw_xfer( fw, BITS_FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf)) ) {
 		fprintf(stderr, "bb_i2c_xfer failed\n");
 		return -1;
 	}
@@ -623,7 +632,7 @@ const uint8_t *src;
 
 		while ( wrk > 0 ) {
 
-			if ( __bb_spi_cs( fw, FW_CMD_BB_FLASH, 0 ) ) {
+			if ( __bb_spi_cs( fw, BITS_FW_CMD_BB_FLASH, 0 ) ) {
 				fprintf(stderr, "at25_prog() - failed to assert CSb\n");
 				goto bail;
 			}
@@ -651,7 +660,7 @@ const uint8_t *src;
 			}
 
 			/* this triggers the write */
-			if ( __bb_spi_cs( fw, FW_CMD_BB_FLASH, 1 ) ) {
+			if ( __bb_spi_cs( fw, BITS_FW_CMD_BB_FLASH, 1 ) ) {
 				fprintf(stderr, "at25_prog() - failed to de-assert CSb\n");
 				goto bail;
 			}
@@ -694,45 +703,7 @@ bail:
 		at25_write_dis  ( fw ); /* just in case... */
 	}
 
-	__bb_spi_cs( fw, FW_CMD_BB_NONE, 1 );     /* just in case... */
+	__bb_spi_cs( fw, BITS_FW_CMD_BB_NONE, 1 );     /* just in case... */
 
-	return rval;
-}
-
-int
-fileMap(const char *fnam,  uint8_t **mapp, off_t *sizp, off_t creatsz)
-{
-int             progfd    = -1;
-int             rval      = -1;
-struct stat     sb;
-
-	if ( fnam && ( MAP_FAILED == (void*)*mapp ) ) {
-
-		if ( (progfd = open( fnam, (O_RDWR | O_CREAT), 0664 )) < 0 ) {
-			perror("unable to open program file");
-			goto bail;	
-		}
-		if ( creatsz && ftruncate( progfd, creatsz ) ) {
-			perror("fileMap(): ftruncate failed");
-			goto bail;
-		}
-		if ( fstat( progfd, &sb ) ) {
-			perror("unable to fstat program file");
-			goto bail;
-		}
-		*mapp = (uint8_t*) mmap( 0, sb.st_size, ( PROT_WRITE | PROT_READ ), MAP_SHARED, progfd, 0 );
-		if ( MAP_FAILED == (void*) *mapp ) {
-			perror("unable to map program file");
-			goto bail;
-		}
-		*sizp = sb.st_size;
-	}
-
-	rval = 0;
-
-bail:
-	if ( progfd >= 0 ) {
-		close( progfd );
-	}
 	return rval;
 }

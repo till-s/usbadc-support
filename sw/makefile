@@ -1,18 +1,21 @@
 all: bbcli
 
-bbcli: bbcli.o fwComm.o cmdXfer.o
+CFLAGS=-O2 -Wall
+
+LOBJS=fwComm.o fwUtil.o cmdXfer.o
+
+bbcli: bbcli.o $(LOBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-bbcli.o: bbcli.c fwComm.h cmdXfer.h
+
+%.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-fwComm.o: fwComm.c fwComm.h cmdXfer.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-cmdXfer.o: cmdXfer.c cmdXfer.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+bbcli.o: fwComm.h fwUtil.h
+fwComm.o: fwComm.h cmdXfer.h
+cmdXfer.o: cmdXfer.h
 
 .PHONY: clean
 
 clean:
-	$(RM) bbcli.o fwComm.o cmdXfer.o bbcli
+	$(RM) bbcli.o bbcli $(LOBJS)

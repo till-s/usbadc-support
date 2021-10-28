@@ -100,9 +100,6 @@ at25_block_erase(FWInfo *fw, unsigned addr, size_t sz);
 int
 at25_prog(FWInfo *fw, unsigned addr, const uint8_t *data, size_t len, int check);
 
-int
-fileMap(const char *fnam,  uint8_t **mapp, off_t *sizp, off_t creatsz);
-
 #ifdef __cplusplus
 }
 #endif
