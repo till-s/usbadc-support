@@ -8,6 +8,7 @@
 #include "fwComm.h"
 #include "fwUtil.h"
 #include "at25Sup.h"
+#include "dac47cxSup.h"
 
 static void usage(const char *nm)
 {
@@ -337,36 +338,42 @@ int                dumpAdc   = 0;
 
 				sla = dac ? 0xc2 : 0xd4;
 
-				bb_i2c_start( fw, 0 );
-
 				if ( reg < 0 && dac ) {
 					/* reset */
-					buf[0] = 0x00;
-					buf[1] = 0x06;
-					bb_i2c_write( fw, buf, 2 );
+					dac47cxReset( fw );
 				} else {
-					if ( val < 0 ) {
-						/* read */
-						buf[0] = sla;
-						buf[1] = dac ? ( 0x06 | ((reg&0x1f) << 3) ) : reg;
-						bb_i2c_write( fw, buf, 2 );
-						bb_i2c_start( fw, 1 );
-						buf[0] = sla | I2C_READ;
-						bb_i2c_write( fw, buf, 1 );
-						rdl    = dac ? 2 : 1;
-						bb_i2c_read( fw, buf, rdl );
-					} else {
-						wrl    = 0;
-						buf[wrl++] = sla;
-						buf[wrl++] = dac ? ( 0x00 | ((reg&0x1f) << 3) ) : reg;
-						if ( dac ) {
-							buf[wrl++] = (val >> 8) & 0xff;
+					if ( dac ) {
+						if ( val < 0 ) {
+							uint16_t dacdat = dac47cxReadReg( fw, reg );
+							buf[0] = dacdat >> 8;
+							buf[1] = dacdat >> 0;
+							rdl    = 2;
+						} else {
+							dac47cxWriteReg( fw, reg, val );
 						}
-						buf[wrl++] = (val >> 0) & 0xff;
-						bb_i2c_write( fw, buf, wrl );
+					} else {
+						bb_i2c_start( fw, 0 );
+						if ( val < 0 ) {
+							/* read */
+
+							buf[0] = sla;
+							buf[1] = reg;
+							bb_i2c_write( fw, buf, 2 );
+							bb_i2c_start( fw, 1 );
+							buf[0] = sla | I2C_READ;
+							bb_i2c_write( fw, buf, 1 );
+							bb_i2c_read ( fw, buf, 1 );
+							rdl    = 1;
+						} else {
+							wrl    = 0;
+							buf[wrl++] = sla;
+							buf[wrl++] = reg;
+							buf[wrl++] = (val >> 0) & 0xff;
+							bb_i2c_write( fw, buf, wrl );
+						}
+						bb_i2c_stop( fw );
 					}
 				}
-				bb_i2c_stop( fw );
 				break;
 
 			case TEST_PGA:

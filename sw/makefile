@@ -2,10 +2,10 @@ all: bbcli
 
 CFLAGS=-O2 -Wall
 
-LOBJS=fwComm.o fwUtil.o cmdXfer.o at25Sup.o
+LOBJS=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 
 bbcli: bbcli.o $(LOBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 
 %.o: %.c %.h
