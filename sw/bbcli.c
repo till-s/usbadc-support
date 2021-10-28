@@ -22,7 +22,9 @@ static void usage(const char *nm)
 	printf("   -h                 : this message.\n");
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
-	printf("   -A                 : dump ADC buffer (raw).\n");
+	printf("   -B                 : dump ADC buffer (raw).\n");
+	printf("   -P                 : access PGA registers.\n");
+	printf("   -A                 : access ADC registers.\n");
 	printf("\n");
 	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
 	printf("       Id             : read and print ID bytes.\n");
@@ -52,6 +54,10 @@ static int sz2bsz(int sz)
 	return 512*1024;
 }
 
+#define TEST_I2C 1
+#define TEST_PGA 2
+#define TEST_ADC 3
+
 int main(int argc, char **argv)
 {
 const char        *devn      = "/dev/ttyUSB0";
@@ -72,7 +78,7 @@ uint8_t            sla;
 int                dac       = 0;
 
 int                opt;
-int                test_i2c  = 0;
+int                test_reg  = 0;
 char              *test_spi  = 0;
 unsigned           flashAddr = 0;
 unsigned          *u_p;
@@ -84,21 +90,23 @@ int                debug     = 0;
 int                fwVersion = 0;
 int                dumpAdc   = 0;
 
-	while ( (opt = getopt(argc, argv, "hvAVd:DIS:a:f:!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "hvABPVd:DIS:a:f:!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
-            case 'h': usage(argv[0]);             return 0;
+            case 'h': usage(argv[0]);                                                 return 0;
 			default : fprintf(stderr, "Unknown option -%c (use -h for help)\n", opt); return 1;
-			case 'd': devn = optarg;              break;
-			case 'D': dac  = 1; test_i2c = 1;     break;
-			case 'A': dumpAdc = 1;                break;
-			case 'v': debug++;                    break;
-			case 'V': fwVersion= 1;               break;
-			case 'I': test_i2c = 1;               break;
-			case 'S': test_spi = strdup(optarg);  break;
-			case 'a': u_p      = &flashAddr;      break;
-			case 'f': progFile = optarg;          break;
-			case '!': doit     = 1;               break;
+			case 'd': devn = optarg;                                                  break;
+			case 'D': dac  = 1; test_reg = TEST_I2C;                                  break;
+			case 'P': dac  = 0; test_reg = TEST_PGA;                                  break;
+			case 'A': dac  = 0; test_reg = TEST_ADC;                                  break;
+			case 'B': dumpAdc = 1;                                                    break;
+			case 'v': debug++;                                                        break;
+			case 'V': fwVersion= 1;                                                   break;
+			case 'I': dac = 0; test_reg = TEST_I2C;                                   break;
+			case 'S': test_spi = strdup(optarg);                                      break;
+			case 'a': u_p      = &flashAddr;                                          break;
+			case 'f': progFile = optarg;                                              break;
+			case '!': doit     = 1;                                                   break;
 			case '?': doit     = (doit <= 0 ? doit - 1 : -1); break;
 		}
 		if ( u_p && 1 != sscanf(optarg, "%i", u_p) ) {
@@ -125,7 +133,7 @@ int                dumpAdc   = 0;
 		fifoSetDebug( 1 );
 	}
 
-	if ( test_spi || test_i2c ) {
+	if ( test_spi || test_reg ) {
 		if ( ! (fw = fw_open_fd(fd)) ) {
 			goto bail;
 		}
@@ -319,40 +327,65 @@ int                dumpAdc   = 0;
 	}
 
 
-	if ( test_i2c ) {
+	if ( test_reg ) {
 
-		sla = dac ? 0xc2 : 0xd4;
+		switch ( test_reg ) {
 
-		bb_i2c_start( fw, 0 );
+			case TEST_I2C:
 
-		if ( reg < 0 && dac ) {
-			/* reset */
-			buf[0] = 0x00;
-			buf[1] = 0x06;
-			bb_i2c_write( fw, buf, 2 );
-		} else {
-			if ( val < 0 ) {
-				/* read */
-				buf[0] = sla;
-				buf[1] = dac ? ( 0x06 | ((reg&0x1f) << 3) ) : reg;
-				bb_i2c_write( fw, buf, 2 );
-				bb_i2c_start( fw, 1 );
-				buf[0] = sla | I2C_READ;
-				bb_i2c_write( fw, buf, 1 );
-				rdl    = dac ? 2 : 1;
-				bb_i2c_read( fw, buf, rdl );
-			} else {
-				wrl    = 0;
-				buf[wrl++] = sla;
-				buf[wrl++] = dac ? ( 0x00 | ((reg&0x1f) << 3) ) : reg;
-				if ( dac ) {
-					buf[wrl++] = (val >> 8) & 0xff;
+				sla = dac ? 0xc2 : 0xd4;
+
+				bb_i2c_start( fw, 0 );
+
+				if ( reg < 0 && dac ) {
+					/* reset */
+					buf[0] = 0x00;
+					buf[1] = 0x06;
+					bb_i2c_write( fw, buf, 2 );
+				} else {
+					if ( val < 0 ) {
+						/* read */
+						buf[0] = sla;
+						buf[1] = dac ? ( 0x06 | ((reg&0x1f) << 3) ) : reg;
+						bb_i2c_write( fw, buf, 2 );
+						bb_i2c_start( fw, 1 );
+						buf[0] = sla | I2C_READ;
+						bb_i2c_write( fw, buf, 1 );
+						rdl    = dac ? 2 : 1;
+						bb_i2c_read( fw, buf, rdl );
+					} else {
+						wrl    = 0;
+						buf[wrl++] = sla;
+						buf[wrl++] = dac ? ( 0x00 | ((reg&0x1f) << 3) ) : reg;
+						if ( dac ) {
+							buf[wrl++] = (val >> 8) & 0xff;
+						}
+						buf[wrl++] = (val >> 0) & 0xff;
+						bb_i2c_write( fw, buf, wrl );
+					}
 				}
-				buf[wrl++] = (val >> 0) & 0xff;
-				bb_i2c_write( fw, buf, wrl );
-			}
+				bb_i2c_stop( fw );
+				break;
+
+			case TEST_PGA:
+				buf[0] = (val < 0 ? 0x80 : 0x00 ) | (reg & 0xf);
+				buf[1] = (val < 0 ? 0x00 : val  );
+				bb_spi_xfer(fw, SPI_PGA, buf, buf, 0, 2);
+				rdl = (val < 0 ? 2 : 0);
+				break;
+
+			case TEST_ADC:
+                buf[2] = 0x00;
+                buf[3] = (val < 0 ? 0xff : 0x00);
+				buf[0] = (val < 0 ? 0x80 : 0x00 ) | (reg & 0x7f);
+				buf[1] = (val < 0 ? 0x00 : val  );
+				bb_spi_xfer(fw, SPI_ADC, buf, buf, buf+2, 2);
+				rdl = (val < 0 ? 2 : 0);
+				break;
+
+			default:
+				break;
 		}
-		bb_i2c_stop( fw );
 
 		if ( rdl ) {
 			printf("reg: 0x%x: 0x", reg);

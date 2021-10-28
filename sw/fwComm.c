@@ -12,6 +12,7 @@
 #define SCLK_SHFT 1
 #define MOSI_SHFT 2
 #define MISO_SHFT 3
+#define HIZ_SHFT  6
 
 #define SPI_MASK  (0xf0)
 #define I2C_MASK  (0xC1)
@@ -40,10 +41,23 @@ struct FWInfo {
 static int
 fw_xfer(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
 
+static int
+__bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val);
+
 void
 fw_set_debug(FWInfo *fw, int level)
 {
 	fw->debug = level;
+}
+
+static uint8_t
+spi_get_subcmd(SPIDev type)
+{
+	switch ( type ) {
+		case SPI_FLASH : return FW_CMD_BB_FLASH;
+		case SPI_ADC   : return FW_CMD_BB_ADC;
+		case SPI_PGA   : return FW_CMD_BB_PGA;
+	}
 }
 
 uint8_t
@@ -178,22 +192,28 @@ bb_i2c_stop(FWInfo *fw)
 	return 0;
 }
 
-int
-bb_spi_cs(FWInfo *fw, int val)
+static int
+__bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val)
 {
 uint8_t bbbyte = ( ((val ? 1 : 0) << CS_SHFT) | (0 << SCLK_SHFT) ) | SPI_MASK;
 
-	if ( fw_xfer( fw, FW_CMD_BB_FLASH, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( fw_xfer( fw, subcmd, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "Unable to set CS %d\n", !!val);
 		return -1;
 	}
 	return 0;
 }
 
+int
+bb_spi_cs(FWInfo *fw, SPIDev type, int val)
+{
+	return __bb_spi_cs( fw, spi_get_subcmd( type ), val );
+}
+
 #define BUF_BRK 1024
 
 int
-bb_spi_xfer_nocs(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
 {
 uint8_t *xbuf = malloc(BUF_BRK*8*2);
 uint8_t *p;
@@ -201,7 +221,8 @@ int      rval = -1;
 size_t   work = len;
 size_t   xlen;
 int      i,j;
-uint8_t  v;
+uint8_t  v,z;
+uint8_t  subcmd = spi_get_subcmd( type );
 
 	if ( ! xbuf ) {
 		perror("bb_spi_xfer_nocs(): unable to allocate buffer memory");
@@ -213,15 +234,20 @@ uint8_t  v;
 
 		for ( i = 0; i < xlen; i++ ) {
 			v = tbuf ? tbuf[i] : 0;
+            z = zbuf ? zbuf[i] : 0;
 			for ( j = 0; j < 2*8; j += 2 ) {
 				p[j + 0] = ( (((v & 0x80) ? 1 : 0) << MOSI_SHFT) | (0 << SCLK_SHFT) | (0 << CS_SHFT) ) | SPI_MASK ;
+				if ( ! (z & 0x80) ) {
+					p[j + 0] &= ~(1 << HIZ_SHFT);
+				}
 				p[j + 1] = p[j+0] | (1 << SCLK_SHFT);
 				v      <<= 1;
+				z      <<= 1;
 			}
 			p += j;
 		}
 
-		if ( fw_xfer( fw, FW_CMD_BB_FLASH, xbuf, xbuf, xlen*2*8 ) ) {
+		if ( fw_xfer( fw, subcmd, xbuf, xbuf, xlen*2*8 ) ) {
 			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer failed\n");
 			goto bail;
 		}
@@ -253,17 +279,19 @@ bail:
 }
 
 int
-bb_spi_xfer(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
 {
-int got;
+uint8_t  subcmd = spi_get_subcmd( type );
+int      got;
 
-	if ( bb_spi_cs( fw, 0 ) ) {
+
+	if ( __bb_spi_cs( fw, subcmd, 0 ) ) {
 		return -1;
 	}
 
-	got = bb_spi_xfer_nocs( fw, tbuf, rbuf, len );
+	got = bb_spi_xfer_nocs( fw, type, tbuf, rbuf, zbuf, len );
 
-	if ( bb_spi_cs( fw, 1 ) ) {
+	if ( __bb_spi_cs( fw, subcmd, 1 ) ) {
 		return -1;
 	}
 
@@ -367,7 +395,7 @@ int     i;
 	buf[3] = 0x00;
 	buf[4] = 0x00;
 
-	if ( bb_spi_xfer( fw, buf, buf + 0x10, 5 ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_FLASH, buf, buf + 0x10, 0, 5 ) < 0 ) {
 		return -1;
 	}
 
@@ -391,22 +419,22 @@ int      rval = -1;
 	hdr[hlen++] = (addr >>  0) & 0xff;
 	hdr[hlen++] = 0x00; /* dummy     */
 
-	if ( bb_spi_cs( fw, 0 ) < 0 ) {
+	if ( bb_spi_cs( fw, SPI_FLASH, 0 ) < 0 ) {
 		return -1;
 	}
 
-	if ( bb_spi_xfer_nocs( fw, hdr, 0, hlen ) != hlen ) {
+	if ( bb_spi_xfer_nocs( fw, SPI_FLASH, hdr, 0, 0, hlen ) != hlen ) {
 		fprintf(stderr,"at25_spi_read -- sending header failed\n");
 		goto bail;
 	}
 
-	if ( ( rval = bb_spi_xfer_nocs( fw, 0, rbuf, len ) ) != len ) {
+	if ( ( rval = bb_spi_xfer_nocs( fw, SPI_FLASH, 0, rbuf, 0, len ) ) != len ) {
 		fprintf(stderr,"at25_spi_read -- receiving data failed or incomplete\n");
 		goto bail;
 	} 
 
 bail:
-	bb_spi_cs( fw, 1 );
+	bb_spi_cs( fw, SPI_FLASH, 1 );
 	return rval;
 }
 
@@ -415,7 +443,7 @@ at25_status(FWInfo *fw)
 {
 uint8_t buf[2];
 	buf[0] = AT25_OP_STATUS;
-	if ( bb_spi_xfer( fw, buf, buf, sizeof(buf) ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_FLASH, buf, buf, 0, sizeof(buf) ) < 0 ) {
 		fprintf(stderr, "at25_status: bb_spi_xfer failed\n");
 		return -1;
 	}
@@ -433,7 +461,7 @@ int     len = 0;
 		buf[len++] = arg;
 	}
 
-	if ( bb_spi_xfer( fw, buf, 0, len ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_FLASH, buf, 0, 0, len ) < 0 ) {
 		fprintf(stderr, "at25_cmd_2(0x%02x) transfer failed\n", cmd);
 		return -1;
 	}
@@ -514,7 +542,7 @@ int     l, st;
 		buf[l++] = (addr >>  0) & 0xff;
 	}
 
-	if ( bb_spi_xfer( fw, buf, 0, l ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_FLASH, buf, 0, 0, l ) < 0 ) {
 		fprintf(stderr, "at25_block_erase() -- sending command failed\n"); 
 		return -1;
 	}
@@ -595,7 +623,7 @@ const uint8_t *src;
 
 		while ( wrk > 0 ) {
 
-			if ( bb_spi_cs( fw, 0 ) ) {
+			if ( __bb_spi_cs( fw, FW_CMD_BB_FLASH, 0 ) ) {
 				fprintf(stderr, "at25_prog() - failed to assert CSb\n");
 				goto bail;
 			}
@@ -613,17 +641,17 @@ const uint8_t *src;
 			buf[i++] = (wrkAddr >> 16) & 0xff;
 			buf[i++] = (wrkAddr >>  8) & 0xff;
 			buf[i++] = (wrkAddr >>  0) & 0xff;
-			if ( bb_spi_xfer_nocs( fw, buf, 0, i ) < 0 ) {
+			if ( bb_spi_xfer_nocs( fw, SPI_FLASH, buf, 0, 0, i ) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to transmit address\n");
 				goto bail;
 			}
-			if ( bb_spi_xfer_nocs( fw, src, 0, x ) < 0 ) {
+			if ( bb_spi_xfer_nocs( fw, SPI_FLASH, src, 0, 0, x ) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to transmit data\n");
 				goto bail;
 			}
 
 			/* this triggers the write */
-			if ( bb_spi_cs( fw, 1 ) ) {
+			if ( __bb_spi_cs( fw, FW_CMD_BB_FLASH, 1 ) ) {
 				fprintf(stderr, "at25_prog() - failed to de-assert CSb\n");
 				goto bail;
 			}
@@ -666,7 +694,7 @@ bail:
 		at25_write_dis  ( fw ); /* just in case... */
 	}
 
-	bb_spi_cs( fw, 1 );     /* just in case... */
+	__bb_spi_cs( fw, FW_CMD_BB_NONE, 1 );     /* just in case... */
 
 	return rval;
 }

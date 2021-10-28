@@ -35,10 +35,12 @@ entity CommandWrapper is
       adcClk       : in  std_logic;
       adcRst       : in  std_logic := '0';
 
-      adcDataDDR   : in  std_logic_vector(7 downto 0);
+      -- bit 0 is the DOR (overrange) bit
+      adcDataDDR   : in  std_logic_vector(8 downto 0);
 
-      chnlAClk     : out std_logic;
-      chnlBClk     : out std_logic
+      smplClk      : out std_logic;
+
+      adcDcmLocked : out std_logic
    );
 end entity CommandWrapper;
 
@@ -185,7 +187,7 @@ begin
    end process P_VERSION_SEQ;
 
     G_BITBANG : if ( NUM_CMDS_C > 1 ) generate
-    
+
        U_BITBANG : entity work.CommandBitBang
           generic map (
              I2C_SCL_G    => I2C_SCL_G,
@@ -196,19 +198,19 @@ begin
           port map (
              clk          => clk,
              rst          => rst,
-    
+
              mIb          => bussesIb(CMD_BB_IDX_C),
              rIb          => readysIb(CMD_BB_IDX_C),
-    
+
              mOb          => bussesOb(CMD_BB_IDX_C),
              rOb          => readysOb(CMD_BB_IDX_C),
-    
+
              bbi          => bbi,
              bbo          => bbo,
              subCmd       => subCmdBB
           );
     end generate G_BITBANG;
-    
+
     G_ADC : if ( NUM_CMDS_C > 2 ) generate
        U_ADC_BUF : entity work.MaxAdc
           generic map (
@@ -218,20 +220,21 @@ begin
           port map (
              adcClk       => adcClk,
              adcRst       => adcRst,
-    
-             adcData      => adcDataDDR,
-    
-             chnlAClk     => chnlAClk,
-             chnlBClk     => chnlBClk,
-    
+
+             adcDataDDR   => adcDataDDR,
+
+             smplClk      => smplClk,
+
              busClk       => clk,
              busRst       => rst,
-    
+
              busIb        => bussesIb(CMD_ADC_MEM_IDX_C),
              rdyIb        => readysIb(CMD_ADC_MEM_IDX_C),
-    
+
              busOb        => bussesOb(CMD_ADC_MEM_IDX_C),
-             rdyOb        => readysOb(CMD_ADC_MEM_IDX_C)
+             rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
+
+             dcmLocked    => adcDcmLocked
           );
     end generate G_ADC;
 

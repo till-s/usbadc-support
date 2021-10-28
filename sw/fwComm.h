@@ -12,6 +12,8 @@ typedef struct FWInfo FWInfo;
 
 typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI } FWCmd;
 
+typedef enum   SPIDev { SPI_FLASH, SPI_ADC, SPI_PGA } SPIDev;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,13 +49,16 @@ int
 bb_i2c_stop(FWInfo *fw);
 
 int
-bb_spi_cs(FWInfo *fw, int val);
+bb_spi_cs(FWInfo *fw, SPIDev type, int val);
+
+/* for bidirectional transfers (where SDI/SDO share a single line, e.g., max19507) the
+ * optinal zbuf controls the direction (1:  s->m, 0: m->s) of the (bidirectional) SIO line
+ */
+int
+bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
 
 int
-bb_spi_xfer_nocs(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
-
-int
-bb_spi_xfer(FWInfo *fw, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
+bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
 
 int
 at25_spi_read(FWInfo *fw, unsigned addr, uint8_t *rbuf, size_t len);

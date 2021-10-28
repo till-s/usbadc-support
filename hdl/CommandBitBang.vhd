@@ -109,7 +109,6 @@ begin
             if ( ( rOb and wvld and r.lstSeen ) = '1' ) then
                v.state   := ECHO;
                v.lstSeen := '0';
-               v.cmd     := CMD_BB_NONE_C;
             end if;
 
       end case;
