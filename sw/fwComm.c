@@ -50,34 +50,28 @@ fw_set_debug(FWInfo *fw, int level)
 static uint8_t
 spi_get_subcmd(SPIDev type)
 {
-uint8_t rval;
-
 	switch ( type ) {
-		case SPI_FLASH : rval = BITS_FW_CMD_BB_FLASH;
-		break;
-		case SPI_ADC   : rval = BITS_FW_CMD_BB_ADC;
-		break;
-		case SPI_PGA   : rval = BITS_FW_CMD_BB_PGA;
-		break;
+		case SPI_FLASH : return BITS_FW_CMD_BB_FLASH;
+		case SPI_ADC   : return BITS_FW_CMD_BB_ADC;
+		case SPI_PGA   : return BITS_FW_CMD_BB_PGA;
+		default:
+			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			abort();
 	}
-	return rval;
 }
 
 uint8_t
 fw_get_cmd(FWCmd aCmd)
 {
-uint8_t rval;
 	switch ( aCmd ) {
-		case FW_CMD_VERSION: rval = BITS_FW_CMD_VER;
-		break;
-		case FW_CMD_ADC_BUF: rval = BITS_FW_CMD_ADCBUF;
-		break;
-		case FW_CMD_BB_SPI : rval = BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
-		break;
-		case FW_CMD_BB_I2C : rval = BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
-		break;
+		case FW_CMD_VERSION: return BITS_FW_CMD_VER;
+		case FW_CMD_ADC_BUF: return BITS_FW_CMD_ADCBUF;
+		case FW_CMD_BB_SPI : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
+		case FW_CMD_BB_I2C : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
+		default:
+			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			abort();
 	}
-	return rval;
 }
 
 FWInfo *

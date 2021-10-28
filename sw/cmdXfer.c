@@ -30,7 +30,6 @@ int                rval = -1;
 int                fd   = -1;
 char               msg[256];
 struct termios     atts;
-int                flags;
 size_t             i;
 
 	if ( (fd = open(devn, O_RDWR)) < 0 ) {
@@ -105,7 +104,7 @@ static void prb(const char * hdr, const uint8_t *b, size_t l)
 			printf("\n");
 		}
 	}
-	if ( 0 != k & 0xf ) {
+	if ( 0 != ( k & 0xf ) ) {
 		printf("\n");
 	}
 }
@@ -140,7 +139,7 @@ fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *
 {
 uint8_t tbufs[MAXLEN];
 uint8_t rbufs[MAXLEN];
-size_t  i, j, tlens, rlens, puts, put, got, chunksz, k;
+size_t  i, j, tlens, rlens, puts, put, got;
 fd_set  rfds, tfds;
 RxState state       = RX;
 int     warned      = (0 == rlen ? 1 : 0);
