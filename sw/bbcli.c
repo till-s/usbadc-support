@@ -7,6 +7,7 @@
 
 #include "fwComm.h"
 #include "fwUtil.h"
+#include "at25Sup.h"
 
 static void usage(const char *nm)
 {
