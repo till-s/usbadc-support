@@ -2,7 +2,8 @@ all: bbcli
 
 CFLAGS=-O2 -Wall
 
-LOBJS=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
+LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
+LOBJS+=lmh6882Sup.o
 
 bbcli: bbcli.o $(LOBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lm
@@ -11,7 +12,7 @@ bbcli: bbcli.o $(LOBJS)
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-bbcli.o: fwComm.h fwUtil.h at25Sup.h
+bbcli.o: fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h
 fwComm.o: fwComm.h cmdXfer.h
 cmdXfer.o: cmdXfer.h
 at25Sup.o: fwComm.h cmdXfer.h

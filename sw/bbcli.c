@@ -9,6 +9,7 @@
 #include "fwUtil.h"
 #include "at25Sup.h"
 #include "dac47cxSup.h"
+#include "lmh6882Sup.h"
 
 static void usage(const char *nm)
 {
@@ -365,10 +366,15 @@ int                dumpAdc   = 0;
 				break;
 
 			case TEST_PGA:
-				buf[0] = (val < 0 ? 0x80 : 0x00 ) | (reg & 0xf);
-				buf[1] = (val < 0 ? 0x00 : val  );
-				bb_spi_xfer(fw, SPI_PGA, buf, buf, 0, 2);
-				rdl = (val < 0 ? 2 : 0);
+				i = ( val < 0 ? lmh6882ReadReg( fw, reg ) : lmh6882WriteReg( fw, reg, val ) );
+				if ( i < 0 ) {
+					fprintf(stderr, "lmh6882%sReg() failed\n", val < 0 ? "Read" : "Write");
+					goto bail;
+				}
+				if ( val < 0 ) {
+					buf[0] = (uint8_t)i;
+					rdl = 1;
+				}
 				break;
 
 			case TEST_ADC:

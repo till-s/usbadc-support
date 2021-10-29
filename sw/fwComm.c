@@ -230,6 +230,7 @@ uint8_t  subcmd = spi_get_subcmd( type );
 
 	if ( ! xbuf ) {
 		perror("bb_spi_xfer_nocs(): unable to allocate buffer memory");
+		goto bail;
 	}
 
 	while ( work > 0 ) {
