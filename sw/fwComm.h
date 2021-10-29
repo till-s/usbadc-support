@@ -48,6 +48,18 @@ bb_i2c_read(FWInfo *fw, uint8_t *buf, size_t len);
 int
 bb_i2c_stop(FWInfo *fw);
 
+/*
+ * RETURNS: read value, -1 on error;
+ */
+int
+bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg);
+
+/*
+ * RETURNS: 0 on success, -1 on error;
+ */
+int
+bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val);
+
 int
 bb_spi_cs(FWInfo *fw, SPIDev type, int val);
 

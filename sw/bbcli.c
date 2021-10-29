@@ -74,7 +74,6 @@ int                i;
 int                reg       =  0;
 int                val       = -1;
 unsigned           rdl       = 0;
-unsigned           wrl       = 0;
 
 uint8_t            sla;
 
@@ -352,26 +351,15 @@ int                dumpAdc   = 0;
 							dac47cxWriteReg( fw, reg, val );
 						}
 					} else {
-						bb_i2c_start( fw, 0 );
-						if ( val < 0 ) {
-							/* read */
-
-							buf[0] = sla;
-							buf[1] = reg;
-							bb_i2c_write( fw, buf, 2 );
-							bb_i2c_start( fw, 1 );
-							buf[0] = sla | I2C_READ;
-							bb_i2c_write( fw, buf, 1 );
-							bb_i2c_read ( fw, buf, 1 );
-							rdl    = 1;
-						} else {
-							wrl    = 0;
-							buf[wrl++] = sla;
-							buf[wrl++] = reg;
-							buf[wrl++] = (val >> 0) & 0xff;
-							bb_i2c_write( fw, buf, wrl );
+						i = ( val < 0 ? bb_i2c_read_reg( fw, sla, reg ) : bb_i2c_write_reg( fw, sla, reg, val ) );
+						if ( i < 0 ) {
+							fprintf(stderr, "bb_i2c_%s_reg failed\n", val < 0 ? "read" : "write");
+							goto bail;
 						}
-						bb_i2c_stop( fw );
+						if ( val < 0 ) {
+							buf[0] = (uint8_t) i ;
+							rdl    = 1;
+						}
 					}
 				}
 				break;

@@ -369,3 +369,63 @@ size_t   i;
 	}
 	return len;
 }
+
+static int
+bb_i2c_rw_reg(FWInfo *fw, uint8_t sla, uint8_t reg, int val)
+{
+uint8_t buf[3];
+int     wrl;
+int     rval = -1;
+
+    wrl        = 0;
+	buf[wrl++] = sla;
+	buf[wrl++] = reg;
+	if ( val >= 0 ) {
+		buf[wrl++] = (uint8_t)(val & 0xff);
+	}
+	if ( bb_i2c_start( fw, 0 ) )
+		return -1;
+	if ( bb_i2c_write( fw, buf, wrl ) < 0 ) {
+		goto bail;
+	}
+	if ( val < 0 ) {
+		if ( bb_i2c_start( fw, 1 ) ) {
+			goto bail;
+		}
+		buf[0] = sla | I2C_READ;
+		if ( bb_i2c_write( fw, buf, 1 ) < 0 ) {
+			goto bail;
+		}
+		if ( bb_i2c_read( fw, buf, 1 ) < 0 ) {
+			goto bail;
+		}
+		rval = buf[0];
+	} else {
+		rval = 0;
+	}
+
+bail:
+	/* attempt to stop */
+	if ( bb_i2c_stop( fw ) < 0 ) {
+		rval = -1;
+	}
+	return rval;
+}
+
+/*
+ * RETURNS: read value, -1 on error;
+ */
+int
+bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg)
+{
+	return bb_i2c_rw_reg(fw, sla, reg, -1);
+}
+
+/*
+ * RETURNS: 0 on success, -1 on error;
+ */
+int
+bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val)
+{
+	return bb_i2c_rw_reg(fw, sla, reg, val);
+}
