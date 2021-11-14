@@ -216,7 +216,7 @@ begin
             U_IDDR : component IDDR2
                port map (
                   C0            => chnl0ClkB, --chnl1ClkL,
-                  C1            => chnl0ClkL, 
+                  C1            => chnl0ClkL,
                   CE            => '1',
                   Q0            => chnl0Data(i),
                   Q1            => chnl1Data(i),
@@ -321,7 +321,7 @@ begin
       rdatA    <= rdat1;
       rdatB    <= rdat0;
    end generate GEN_DDR_B_FIRST;
-     
+
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about r.busOb missing from sensitivity list)
    P_RD_COMB : process (r, r.busOb, busIb, rdyOb, rdatA, rdatB, wrDon) is
@@ -338,7 +338,7 @@ begin
       end if;
 
       case ( r.state ) is
-         when ECHO => 
+         when ECHO =>
             v.raddr := (others => '0');
             v.anb   := true;
 
@@ -351,7 +351,7 @@ begin
                if ( NUM_ADDR_BITS_C > 7 ) then
                   v.busOb.dat                := std_logic_vector(r.taddr(7 downto 0));
                else
-                  v.busOb.dat                := (others => '0'); 
+                  v.busOb.dat                := (others => '0');
                   v.busOb.dat(r.taddr'range) := std_logic_vector(r.taddr);
                end if;
                v.busOb.vld := '1';
@@ -359,7 +359,7 @@ begin
                v.lstDly    := '0';
             end if;
 
-         when HDR  => 
+         when HDR  =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
                v.anb := not r.anb;
                if ( r.anb ) then
@@ -372,12 +372,12 @@ begin
                   v.rdatB := rdatB;
                   v.raddr := r.raddr + 1;
                else
-                  v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1); 
+                  v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1);
                   v.state     := READ;
                end if;
             end if;
-            
-         when READ => 
+
+         when READ =>
             if ( rdyOb = '1' ) then -- busOb.vld  is '1' at this point
                v.anb := not r.anb;
                if ( r.anb ) then
@@ -395,7 +395,7 @@ begin
                      v.state := ECHO;
                      v.rdDon := '1';
                   end if;
-                  v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1); 
+                  v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1);
                end if;
             end if;
       end case;
