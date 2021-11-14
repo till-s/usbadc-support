@@ -414,7 +414,7 @@ begin
       end if;
    end process P_RD_SEQ;
 
-   GEN_MEM_ILA : if ( true ) generate
+   GEN_MEM_ILA : if ( false ) generate
    begin
       U_ILA_MEM : component ILAWrapper
          port map (

@@ -23,6 +23,13 @@
 #define AT25_ST_WEL        0x02
 #define AT25_ST_EPE        0x20
 
+#if 1
+#define bb_spi_xfer(fw,typ,tbuf,rbuf,zbuf,len) \
+	spi_xfer((fw),(typ),(tbuf),(rbuf),(len))
+#define bb_spi_xfer_nocs(fw,typ,tbuf,rbuf,zbuf,len) \
+	spi_xfer_nocs((fw),(typ),(tbuf),(rbuf),(len))
+#endif
+
 int
 at25_id(FWInfo *fw)
 {

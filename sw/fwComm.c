@@ -26,6 +26,7 @@
 #define BITS_FW_CMD_BB_ADC      (2<<4)
 #define BITS_FW_CMD_BB_PGA      (3<<4)
 #define BITS_FW_CMD_BB_I2C      (4<<4)
+#define BITS_FW_CMD_BB_TEST     (5<<4)
 #define BITS_FW_CMD_ADCBUF      0x02
 
 struct FWInfo {
@@ -215,6 +216,51 @@ bb_spi_cs(FWInfo *fw, SPIDev type, int val)
 }
 
 #define BUF_BRK 1024
+
+int
+spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+{
+uint8_t  subcmd = BITS_FW_CMD_BB_TEST;
+uint8_t *lbuf   = 0;
+int      rval   = len;
+
+	if ( ! rbuf ) {
+		rbuf = lbuf = malloc( len );
+	}
+
+	if ( ! tbuf ) {
+		tbuf = rbuf;
+	}
+
+	if ( fw_xfer( fw, subcmd, tbuf, rbuf, len) ) {
+		fprintf(stderr, "spi_xfer_nocs(): fw_xfer failed\n");
+		rval = -1;
+	}
+
+	if ( lbuf ) {
+		free( lbuf );
+	}
+	return rval;
+}
+
+int
+spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+{
+uint8_t  subcmd = BITS_FW_CMD_BB_FLASH;
+int      got;
+
+	if ( __bb_spi_cs( fw, subcmd, 0 ) ) {
+		return -1;
+	}
+
+	got = spi_xfer_nocs( fw, type, tbuf, rbuf, len );
+
+	if ( __bb_spi_cs( fw, subcmd, 1 ) ) {
+		return -1;
+	}
+
+	return got;
+}
 
 int
 bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)

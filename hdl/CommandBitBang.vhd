@@ -4,6 +4,7 @@ use ieee.numeric_std.all;
 use ieee.math_real.all;
 
 use work.CommandMuxPkg.all;
+use work.ILAWrapperPkg.all;
 
 entity CommandBitBang is
    generic (
@@ -51,6 +52,9 @@ architecture rtl of CommandBitBang is
    signal r               : RegType := REG_INIT_C;
    signal rin             : RegType;
 
+   signal rIbLoc          : std_logic;
+   signal mLc             : SimpleBusMstType;
+
    signal wdatBB          : std_logic_vector(7 downto 0);
    signal wvldBB          : std_logic;
    signal wrdyBB          : std_logic;
@@ -70,9 +74,48 @@ architecture rtl of CommandBitBang is
    signal miso            : std_logic := '0';
 
    signal bboLoc          : std_logic_vector(7 downto 0);
+
+   signal trg0            : std_logic_vector(7 downto 0) := (others => '0');
+   signal trg1            : std_logic_vector(7 downto 0) := (others => '0');
+   signal trg2            : std_logic_vector(7 downto 0) := (others => '0');
+   signal trg3            : std_logic_vector(7 downto 0) := (others => '0');
 begin
 
-   subCmd <= r.cmd;
+   subCmd  <= r.cmd;
+
+   trg0(0) <= mIb.vld;
+   trg0(1) <= rIbLoc;
+   trg0(2) <= rvldBB;
+   trg0(3) <= rrdyBB;
+   trg0(4) <= rvldSPI;
+   trg0(5) <= rrdySPI;
+   trg0(6) <= mIb.lst;
+   trg0(7 downto 7) <= std_logic_vector(to_unsigned(StateType'pos(r.state),1));
+
+   trg1(0) <= mLc.vld;
+   trg1(1) <= rOb;
+   trg1(2) <= wvldBB;
+   trg1(3) <= wrdyBB;
+   trg1(4) <= wvldSPI;
+   trg1(5) <= wrdySPI;
+   trg1(6) <= mLc.lst;
+   trg1(7) <= '0';
+
+   trg2(2 downto 0) <= r.cmd;
+   trg2(7 downto 3) <= (others => '0');
+
+   GEN_ILA : if ( true ) generate
+   begin
+      U_ILA_MEM : component ILAWrapper
+         port map (
+            clk  => clk,
+            trg0 => trg0,
+            trg1 => trg1,
+            trg2 => trg2,
+            trg3 => trg3
+         );
+   end generate GEN_ILA;
+
 
    P_COMB : process ( r, mIb, rOb, wdatBB, wvldBB, wdatSPI, wvldSPI, rrdyBB, rrdySPI ) is
       variable v       : RegType;
@@ -82,11 +125,12 @@ begin
    begin
       v := r;
 
-      mOb.dat <= mIb.dat;
-      mOb.vld <= mIb.vld;
-      mOb.lst <= r.lstSeen;
+      mLc     <= SIMPLE_BUS_MST_INIT_C;
+      mLc.dat <= mIb.dat;
+      mLc.vld <= mIb.vld;
+      mLc.lst <= mIb.lst;
 
-      rIb     <= rOb;
+      rIbLoc  <= rOb;
       rvldBB  <= '0';
       rvldSPI <= '0';
       wrdyBB  <= '1'; -- drop - just in case
@@ -108,6 +152,9 @@ begin
                end if;
             end if;
          when FWD  =>
+
+            mLc.lst <= r.lstSeen;
+
             if ( r.cmd = CMD_BB_TEST_C ) then
                rrdy    := rrdySPI;
             else
@@ -116,21 +163,21 @@ begin
 
             if ( r.lstSeen = '0' ) then
                rvld    := mIb.vld;
-               rIb     <= rrdy;
+               rIbLoc  <= rrdy;
             else
                rvld    := '0';
-               rIb     <= '0'; -- wait until frame is send
+               rIbLoc  <= '0'; -- wait until frame is send
             end if;
 
             if ( r.cmd = CMD_BB_TEST_C ) then
-               mOb.dat <= wdatSPI;
-               mOb.vld <= wvldSPI;
+               mLc.dat <= wdatSPI;
+               mLc.vld <= wvldSPI;
                wrdySPI <= rOb;
                wvld    := wvldSPI;
                rvldSPI <= rvld;
             else
-               mOb.dat <= wdatBB;
-               mOb.vld <= wvldBB;
+               mLc.dat <= wdatBB;
+               mLc.vld <= wvldBB;
                wrdyBB  <= rOb;
                wvld    := wvldBB;
                rvldBB  <= rvld;
@@ -209,8 +256,6 @@ begin
          miso         => miso
       );
 
-   miso <= bbi(SPI_MISO_G);
-
    P_SPI_MUX : process ( r, sclk, mosi, bboLoc, bbi ) is
    begin
       bbo <= bboLoc;
@@ -219,5 +264,10 @@ begin
          bbo(SPI_MOSI_G) <= mosi;
       end if;
    end process P_SPI_MUX;
+
+   miso <= bbi(SPI_MISO_G);
+
+   rIb  <= rIbLoc;
+   mOb  <= mLc;
 
 end architecture rtl;
