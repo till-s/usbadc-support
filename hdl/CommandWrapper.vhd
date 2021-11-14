@@ -234,7 +234,8 @@ begin
              busOb        => bussesOb(CMD_ADC_MEM_IDX_C),
              rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
 
-             dcmLocked    => adcDcmLocked
+             dcmLocked    => adcDcmLocked,
+             dcmRst       => '0'
           );
     end generate G_ADC;
 
