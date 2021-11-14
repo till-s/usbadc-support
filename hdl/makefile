@@ -4,14 +4,17 @@
 # ghdl --gen-makefile CommandWrapperTb
 
 GHDL=ghdl
-GHDLFLAGS=
+GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
 
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
 all: commandwrappertb commandwrappersim
 
-OBJS=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o MaxAdc.o CommandWrapper.o ILAWrapperPkg.o
+OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
+OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
+OBJS+=MaxAdc.o CommandWrapper.o ILAWrapperPkg.o
+OBJS+=WordSpiIF.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -57,13 +60,13 @@ SynchronizerBit.o: SynchronizerBit.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 BitBangIF.o: BitBangIF.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-CommandBitBang.o: CommandBitBang.vhd
+CommandBitBang.o: CommandBitBang.vhd BitBangIF.o WordSpiIF.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 MaxAdc.o: MaxAdc.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-CommandWrapper.o: CommandWrapper.vhd
+CommandWrapper.o: CommandWrapper.vhd GitVersionPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
