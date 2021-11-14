@@ -6,6 +6,8 @@
 GHDL=ghdl
 GHDLFLAGS=
 
+HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
+
 # Default target
 all: commandwrappertb commandwrappersim
 
@@ -96,7 +98,7 @@ CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /op
 
 GITVERSION:=$(shell git rev-parse --short=8 HEAD)
 
-GitVersionPkg.vhd: GitVersionPkg.vhd.in .FORCE
+GitVersionPkg.vhd: $(HEREDIR)/GitVersionPkg.vhd.in .FORCE
 	echo $(GITVERSION)
 	@if [ ! -f $@ -o $@ -ot $< ] || ! grep -q $(GITVERSION) $@ ; then echo DOIT; sed -e 's/#SUBST#/$(GITVERSION)/' < $< > $@; else echo SKIP; fi
 
