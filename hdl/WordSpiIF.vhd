@@ -85,7 +85,7 @@ begin
                v.sreg(0) := miso;
                v.div     := DIV_C - 1;
                v.state   := FEDGE;
-               v.sclk    := '1';
+               v.sclk    := SCLK_ACT_G;
             else
                v.div     := r.div - 1;
             end if;
@@ -94,7 +94,7 @@ begin
             if ( 0 = r.div ) then
                v.sreg     := r.sreg(r.sreg'left - 1 downto 0) & '0';
                v.div      := DIV_C - 1;
-               v.sclk     := '0';
+               v.sclk     := not SCLK_ACT_G;
                if ( 0 = r.count ) then
                   v.state := DONE;
                   v.wvld  := '1';
