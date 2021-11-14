@@ -3,6 +3,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
 use     work.CommandMuxPkg.all;
+use     work.ILAWrapperPkg.all;
 
 library unisim;
 use     unisim.vcomponents.all;
@@ -207,9 +208,14 @@ begin
          end generate GEN_NO_IBUF;
 
          GEN_IDDR : if ( not TEST_NO_DDR_G ) generate
+            signal chnl0ClkB : std_logic;
+         begin
+
+            chnl0ClkB <= not chnl0ClkL;
+
             U_IDDR : component IDDR2
                port map (
-                  C0            => not chnl0ClkL, --chnl1ClkL,
+                  C0            => chnl0ClkB, --chnl1ClkL,
                   C1            => chnl0ClkL, 
                   CE            => '1',
                   Q0            => chnl0Data(i),
@@ -231,6 +237,7 @@ begin
    U_WR_SYNC : entity work.SynchronizerBit
       port map (
          clk       => busClk,
+         rst       => '0',
          datInp(0) => wrDis,
          datOut(0) => wrDon
       );
@@ -238,6 +245,7 @@ begin
    U_RD_SYNC : entity work.SynchronizerBit
       port map (
          clk       => memClk,
+         rst       => '0',
          datInp(0) => r.rdDon,
          datOut(0) => rdDon
       );
@@ -408,7 +416,7 @@ begin
 
    GEN_MEM_ILA : if ( true ) generate
    begin
-      U_ILA_MEM : entity work.ILAWrapper
+      U_ILA_MEM : component ILAWrapper
          port map (
             clk  => memClk,
             trg0 => chnl0DataResynced(8 downto 1),
@@ -427,7 +435,7 @@ begin
       bTrg3(4 downto 3) <= std_logic_vector( to_unsigned( StateType'pos( r.state ), 2 ) );
       bTrg3(7 downto 5) <= r.busOb.dat(7 downto 5);
 
-      U_ILA_REG : entity work.ILAWrapper
+      U_ILA_REG : component ILAWrapper
          port map (
             clk  => busClk,
             trg0 => r.rdatA(8 downto 1),
