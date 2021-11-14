@@ -152,7 +152,10 @@ begin
    U_DUT : entity work.CommandWrapper
       generic map (
          FIFO_FREQ_G  => 4.0E5,
-         MEM_DEPTH_G  => MEM_DEPTH_C
+         MEM_DEPTH_G  => MEM_DEPTH_C,
+         SPI_SCLK_G   => 0,
+         SPI_MOSI_G   => 1,
+         SPI_MISO_G   => 2
       )
       port map (
          clk          => clk,
