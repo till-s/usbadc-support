@@ -32,6 +32,7 @@ package CommandMuxPkg is
    constant CMD_BB_SPI_ADC_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 2, SubCommandBBType'length ) );
    constant CMD_BB_SPI_PGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 3, SubCommandBBType'length ) );
    constant CMD_BB_I2C_C      : SubCommandBBType := SubCommandBBType( to_unsigned( 4, SubCommandBBType'length ) );
+   constant CMD_BB_TEST_C     : SubCommandBBType := SubCommandBBType( to_unsigned( 5, SubCommandBBType'length ) );
 
    function numBits(constant x : integer) return integer;
 
