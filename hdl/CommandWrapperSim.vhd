@@ -81,10 +81,7 @@ begin
          adcClk       => clk,
          adcRst       => rst,
 
-         adcDataDDR   => std_logic_vector(adcDDR),
-
-         chnlAClk     => open,
-         chnlBClk     => open
+         adcDataDDR   => std_logic_vector(adcDDR)
       );
 
    P_FILL : process ( clk ) is
