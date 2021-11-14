@@ -66,9 +66,7 @@ begin
    begin
       v := r;
 
-      mOb.dat <= mIb.dat;
-      mOb.vld <= mIb.vld;
-      mOb.lst <= r.lstSeen;
+      mOb     <= mIb;
 
       rIb     <= rOb;
       rvld    <= '0';
@@ -92,6 +90,7 @@ begin
          when FWD  =>
             mOb.dat <= wdat;
             mOb.vld <= wvld;
+            mOb.lst <= r.lstSeen;
             wrdy    <= rOb;
 
             if ( r.lstSeen = '0' ) then
