@@ -81,7 +81,10 @@ begin
          adcClk       => clk,
          adcRst       => rst,
 
-         adcDataDDR   => std_logic_vector(adcDDR)
+         adcDataDDR(7 downto 1)  => std_logic_vector(adcDDR),
+         adcDataDDR(         0)  => '0',
+
+         smplClk      => open
       );
 
    P_FILL : process ( clk ) is
