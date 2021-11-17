@@ -4,6 +4,7 @@
 #include <sys/fcntl.h>
 #include <sys/select.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <getopt.h>
@@ -32,10 +33,36 @@ char               msg[256];
 struct termios     atts;
 size_t             i;
 
-	if ( (fd = open(devn, O_RDWR)) < 0 ) {
-		snprintf(msg, sizeof(msg), "unable open device '%s'", devn);
-		perror(msg);
-		goto bail;
+    /* Special trick: open the TTY twice. If another program (minicom!)
+     * already has the port opened (but w/o TIOCEXCL) then our first
+	 * open succeeds and the subsequent TIOCEXCL persists/sticks (since the
+     * TTY remains open [linux-5.4]) which causes the second open() to fail.
+     */
+
+    i = 0;
+	while ( 1 ) {
+
+		if ( (fd = open(devn, O_RDWR)) < 0 ) {
+			snprintf(msg, sizeof(msg), "unable to open device '%s'", devn);
+			perror(msg);
+			if ( EBUSY == errno ) {
+				fprintf(stderr, "another application probably holds the port open?\n");
+			}
+			goto bail;
+		}
+
+		if ( ioctl( fd, TIOCEXCL ) ) {
+			snprintf(msg, sizeof(msg), "settiong TIOCEXCL failed");
+			perror(msg);
+			goto bail;
+		}
+		if ( 1 == i ) {
+			break;
+		}
+
+		close( fd );
+		fd = -1;
+		i++;
 	}
 
 	if ( tcgetattr( fd, &atts ) ) {
