@@ -8,9 +8,6 @@ use work.GitVersionPkg.all;
 entity CommandWrapper is
    generic (
       I2C_SCL_G    : integer := -1;        -- index of I2C SCL (to handle clock stretching)
-      SPI_SCLK_G   : natural range 0 to 7; -- index of SPI SCLK
-      SPI_MOSI_G   : natural range 0 to 7; -- index of SPI SCLK
-      SPI_MISO_G   : natural range 0 to 7; -- index of SPI SCLK
       BBO_INIT_G   : std_logic_vector(7 downto 0) := x"FF";
       I2C_FREQ_G   : real    := 100.0E3;
       FIFO_FREQ_G  : real;
@@ -194,9 +191,6 @@ begin
        U_BITBANG : entity work.CommandBitBang
           generic map (
              I2C_SCL_G    => I2C_SCL_G,
-             SPI_SCLK_G   => SPI_SCLK_G,
-             SPI_MOSI_G   => SPI_MOSI_G,
-             SPI_MISO_G   => SPI_MISO_G,
              BBO_INIT_G   => BBO_INIT_G,
              I2C_FREQ_G   => I2C_FREQ_G,
              CLOCK_FREQ_G => FIFO_FREQ_G
@@ -240,7 +234,8 @@ begin
              busOb        => bussesOb(CMD_ADC_MEM_IDX_C),
              rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
 
-             dcmLocked    => adcDcmLocked
+             dcmLocked    => adcDcmLocked,
+             dcmRst       => '0'
           );
     end generate G_ADC;
 

@@ -58,10 +58,7 @@ begin
    U_DUT : entity work.CommandWrapper
       generic map (
          FIFO_FREQ_G  => 4.0E5,
-         MEM_DEPTH_G  => MEM_DEPTH_C,
-         SPI_SCLK_G   => 0,
-         SPI_MOSI_G   => 1,
-         SPI_MISO_G   => 2
+         MEM_DEPTH_G  => MEM_DEPTH_C
       )
       port map (
          clk          => clk,
@@ -81,7 +78,10 @@ begin
          adcClk       => clk,
          adcRst       => rst,
 
-         adcDataDDR   => std_logic_vector(adcDDR)
+         adcDataDDR(8 downto 1)  => std_logic_vector(adcDDR),
+         adcDataDDR(         0)  => '0',
+
+         smplClk      => open
       );
 
    P_FILL : process ( clk ) is
