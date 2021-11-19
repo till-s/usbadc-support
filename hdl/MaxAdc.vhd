@@ -61,7 +61,7 @@ architecture rtl of MaxADC is
 
    type     StateType is (ECHO, HDR, READ);
 
-   type   RegType   is record
+   type   RdRegType   is record
       state   : StateType;
       raddr   : RamAddr;
       rdatA   : RamWord;
@@ -71,9 +71,9 @@ architecture rtl of MaxADC is
       busOb   : SimpleBusMstType;
       lstDly  : std_logic;
       rdDon   : std_logic;
-   end record RegType;
+   end record RdRegType;
 
-   constant REG_INIT_C : RegType := (
+   constant REG_INIT_C : RdRegType := (
       state   => ECHO,
       rdatA   => (others => 'X'),
       rdatB   => (others => 'X'),
@@ -85,8 +85,8 @@ architecture rtl of MaxADC is
       rdDon   => '0'
    );
 
-   signal r         : RegType    := REG_INIT_C;
-   signal rin       : RegType;
+   signal rRd       : RdRegType    := REG_INIT_C;
+   signal rinRd     : RdRegType;
 
    signal chnl0Data : std_logic_vector(8 downto 0);
    signal chnl1Data : std_logic_vector(8 downto 0);
@@ -246,7 +246,7 @@ begin
       port map (
          clk       => memClk,
          rst       => '0',
-         datInp(0) => r.rdDon,
+         datInp(0) => rRd.rdDon,
          datOut(0) => rdDon
       );
 
@@ -279,8 +279,8 @@ begin
          end if;
       end process P_WR_AB;
 
-      rdat0 <= DPRAM0(to_integer(r.raddr));
-      rdat1 <= DPRAM1(to_integer(r.raddr));
+      rdat0 <= DPRAM0(to_integer(rRd.raddr));
+      rdat1 <= DPRAM1(to_integer(rRd.raddr));
 
    end generate GEN_TWOMEM_G;
 
@@ -307,8 +307,8 @@ begin
          end if;
       end process P_WR_AB;
 
-      rdat0 <= DPRAMD( to_integer( r.raddr ) )( 8 downto  0);
-      rdat1 <= DPRAMD( to_integer( r.raddr ) )(17 downto  9);
+      rdat0 <= DPRAMD( to_integer( rRd.raddr ) )( 8 downto  0);
+      rdat1 <= DPRAMD( to_integer( rRd.raddr ) )(17 downto  9);
 
    end generate GEN_ONEMEM_G;
 
@@ -323,21 +323,21 @@ begin
    end generate GEN_DDR_B_FIRST;
 
    -- ise doesn't seem to properly handle nested records
-   -- (getting warning about r.busOb missing from sensitivity list)
-   P_RD_COMB : process (r, r.busOb, busIb, rdyOb, rdatA, rdatB, wrDon) is
-      variable v : RegType;
+   -- (getting warning about rRd.busOb missing from sensitivity list)
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon) is
+      variable v : RdRegType;
    begin
-      v     := r;
+      v     := rRd;
 
       rdyIb <= '1'; -- drop anything extra;
 
-      busOb <= r.busOb;
+      busOb <= rRd.busOb;
 
       if ( wrDon = '0' ) then
          v.rdDon := '0';
       end if;
 
-      case ( r.state ) is
+      case ( rRd.state ) is
          when ECHO =>
             v.raddr := (others => '0');
             v.anb   := true;
@@ -349,10 +349,10 @@ begin
             if ( (rdyOb and busIb.vld) = '1' ) then
                v.state     := HDR;
                if ( NUM_ADDR_BITS_C > 7 ) then
-                  v.busOb.dat                := std_logic_vector(r.taddr(7 downto 0));
+                  v.busOb.dat                := std_logic_vector(rRd.taddr(7 downto 0));
                else
                   v.busOb.dat                := (others => '0');
-                  v.busOb.dat(r.taddr'range) := std_logic_vector(r.taddr);
+                  v.busOb.dat(rRd.taddr'range) := std_logic_vector(rRd.taddr);
                end if;
                v.busOb.vld := '1';
                v.busOb.lst := '0';
@@ -361,55 +361,55 @@ begin
 
          when HDR  =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
-               v.anb := not r.anb;
-               if ( r.anb ) then
+               v.anb := not rRd.anb;
+               if ( rRd.anb ) then
                   v.busOb.dat := (others => '0');
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(r.taddr(r.taddr'left downto 8));
+                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rRd.taddr(rRd.taddr'left downto 8));
                   end if;
                   -- prefetch/register
                   v.rdatA := rdatA;
                   v.rdatB := rdatB;
-                  v.raddr := r.raddr + 1;
+                  v.raddr := rRd.raddr + 1;
                else
-                  v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1);
+                  v.busOb.dat := rRd.rdatA(rRd.rdatA'left downto rRd.rdatA'left - v.busOb.dat'length + 1);
                   v.state     := READ;
                end if;
             end if;
 
          when READ =>
             if ( rdyOb = '1' ) then -- busOb.vld  is '1' at this point
-               v.anb := not r.anb;
-               if ( r.anb ) then
-                  v.busOb.dat := r.rdatB(r.rdatB'left downto r.rdatB'left - v.busOb.dat'length + 1);
+               v.anb := not rRd.anb;
+               if ( rRd.anb ) then
+                  v.busOb.dat := rRd.rdatB(rRd.rdatB'left downto rRd.rdatB'left - v.busOb.dat'length + 1);
                   v.rdatA     := rdatA;
                   v.rdatB     := rdatB;
-                  if ( r.raddr = END_ADDR_C ) then
+                  if ( rRd.raddr = END_ADDR_C ) then
                      v.lstDly    := '1';
-                     v.busOb.lst := r.lstDly;
+                     v.busOb.lst := rRd.lstDly;
                   else
-                     v.raddr     := r.raddr + 1;
+                     v.raddr     := rRd.raddr + 1;
                   end if;
                else
-                  if ( r.busOb.lst = '1' ) then
+                  if ( rRd.busOb.lst = '1' ) then
                      v.state := ECHO;
                      v.rdDon := '1';
                   end if;
-                  v.busOb.dat := r.rdatA(r.rdatA'left downto r.rdatA'left - v.busOb.dat'length + 1);
+                  v.busOb.dat := rRd.rdatA(rRd.rdatA'left downto rRd.rdatA'left - v.busOb.dat'length + 1);
                end if;
             end if;
       end case;
 
-      rin   <= v;
+      rinRd <= v;
    end process P_RD_COMB;
 
    P_RD_SEQ : process ( busClk ) is
    begin
       if ( rising_edge( busClk ) ) then
          if ( busRst = '1' ) then
-            r <= REG_INIT_C;
+            rRd <= REG_INIT_C;
          else
-            r <= rin;
+            rRd <= rinRd;
          end if;
       end if;
    end process P_RD_SEQ;
@@ -429,18 +429,18 @@ begin
    GEN_BUS_ILA : if ( false ) generate
       signal bTrg3 : std_logic_vector(7 downto 0);
    begin
-      bTrg3(0)          <= '1' when r.anb else '0';
+      bTrg3(0)          <= '1' when rRd.anb else '0';
       bTrg3(1)          <= rdyOb;
-      bTrg3(2)          <= r.busOb.vld;
-      bTrg3(4 downto 3) <= std_logic_vector( to_unsigned( StateType'pos( r.state ), 2 ) );
-      bTrg3(7 downto 5) <= r.busOb.dat(7 downto 5);
+      bTrg3(2)          <= rRd.busOb.vld;
+      bTrg3(4 downto 3) <= std_logic_vector( to_unsigned( StateType'pos( rRd.state ), 2 ) );
+      bTrg3(7 downto 5) <= rRd.busOb.dat(7 downto 5);
 
       U_ILA_REG : component ILAWrapper
          port map (
             clk  => busClk,
-            trg0 => r.rdatA(8 downto 1),
-            trg1 => r.rdatB(8 downto 1),
-            trg2 => std_logic_vector( r.raddr(7 downto 0) ),
+            trg0 => rRd.rdatA(8 downto 1),
+            trg1 => rRd.rdatB(8 downto 1),
+            trg2 => std_logic_vector( rRd.raddr(7 downto 0) ),
             trg3 => bTrg3
          );
    end generate GEN_BUS_ILA;
