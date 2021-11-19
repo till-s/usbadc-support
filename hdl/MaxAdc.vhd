@@ -49,20 +49,20 @@ architecture rtl of MaxADC is
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G - 1);
 
 
-   subtype  RamAddr   is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
+   subtype  RamAddr         is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
-   subtype  RamWord   is std_logic_vector(8 downto 0);
-   subtype  RamDWord  is std_logic_vector(17 downto 0);
+   subtype  RamWord         is std_logic_vector(8 downto 0);
+   subtype  RamDWord        is std_logic_vector(17 downto 0);
 
    constant END_ADDR_C      : RamAddr := to_unsigned( MEM_DEPTH_G - 1 , RamAddr'length);
 
-   type     RamArray  is array (MEM_DEPTH_G - 1 downto 0) of RamWord;
-   type     RamDArray is array (MEM_DEPTH_G - 1 downto 0) of RamDWord;
+   type     RamArray        is array (MEM_DEPTH_G - 1 downto 0) of RamWord;
+   type     RamDArray       is array (MEM_DEPTH_G - 1 downto 0) of RamDWord;
 
-   type     StateType is (ECHO, HDR, READ);
+   type     RdStateType     is (ECHO, HDR, READ);
 
-   type   RdRegType   is record
-      state   : StateType;
+   type   RdRegType         is record
+      state   : RdStateType;
       raddr   : RamAddr;
       rdatA   : RamWord;
       rdatB   : RamWord;
@@ -432,7 +432,7 @@ begin
       bTrg3(0)          <= '1' when rRd.anb else '0';
       bTrg3(1)          <= rdyOb;
       bTrg3(2)          <= rRd.busOb.vld;
-      bTrg3(4 downto 3) <= std_logic_vector( to_unsigned( StateType'pos( rRd.state ), 2 ) );
+      bTrg3(4 downto 3) <= std_logic_vector( to_unsigned( RdStateType'pos( rRd.state ), 2 ) );
       bTrg3(7 downto 5) <= rRd.busOb.dat(7 downto 5);
 
       U_ILA_REG : component ILAWrapper
