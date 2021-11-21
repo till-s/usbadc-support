@@ -93,7 +93,7 @@ architecture rtl of MaxADC is
       timer   => (others => '0')
    );
 
-   type     RdStateType     is (ECHO, HDR, READ, DROP);
+   type     RdStateType     is (ECHO, HDR, READ);
 
    type     RdRegType       is record
       state   : RdStateType;
@@ -421,10 +421,6 @@ begin
                     -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
                      v.rdDon:= '1';
                   end if;
-                  if ( busIb.lst /= '1' ) then
-                     v.state     := DROP;
-                     v.busOb.vld := '0';
-                  end if;
                end if;
             end if;
 
@@ -468,10 +464,6 @@ begin
                end if;
             end if;
 
-         when DROP =>
-            if ( ( busIb.vld and busIb.lst ) = '1' ) then
-               v.state := ECHO;
-            end if;
       end case;
 
       rinRd <= v;
@@ -657,8 +649,8 @@ begin
       U_ILA_REG : component ILAWrapper
          port map (
             clk  => busClk,
-            trg0 => rRd.rdatA(8 downto 1),
-            trg1 => rRd.rdatB(8 downto 1),
+            trg0 => rRd.rdatA(7 downto 0),
+            trg1 => rRd.rdatB(7 downto 0),
             trg2 => std_logic_vector( rRd.raddr(7 downto 0) ),
             trg3 => bTrg3
          );
