@@ -1,9 +1,11 @@
 library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
+use     ieee.math_real.all;
 
 use     work.CommandMuxPkg.all;
 use     work.ILAWrapperPkg.all;
+use     work.AcqCtlPkg.all;
 
 library unisim;
 use     unisim.vcomponents.all;
@@ -32,6 +34,11 @@ entity MaxADC is
       busClk      : in  std_logic;
       busRst      : in  std_logic;
 
+      parms       : in  AcqCtlParmType;
+      -- toggling 'parmsTgl' initiates a new acquisition (aborting a pending one)
+      parmsTgl    : in  std_logic;
+      parmsAck    : out std_logic;
+
       busIb       : in  SimpleBusMstType;
       rdyIb       : out std_logic;
 
@@ -48,20 +55,47 @@ architecture rtl of MaxADC is
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G - 1);
 
+   constant MS_TICK_PERIOD_C: natural := natural( round( ADC_CLOCK_FREQ_G / 1000.0 ) );
 
    subtype  RamAddr         is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
-   subtype  RamWord         is std_logic_vector(8 downto 0);
-   subtype  RamDWord        is std_logic_vector(17 downto 0);
+   subtype  RamWord         is std_logic_vector(7 downto 0);
+   subtype  RamDWord        is std_logic_vector(15 downto 0);
 
    constant END_ADDR_C      : RamAddr := to_unsigned( MEM_DEPTH_G - 1 , RamAddr'length);
 
    type     RamArray        is array (MEM_DEPTH_G - 1 downto 0) of RamWord;
    type     RamDArray       is array (MEM_DEPTH_G - 1 downto 0) of RamDWord;
 
-   type     RdStateType     is (ECHO, HDR, READ);
+   type     WrStateType     is (FILL, RUN, HOLD);
 
-   type   RdRegType         is record
+   type     WrRegType       is record
+      state   : WrStateType;
+      taddr   : RamAddr;
+      lstTrg  : std_logic;
+      wasTrg  : boolean;
+      nsmpls  : natural range 0 to MEM_DEPTH_G - 1;
+      ovrA    : natural range 0 to MEM_DEPTH_G - 1;
+      ovrB    : natural range 0 to MEM_DEPTH_G - 1;
+      parms   : AcqCtlParmType;
+      timer   : unsigned(15 downto 0);
+   end record WrRegType;
+
+   constant WR_REG_INIT_C   : WrRegType := (
+      state   => FILL,
+      taddr   => (others => '0'),
+      lstTrg  => '0',
+      wasTrg  => false,
+      ovrA    => 0,
+      ovrB    => 0,
+      nsmpls  => 0,
+      parms   => ACQ_CTL_PARM_INIT_C,
+      timer   => (others => '0')
+   );
+
+   type     RdStateType     is (ECHO, HDR, READ, DROP);
+
+   type     RdRegType       is record
       state   : RdStateType;
       raddr   : RamAddr;
       rdatA   : RamWord;
@@ -73,7 +107,7 @@ architecture rtl of MaxADC is
       rdDon   : std_logic;
    end record RdRegType;
 
-   constant REG_INIT_C : RdRegType := (
+   constant RD_REG_INIT_C : RdRegType := (
       state   => ECHO,
       rdatA   => (others => 'X'),
       rdatB   => (others => 'X'),
@@ -85,8 +119,11 @@ architecture rtl of MaxADC is
       rdDon   => '0'
    );
 
-   signal rRd       : RdRegType    := REG_INIT_C;
+   signal rRd       : RdRegType    := RD_REG_INIT_C;
    signal rinRd     : RdRegType;
+
+   signal rWr       : WrRegType    := WR_REG_INIT_C;
+   signal rinWr     : WrRegType;
 
    signal chnl0Data : std_logic_vector(8 downto 0);
    signal chnl1Data : std_logic_vector(8 downto 0);
@@ -100,16 +137,35 @@ architecture rtl of MaxADC is
 
    signal memClk    : std_logic;
 
+   signal waddr     : RamAddr      := (others => '0');
+
    signal rdatA     : RamWord;
    signal rdatB     : RamWord;
    signal rdat0     : RamWord;
    signal rdat1     : RamWord;
 
+   signal wdatA     : RamWord;
+   signal wdatB     : RamWord;
+   signal wdorA     : std_logic;
+   signal wdorB     : std_logic;
+
    signal chnl0DataResynced : std_logic_vector(8 downto 0);
 
    signal wrDis             : std_logic := '0';
    signal wrDon             : std_logic;
+   signal memFull           : std_logic;
    signal rdDon             : std_logic;
+   signal wrEna             : boolean;
+   signal wrDecm            : std_logic := '1';
+   signal extTrgSyncDelayed : std_logic := '0'; -- must be delayed by decimation filter group delay
+   signal trg               : std_logic;
+   signal startAcq          : std_logic := '0';
+
+   signal acqTglIb          : std_logic;
+   signal acqTglOb          : std_logic := '0';
+
+   signal msTick            : boolean;
+   signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
 
 begin
 
@@ -233,12 +289,13 @@ begin
 
       end generate GEN_IDDR_BITS;
 
+   memFull <= '1' when (rWr.state = HOLD) else '0';
 
    U_WR_SYNC : entity work.SynchronizerBit
       port map (
          clk       => busClk,
          rst       => '0',
-         datInp(0) => wrDis,
+         datInp(0) => memFull,
          datOut(0) => wrDon
       );
 
@@ -250,81 +307,81 @@ begin
          datOut(0) => rdDon
       );
 
+   wrEna <= ( ( (not memFull) and wrDecm ) = '1' );
+
    GEN_TWOMEM_G : if ( not ONE_MEM_G ) generate
-      signal DPRAM0    : RamArray;
-      signal DPRAM1    : RamArray;
-
-      signal waddrA    : RamAddr := (others => '0');
-      signal waddrB    : RamAddr := (others => '0');
+      signal DPRAMA    : RamArray;
+      signal DPRAMB    : RamArray;
    begin
-
-      waddrB <= waddrA;
 
       P_WR_AB : process ( memClk ) is
       begin
          if ( rising_edge( memClk ) ) then
             chnl0DataResynced               <= chnl0Data;
-            if ( wrDis = '0' ) then
-               DPRAM0( to_integer(waddrA) ) <= chnl0DataResynced;
-               DPRAM1( to_integer(waddrB) ) <= chnl1Data;
-               if ( waddrA = END_ADDR_C ) then
-                  waddrA                    <= (others => '0');
+            if ( wrEna ) then
+               DPRAMA( to_integer(waddr) )  <= wdatA;
+               DPRAMB( to_integer(waddr) )  <= wdatB;
+               if ( waddr = END_ADDR_C ) then
+                  waddr                     <= (others => '0');
                   wrDis                     <= '1';
                else
-                  waddrA                    <= waddrA + 1;
+                  waddr                     <= waddr + 1;
                end if;
-            elsif ( rdDon = '1' ) then
-               wrDis <= '0';
             end if;
          end if;
       end process P_WR_AB;
 
-      rdat0 <= DPRAM0(to_integer(rRd.raddr));
-      rdat1 <= DPRAM1(to_integer(rRd.raddr));
+      rdatA <= DPRAMA(to_integer(rRd.raddr));
+      rdatB <= DPRAMB(to_integer(rRd.raddr));
 
    end generate GEN_TWOMEM_G;
 
    GEN_ONEMEM_G : if ( ONE_MEM_G ) generate
       signal DPRAMD    : RamDArray;
-      signal waddr     : RamAddr := (others => '0');
    begin
 
       P_WR_AB : process ( memClk ) is
       begin
          if ( rising_edge( memClk ) ) then
             chnl0DataResynced              <= chnl0Data;
-            if ( wrDis = '0' ) then
-               DPRAMD( to_integer(waddr) ) <= chnl1Data & chnl0DataResynced;
+            if ( wrEna ) then
+               DPRAMD( to_integer(waddr) ) <= wdatB & wdatA;
                if ( waddr = END_ADDR_C ) then
                   waddr                    <= (others => '0');
                   wrDis                    <= '1';
                else
                   waddr                    <= waddr + 1;
                end if;
-            elsif ( rdDon = '1' ) then
-               wrDis <= '0';
             end if;
          end if;
       end process P_WR_AB;
 
-      rdat0 <= DPRAMD( to_integer( rRd.raddr ) )( 8 downto  0);
-      rdat1 <= DPRAMD( to_integer( rRd.raddr ) )(17 downto  9);
+      rdatA <= DPRAMD( to_integer( rRd.raddr ) )( 8 downto  1);
+      rdatB <= DPRAMD( to_integer( rRd.raddr ) )(15 downto  8);
 
    end generate GEN_ONEMEM_G;
 
    GEN_DDR_A_FIRST : if ( DDR_A_FIRST_G ) generate
       rdatA    <= rdat0;
       rdatB    <= rdat1;
+      wdatA    <= chnl0DataResynced(8 downto 1);
+      wdorA    <= chnl0DataResynced(         0);
+      wdatB    <= chnl1Data        (8 downto 1);
+      wdorB    <= chnl1Data        (         0);
    end generate GEN_DDR_A_FIRST;
 
    GEN_DDR_B_FIRST : if ( not DDR_A_FIRST_G ) generate
       rdatA    <= rdat1;
       rdatB    <= rdat0;
+      wdatA    <= chnl1Data        (8 downto 1);
+      wdorA    <= chnl1Data        (         0);
+      wdatB    <= chnl0DataResynced(8 downto 1);
+      wdorB    <= chnl0DataResynced(         0);
    end generate GEN_DDR_B_FIRST;
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon) is
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB) is
       variable v : RdRegType;
    begin
       v     := rRd;
@@ -347,16 +404,28 @@ begin
 
             rdyIb   <= rdyOb;
             if ( (rdyOb and busIb.vld) = '1' ) then
-               v.state     := HDR;
-               if ( NUM_ADDR_BITS_C > 7 ) then
-                  v.busOb.dat                := std_logic_vector(rRd.taddr(7 downto 0));
+               if ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
+                  v.state     := HDR;
+                  if ( NUM_ADDR_BITS_C > 7 ) then
+                     v.busOb.dat                := std_logic_vector(rRd.taddr(7 downto 0));
+                  else
+                     v.busOb.dat                := (others => '0');
+                     v.busOb.dat(rRd.taddr'range) := std_logic_vector(rRd.taddr);
+                  end if;
+                  v.busOb.vld := '1';
+                  v.busOb.lst := '0';
+                  v.lstDly    := '0';
                else
-                  v.busOb.dat                := (others => '0');
-                  v.busOb.dat(rRd.taddr'range) := std_logic_vector(rRd.taddr);
+                  busOb.lst <= '1';
+                  if ( wrDon = '1' ) then
+                    -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
+                     v.rdDon:= '1';
+                  end if;
+                  if ( busIb.lst /= '1' ) then
+                     v.state     := DROP;
+                     v.busOb.vld := '0';
+                  end if;
                end if;
-               v.busOb.vld := '1';
-               v.busOb.lst := '0';
-               v.lstDly    := '0';
             end if;
 
          when HDR  =>
@@ -398,6 +467,11 @@ begin
                   v.busOb.dat := rRd.rdatA(rRd.rdatA'left downto rRd.rdatA'left - v.busOb.dat'length + 1);
                end if;
             end if;
+
+         when DROP =>
+            if ( ( busIb.vld and busIb.lst ) = '1' ) then
+               v.state := ECHO;
+            end if;
       end case;
 
       rinRd <= v;
@@ -407,7 +481,7 @@ begin
    begin
       if ( rising_edge( busClk ) ) then
          if ( busRst = '1' ) then
-            rRd <= REG_INIT_C;
+            rRd <= RD_REG_INIT_C;
          else
             rRd <= rinRd;
          end if;
@@ -425,6 +499,151 @@ begin
             trg3 => x"00"
          );
    end generate GEN_MEM_ILA;
+
+   P_TRG : process ( rWr, wdatA, wdatB, extTrgSyncDelayed ) is
+      variable v : std_logic;
+      variable l : signed(wdatA'range);
+   begin
+      l := rWr.parms.lvl(rWr.parms.lvl'left downto rWr.parms.lvl'left - wdatA'length + 1);
+      v := '0';
+      case ( rWr.parms.src ) is
+         when CHA =>
+            if ( signed(wdatA) >= l ) then
+               v := '1';
+            end if;
+         when CHB =>
+            if ( signed(wdatB) >= l ) then
+               v := '1';
+            end if;
+         when EXT =>
+            v := extTrgSyncDelayed;
+         when others => -- manual
+            -- handle separately
+      end case;
+      if ( not rWr.parms.rising ) then
+         v :=  not v;
+      end if;
+
+      trg <= v;
+   end process P_TRG;
+
+   msTick <= (msTickCounter = 0);
+
+   P_TICK : process ( memClk ) is
+   begin
+      if ( rising_edge( memClk ) ) then
+         if ( msTick ) then
+            msTickCounter <= MS_TICK_PERIOD_C - 1;
+         else
+            msTickCounter <= msTickCounter - 1;
+         end if;
+      end if;
+   end process P_TICK;
+
+   P_WR_COMB : process ( rWr, trg, waddr, rdDon, msTick, wdorA, wdorB ) is
+      variable v : WrRegType;
+   begin
+
+      v        := rWr;
+      v.nsmpls := rWr.nsmpls + 1;
+      v.lstTrg := trg;
+
+      -- remember overrange 'seen' during the last MEM_DEPTH_G samples
+      if ( wdorA = '1' ) then
+         v.ovrA := MEM_DEPTH_G - 1;
+      elsif ( rWr.ovrA /= 0 ) then
+         v.ovrA := rWr.ovrA - 1;
+      end if;
+      if ( wdorB = '1' ) then
+         v.ovrB := MEM_DEPTH_G - 1;
+      elsif ( rWr.ovrB /= 0 ) then
+         v.ovrB := rWr.ovrB - 1;
+      end if;
+
+      case ( rWr.state ) is
+
+         when FILL       => 
+            if ( rWr.nsmpls >= rWr.parms.nprets ) then
+               v.state  := RUN;
+               v.nsmpls := rWr.nsmpls; -- discard oldest sample (need 1 to fill 'lstTrg')
+               if ( rWr.parms.autoTimeMs /= 0 ) then
+                  v.timer := rWr.parms.autoTimeMs;
+               end if;
+            end if;
+
+         when RUN        => 
+            if ( msTick and ( rWr.timer /= unsigned(to_signed(-1, rWr.timer'length)) ) ) then
+               v.timer := rWr.timer - 1;
+            end if;
+            if ( ( not rWr.lstTrg and trg ) = '1' or ( rWr.timer = 0 ) ) then
+               v.wasTrg := true;
+               v.taddr  := waddr;
+            end if;
+            if ( v.wasTrg ) then
+               -- compare to MEM_DEPTH_G - 1; this last sample still
+               -- is stored and in 'HOLD' state rWr.nsmpls = MEM_DEPTH_G 
+               if ( MEM_DEPTH_G - 1 = rWr.nsmpls ) then
+                  v.state := HOLD;
+               end if;
+            else
+               -- discard oldest sample
+               v.nsmpls := rWr.nsmpls;
+            end if;
+
+         when HOLD       =>
+            -- hold the overrange detector
+            v.ovrA   := rWr.ovrA;
+            v.ovrB   := rWr.ovrB;
+            -- hold the sample counter and other state
+            -- that is possibly read by the readout process
+            v.nsmpls := rWr.nsmpls;
+            v.lstTrg := rWr.lstTrg;
+            if ( rdDon = '1' ) then
+               v.nsmpls := 0;
+               v.state  := FILL;
+               v.wasTrg := false;
+               v.timer  := to_unsigned( 0, v.timer'length );
+               v.ovrA   := 0;
+               v.ovrB   := 0;
+            end if;
+
+      end case;
+      rinWr <= v;
+   end process P_WR_COMB;
+
+   U_WR_SYNC_ACQ : entity work.SynchronizerBit
+      port map (
+         clk       => memClk,
+         rst       => '0',
+         datInp(0) => parmsTgl,
+         datOut(0) => acqTglIb
+      );
+
+   U_RD_SYNC_ACQ : entity work.SynchronizerBit
+      port map (
+         clk       => busClk,
+         rst       => '0',
+         datInp(0) => acqTglOb,
+         datOut(0) => parmsAck
+      );
+
+   startAcq <= acqTglIb xor acqTglOb;
+
+   P_WR_SEQ : process ( memClk ) is
+   begin
+      if ( rising_edge( memClk ) ) then
+         acqTglOb <= acqTglIb;
+         if ( startAcq = '1' ) then
+            rWr       <= WR_REG_INIT_C;
+            rWr.parms <= parms;
+            if ( parms.nprets > MEM_DEPTH_G - 1 ) then
+               rWr.parms.nprets <= to_unsigned( MEM_DEPTH_G - 1, rWr.parms.nprets'length );
+            end if;
+         elsif ( wrDecm = '1' ) then
+            rWr <= rinWr;
+         end if;
+      end if;
+   end process P_WR_SEQ;
 
    GEN_BUS_ILA : if ( false ) generate
       signal bTrg3 : std_logic_vector(7 downto 0);
