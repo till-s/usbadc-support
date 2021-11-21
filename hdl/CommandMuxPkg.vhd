@@ -39,6 +39,8 @@ package CommandMuxPkg is
    subtype  SubCommandAcqType is std_logic_vector(1 downto 0);
    constant CMD_ACQ_READ_C    : SubCommandAcqType := SubCommandAcqType( to_unsigned( 0, SubCommandAcqType'length ) );
    constant CMD_ACQ_FLUSH_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 1, SubCommandAcqType'length ) );
+   -- read back sample buffer size
+   constant CMD_ACQ_MSIZE_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 2, SubCommandAcqType'length ) );
 
    function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0))
       return SubCommandAcqType;

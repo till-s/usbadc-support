@@ -68,12 +68,13 @@ architecture rtl of CommandAcqParm is
 begin
 
    P_COMB : process ( r, mIb, rOb, ackIb ) is
+      constant FOO_C   : std_logic_vector := toSlv( ACQ_CTL_PARM_INIT_C ); -- just to get the length/range
       variable v       : RegType;
-      variable rb      : std_logic_vector(7 downto 0);
+      variable rb      : std_logic_vector(FOO_C'range);
    begin
       v := r;
 
-      rb      := toSlv( r.p )( 7 + 8*r.count downto 8*r.count );
+      rb      := toSlv( r.p );
 
       mOb     <= mIb;
 
@@ -96,7 +97,7 @@ begin
 
          when PROC  =>
             if ( ( rOb and mIb.vld ) = '1' ) then
-               mOb.dat <= rb;
+               mOb.dat <= rb(7 + 8*r.count downto 8*r.count);
 
                rb(7 + 8*r.count downto 8*r.count) := mIb.dat;
 
@@ -129,6 +130,7 @@ begin
                   else
                      v.state  := ECHO;
                      mOb.lst  <= '1'; -- tell CommandMux we're done; they'll wait until 'mIb.lst' is seen
+assert false severity failure;
                   end if;
                else
                   v.count := r.count + 1;

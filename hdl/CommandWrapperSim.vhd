@@ -9,7 +9,7 @@ end entity CommandWrapperSim;
 
 architecture sim of CommandWrapperSim is
 
-   constant MEM_DEPTH_C : natural := 16;
+   constant MEM_DEPTH_C : natural := 1024;
    constant ADC_FIRST_C : unsigned(7 downto 0) := x"A0";
 
    signal clk     : std_logic := '0';
@@ -87,11 +87,7 @@ begin
    P_FILL : process ( clk ) is
    begin
       if ( clk'event ) then
-         if ( adcDDR < ADC_FIRST_C + 2*MEM_DEPTH_C ) then
-            adcDDR <= adcDDR + 1;
-         else
-            adcDDR <= ADC_FIRST_C;
-         end if;
+         adcDDR <= adcDDR + 1;
       end if;
    end process P_FILL;
 

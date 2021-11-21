@@ -64,6 +64,28 @@ architecture rtl of MaxADC is
 
    constant END_ADDR_C      : RamAddr := to_unsigned( MEM_DEPTH_G - 1 , RamAddr'length);
 
+   function memInfo return unsigned is
+      constant w : natural := 16;
+      constant b : natural := 512;
+      variable i : natural := MEM_DEPTH_G;
+      variable j : natural := MEM_DEPTH_G;
+      variable r : unsigned(w - 1 downto 0);
+   begin
+      if ( i < b ) then
+         j := 0;
+      else
+         j := i / b - 1;
+      end if;
+      assert ( ( i  mod  b ) /= 0 or ( j >= 2**w ) ) report "unable to accurately report memory size" severity warning;
+      if ( j >= 2**w ) then
+         j := 2**w - 1;
+      end if;
+      r := to_unsigned( j, r'length );
+      return r;
+   end memInfo;
+
+   constant MSIZE_INFO_C    : unsigned(15 downto 0) := memInfo;
+
    type     RamArray        is array (MEM_DEPTH_G - 1 downto 0) of RamWord;
    type     RamDArray       is array (MEM_DEPTH_G - 1 downto 0) of RamDWord;
 
@@ -74,9 +96,9 @@ architecture rtl of MaxADC is
       taddr   : RamAddr;
       lstTrg  : std_logic;
       wasTrg  : boolean;
-      nsmpls  : natural range 0 to MEM_DEPTH_G - 1;
-      ovrA    : natural range 0 to MEM_DEPTH_G - 1;
-      ovrB    : natural range 0 to MEM_DEPTH_G - 1;
+      nsmpls  : RamAddr;
+      ovrA    : RamAddr;
+      ovrB    : RamAddr;
       parms   : AcqCtlParmType;
       timer   : unsigned(15 downto 0);
    end record WrRegType;
@@ -86,14 +108,14 @@ architecture rtl of MaxADC is
       taddr   => (others => '0'),
       lstTrg  => '0',
       wasTrg  => false,
-      ovrA    => 0,
-      ovrB    => 0,
-      nsmpls  => 0,
+      ovrA    => (others => '0'),
+      ovrB    => (others => '0'),
+      nsmpls  => (others => '0'),
       parms   => ACQ_CTL_PARM_INIT_C,
       timer   => (others => '0')
    );
 
-   type     RdStateType     is (ECHO, HDR, READ);
+   type     RdStateType     is (ECHO, MSIZE, HDR, READ);
 
    type     RdRegType       is record
       state   : RdStateType;
@@ -168,6 +190,8 @@ architecture rtl of MaxADC is
    signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
 
 begin
+
+   assert MEM_DEPTH_G mod 1024 = 0 and MEM_DEPTH_G >= 1024 report "Cannot report accurate memory size" severity warning;
 
    GEN_DCM : if ( USE_DCM_G ) generate
       signal dcmOutClk0   : std_logic;
@@ -404,7 +428,12 @@ begin
 
             rdyIb   <= rdyOb;
             if ( (rdyOb and busIb.vld) = '1' ) then
-               if ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
+               if ( CMD_ACQ_MSIZE_C = subCommandAcqGet( busIb.dat ) ) then
+                  v.state     := MSIZE;
+                  v.busOb.dat := std_logic_vector( MSIZE_INFO_C(7 downto 0) );
+                  v.busOb.lst := '0';
+                  v.busOb.vld := '1';
+               elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   if ( NUM_ADDR_BITS_C > 7 ) then
                      v.busOb.dat                := std_logic_vector(rRd.taddr(7 downto 0));
@@ -417,10 +446,21 @@ begin
                   v.lstDly    := '0';
                else
                   busOb.lst <= '1';
-                  if ( wrDon = '1' ) then
-                    -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
+                  if ( wrDon = '1' ) then  -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
                      v.rdDon:= '1';
                   end if;
+               end if;
+            end if;
+
+         when MSIZE =>
+            if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
+               v.anb := not rRd.anb;
+               if ( rRd.anb ) then
+                  v.busOb.dat := std_logic_vector( MSIZE_INFO_C(15 downto 8) );
+                  v.busOb.lst := '1';
+               else
+                  v.busOb.vld := '0';
+                  v.state     := ECHO;
                end if;
             end if;
 
@@ -542,38 +582,39 @@ begin
 
       -- remember overrange 'seen' during the last MEM_DEPTH_G samples
       if ( wdorA = '1' ) then
-         v.ovrA := MEM_DEPTH_G - 1;
+         v.ovrA := to_unsigned( MEM_DEPTH_G - 1, v.ovrA'length );
       elsif ( rWr.ovrA /= 0 ) then
          v.ovrA := rWr.ovrA - 1;
       end if;
       if ( wdorB = '1' ) then
-         v.ovrB := MEM_DEPTH_G - 1;
+         v.ovrB := to_unsigned( MEM_DEPTH_G - 1, v.ovrB'length );
       elsif ( rWr.ovrB /= 0 ) then
          v.ovrB := rWr.ovrB - 1;
       end if;
 
       case ( rWr.state ) is
 
-         when FILL       => 
+         when FILL       =>
             if ( rWr.nsmpls >= rWr.parms.nprets ) then
                v.state  := RUN;
-               v.nsmpls := rWr.nsmpls; -- discard oldest sample (need 1 to fill 'lstTrg')
+               -- discard oldest sample (need 1 to fill 'lstTrg')
+               v.nsmpls := resize( rWr.parms.nprets, v.nsmpls'length );
                if ( rWr.parms.autoTimeMs /= 0 ) then
                   v.timer := rWr.parms.autoTimeMs;
                end if;
             end if;
 
-         when RUN        => 
+         when RUN        =>
             if ( msTick and ( rWr.timer /= unsigned(to_signed(-1, rWr.timer'length)) ) ) then
                v.timer := rWr.timer - 1;
             end if;
-            if ( ( not rWr.lstTrg and trg ) = '1' or ( rWr.timer = 0 ) ) then
+            if ( not rWr.wasTrg and ( ( not rWr.lstTrg and trg ) = '1' or ( rWr.timer = 0 ) ) ) then
                v.wasTrg := true;
                v.taddr  := waddr;
             end if;
             if ( v.wasTrg ) then
                -- compare to MEM_DEPTH_G - 1; this last sample still
-               -- is stored and in 'HOLD' state rWr.nsmpls = MEM_DEPTH_G 
+               -- is stored and in 'HOLD' state rWr.nsmpls = MEM_DEPTH_G
                if ( MEM_DEPTH_G - 1 = rWr.nsmpls ) then
                   v.state := HOLD;
                end if;
@@ -591,14 +632,13 @@ begin
             v.nsmpls := rWr.nsmpls;
             v.lstTrg := rWr.lstTrg;
             if ( rdDon = '1' ) then
-               v.nsmpls := 0;
+               v.nsmpls := to_unsigned( 0, v.nsmpls'length );
                v.state  := FILL;
                v.wasTrg := false;
                v.timer  := to_unsigned( 0, v.timer'length );
-               v.ovrA   := 0;
-               v.ovrB   := 0;
+               v.ovrA   := to_unsigned( 0, v.ovrA'length );
+               v.ovrB   := to_unsigned( 0, v.ovrB'length );
             end if;
-
       end case;
       rinWr <= v;
    end process P_WR_COMB;

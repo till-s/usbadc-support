@@ -9,6 +9,8 @@ package AcqCtlPkg is
 
    -- manual/immediate trigger is achieved by setting 'autoTimeMs' to 0
 
+   constant AUTO_TIME_STOP_C : unsigned(15 downto 0) := (others => '1');
+
    type AcqCtlParmType is record
       src          : TriggerSrcType;
       rising       : boolean;
@@ -27,11 +29,13 @@ package AcqCtlPkg is
       lvl         => (others => '0'),
       rising      => true,
       nprets      => (others => '0'),
-      autoTimeMs  => (others => '0'),
+      autoTimeMs  => AUTO_TIME_STOP_C,
       decm        => (others => '0')
    );
 
    function acqCtlParmSizeBytes return natural;
+
+   function ite(constant x: in boolean) return std_logic;
 
 end package AcqCtlPkg;
 
@@ -49,19 +53,23 @@ package body AcqCtlPkg is
       return v;
    end function acqCtlParmSizeBytes;
 
-   function toSlv(constant x : in AcqCtlParmType) return std_logic_vector is
-      variable e : std_logic;
+   function ite(constant x: in boolean) return std_logic is
    begin
-      if ( x.rising ) then
-         e := '1';
-      else
-         e := '0';
-      end if;
-      return    std_logic_vector( x.decm       )
+      if ( x ) then return '1'; else return '0'; end if;
+   end function ite;
+
+   function toSlv(constant x : in AcqCtlParmType) return std_logic_vector is
+      constant e : std_logic        := ite( x.rising );
+      constant v : std_logic_vector :=
+             (  std_logic_vector( x.decm       )
               & std_logic_vector( x.autoTimeMs )
               & std_logic_vector( x.nprets     )
               & std_logic_vector( x.lvl        )
-              & x"0" & e & std_logic_vector( to_unsigned( TriggerSrcType'pos( x.src ), 3 ) );
+              & x"0" & e & std_logic_vector( to_unsigned( TriggerSrcType'pos( x.src ), 3 ) ) );
+      variable r : std_logic_vector(v'high downto v'low);
+   begin
+      r := v;
+      return r;
    end function toSlv;
 
    function toAcqCtlParmType(constant x : std_logic_vector) return AcqCtlParmType is
@@ -75,10 +83,11 @@ package body AcqCtlPkg is
          v.src := EXT;
       end if;
       v.rising     := (x(3) = '1');
+report integer'image( x'left ) & " " & integer'image( x'right );
       v.lvl        :=   signed( x(23 downto  8) );
       v.nprets     := unsigned( x(39 downto 24) );
       v.autoTimeMs := unsigned( x(55 downto 40) );
-      v.decm       := unsigned( x(69 downto 46) );
+      v.decm       := unsigned( x(79 downto 56) );
       return v;
    end function toAcqCtlParmType;
 end package body AcqCtlPkg;
