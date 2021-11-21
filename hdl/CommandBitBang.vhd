@@ -82,7 +82,7 @@ begin
          when ECHO =>
             v.lstSeen := '0';
             if ( (rOb and mIb.vld) = '1' ) then
-               v.cmd := mIb.dat(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C);
+               v.cmd := subCommandBBGet( mIb.dat );
                if ( mIb.lst /= '1' ) then
                   v.state := FWD;
                end if;
