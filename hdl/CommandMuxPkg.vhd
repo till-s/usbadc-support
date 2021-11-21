@@ -33,6 +33,14 @@ package CommandMuxPkg is
    constant CMD_BB_SPI_PGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 3, SubCommandBBType'length ) );
    constant CMD_BB_I2C_C      : SubCommandBBType := SubCommandBBType( to_unsigned( 4, SubCommandBBType'length ) );
 
+   function subCommandBBGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandBBType;
+
+   subtype  SubCommandAcqType is std_logic_vector(1 downto 0);
+   constant CMD_ACQ_READ_C    : SubCommandAcqType := SubCommandAcqType( to_unsigned( 0, SubCommandAcqType'length ) );
+   constant CMD_ACQ_FLUSH_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 1, SubCommandAcqType'length ) );
+
+   function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandAcqType;
+
    function numBits(constant x : integer) return integer;
 
 end package CommandMuxPkg;
@@ -44,5 +52,15 @@ package body CommandMuxPkg is
       if ( x = 0 ) then return 1; end if;
       return integer( floor( log2( real( x ) ) ) ) + 1;
    end function numBits;
+
+   function subCommandBBGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandBBType is
+   begin
+      return SubCommandBBType( cmd(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C) );
+   end function subCommandBBGet;
+
+   function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandAcqType is
+   begin
+      return SubCommandAcqType( cmd(NUM_CMD_BITS_C + SubCommandAcqType'length - 1 downto NUM_CMD_BITS_C) );
+   end function subCommandAcqGet;
 
 end package body CommandMuxPkg;
