@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/fcntl.h>
+#include <errno.h>
 #include <sys/select.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -46,15 +47,23 @@ size_t             i;
 			snprintf(msg, sizeof(msg), "unable to open device '%s'", devn);
 			perror(msg);
 			if ( EBUSY == errno ) {
-				fprintf(stderr, "another application probably holds the port open?\n");
+				fprintf(stderr, "another application probably holds the port open? (%i)\n", (int)i);
 			}
 			goto bail;
 		}
 
-		if ( ioctl( fd, TIOCEXCL ) ) {
-			snprintf(msg, sizeof(msg), "settiong TIOCEXCL failed");
-			perror(msg);
-			goto bail;
+		/* Hack - if we are using the simulator/pty then the exclusive flag
+		 * will survive an open-close-open cycle and so we skip the safety
+		 * test...
+		 */
+		if ( 0 == ttyname_r( fd, msg, sizeof(msg) ) && strstr(msg, "/pts/") ) {
+			i = 1;
+		} else {
+			if ( ioctl( fd, TIOCEXCL ) ) {
+				snprintf(msg, sizeof(msg), "settiong TIOCEXCL failed");
+				perror(msg);
+				goto bail;
+			}
 		}
 		if ( 1 == i ) {
 			break;

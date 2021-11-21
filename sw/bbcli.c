@@ -4,6 +4,7 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <getopt.h>
+#include <ctype.h>
 
 #include "fwComm.h"
 #include "fwUtil.h"
@@ -27,6 +28,9 @@ static void usage(const char *nm)
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
 	printf("   -B                 : dump ADC buffer (raw).\n");
+    printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts').\n");
+	printf("   -p                 : dump acquisition parameters.\n");
+	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : access PGA registers.\n");
 	printf("   -A                 : access ADC registers.\n");
 	printf("\n");
@@ -62,11 +66,119 @@ static int sz2bsz(int sz)
 #define TEST_PGA 2
 #define TEST_ADC 3
 
+static int
+scanl(const char *tok, const char *eq, long *vp)
+{
+	if ( 1 != sscanf( eq + 1, "%li", vp ) ) {
+		fprintf(stderr, "Error -- parseAcqParam: unable to scan value in '%s'\n", tok);
+		return -1;
+	}
+	return 0;
+}
+
+static int
+parseAcqParams(AcqParams *pp, const char *ops)
+{
+char *str = strdup( ops );
+char *ctx;
+char *tok;
+char *eq;
+char *val;
+int   rval = -1;
+long  v;
+
+	if ( ! str ) {	
+		fprintf(stderr, "Error -- parseAcqParams: no memory\n");
+		return -1;
+	}
+
+	pp->mask = ACQ_PARAM_MSK_GET; /* clear mask */
+
+	for ( (tok = strtok_r( str, ",", &ctx )); tok; (tok = strtok_r(0, ",", &ctx)) ) {
+		if ( ! (eq = strchr(tok, '=')) ) {
+			fprintf(stderr, "Error -- parseAcqParams: expect <parm> '=' <value> pairs ('=' missing in op %s)\n", tok);
+			goto bail;
+		}
+
+		switch ( toupper( tok[0] ) ) {
+			case 'L':
+				if ( scanl( tok, eq, &v ) ) goto bail;
+				pp->level = (int16_t) v;
+				pp->mask |= ACQ_PARAM_MSK_LVL;
+				break;
+			case 'N':
+				if ( scanl( tok, eq, &v ) ) goto bail;
+				pp->npts  = (uint32_t) v;
+				pp->mask |= ACQ_PARAM_MSK_NPT;
+				break;
+			case 'A':
+				for ( val = eq + 1; isspace( *val ); val++ )
+					/* nothing else */;
+				if ( 'I' == toupper( *val ) ) {
+					v = ACQ_PARAM_TIMEOUT_INF;
+				} else if ( scanl( tok, eq, &v ) ) {
+					goto bail;
+				}
+				pp->autoTimeoutMS = (uint32_t) v;
+				pp->mask |= ACQ_PARAM_MSK_AUT;
+				break;
+			case 'D':
+				if ( scanl( tok, eq, &v ) ) goto bail;
+				pp->decimation = (uint32_t) v;
+				pp->mask |= ACQ_PARAM_MSK_DCM;
+				break;
+			case 'S':
+				for ( val = eq + 1; isspace( *val ); val++ )
+					/* nothing else */;
+				if (   ! strcmp( val, "Channel A")
+				    || ! strcmp( val, "ChannelA")
+				    || ! strcmp( val, "CHA")
+				    || ! strcmp( val, "CH_A")
+				    || ! strcmp( val, "A") ) {
+					pp->src = CHA;
+				} else
+				if (   ! strcmp( val, "Channel B")
+				    || ! strcmp( val, "ChannelB")
+				    || ! strcmp( val, "CHB")
+				    || ! strcmp( val, "CH_B")
+				    || ! strcmp( val, "B") ) {
+					pp->src = CHB;
+				} else if ( 'E' == toupper( *val ) ) {
+					pp->src = EXT;
+				} else {
+			    	fprintf(stderr, "Error -- parseAcqParams: Invalid trigger source '%s'\n", val);
+					goto bail;
+				}
+				pp->mask |= ACQ_PARAM_MSK_SRC;
+				break;
+			case 'E':
+				for ( val = eq + 1; isspace( *val ); val++ )
+					/* nothing else */;
+				switch( toupper( *val ) ) {
+					case 'R': pp->raising = 1; break;
+					case 'F': pp->raising = 0; break;
+					default :
+						fprintf(stderr, "Error -- parseAcqParams: Invalid trigger edge '%s'\n", val);
+						goto bail;
+				}
+				pp->mask |= ACQ_PARAM_MSK_EDG;
+				break;
+			default:
+			    fprintf(stderr, "Error -- parseAcqParams: invalid operation: '%s'\n", tok);
+				goto bail;
+		}
+	}
+
+	rval = 0;
+bail:
+	free( str );
+	return rval;
+}
+
 int main(int argc, char **argv)
 {
 const char        *devn      = "/dev/ttyUSB0";
 FWInfo            *fw        = 0;
-int                fd        = -1;
 int                rval      = 1;
 unsigned           speed     = 115200; /* not sure this really matters */
 uint8_t           *buf       = 0;
@@ -92,8 +204,10 @@ int                doit      = 0;
 int                debug     = 0;
 int                fwVersion = 0;
 int                dumpAdc   = 0;
+int                dumpPrms  = 0;
+const char        *trgOp     = 0;
 
-	while ( (opt = getopt(argc, argv, "hvABPVd:DIS:a:f:!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:hIPpS:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -103,10 +217,13 @@ int                dumpAdc   = 0;
 			case 'P': dac  = 0; test_reg = TEST_PGA;                                  break;
 			case 'A': dac  = 0; test_reg = TEST_ADC;                                  break;
 			case 'B': dumpAdc = 1;                                                    break;
+			case 'F': dumpAdc = -1;                                                    break;
+			case 'p': dumpPrms= 1;                                                    break;
 			case 'v': debug++;                                                        break;
 			case 'V': fwVersion= 1;                                                   break;
 			case 'I': dac = 0; test_reg = TEST_I2C;                                   break;
 			case 'S': test_spi = strdup(optarg);                                      break;
+			case 'T': trgOp    = optarg;                                              break;
 			case 'a': u_p      = &flashAddr;                                          break;
 			case 'f': progFile = optarg;                                              break;
 			case '!': doit     = 1;                                                   break;
@@ -128,20 +245,11 @@ int                dumpAdc   = 0;
 		return 1;
 	}
 
-	if ( (fd = fifoOpen( devn, speed ) ) < 0 ) {
+	if ( ! (fw = fw_open( devn, speed ) ) ) {
 		goto bail;
 	}
 
-	if ( debug > 2 ) {
-		fifoSetDebug( 1 );
-	}
-
-	if ( test_spi || test_reg ) {
-		if ( ! (fw = fw_open_fd(fd)) ) {
-			goto bail;
-		}
-		fw_set_debug( fw, debug );
-	}
+	fw_set_debug( fw, debug );
 
 	if ( ! (buf = malloc(buflen)) ) {
 		perror("No memory");
@@ -149,24 +257,57 @@ int                dumpAdc   = 0;
 	}
 
 	if ( fwVersion ) {
-		uint8_t cmd = fw_get_cmd( FW_CMD_VERSION );
-		int     j;
-		i = fifoXferFrame( fd, &cmd, 0, 0, buf, buflen );	
-		if ( i > 0 ) {
-			printf("Firmware version (cmd ret: 0x%02" PRIx8 ")\n", cmd);
-			for ( j = 0; j < i; j++ ) {
-				printf("0x%02" PRIx8 " ", buf[j]);
-			}
-			printf("\n");
+		int64_t v = fw_get_version( fw );
+		if ( (int64_t)-1 == v ) {
+			fprintf(stderr, "Error: fw_get_version() failed\n");
+		} else {
+			printf("Firmware version: %08" PRIX64 "\n", v);
 		}
 	}
 
+
+	if ( trgOp ) {
+		AcqParams p;
+		if ( parseAcqParams( &p, trgOp ) ) {
+			goto bail;
+		}
+		if ( acq_set_params( fw, &p, 0 ) ) {
+			fprintf(stderr, "Error: transferring acquisition parameters failed\n");
+			goto bail;
+		}
+	}
+	if ( dumpPrms ) {
+		AcqParams p;
+		p.mask = ACQ_PARAM_MSK_GET;
+		if ( acq_set_params( fw, 0, &p ) ) {
+			fprintf(stderr, "Error: transferring acquisition parameters failed\n");
+			goto bail;
+		}
+		printf("Trigger Source     : %s\n",
+			CHA == p.src ? "Channel A" : (CHB == p.src ? "Channel B" : "External"));
+		printf("Edge               : %s\n", p.raising ? "raising" : "falling");
+		printf("Trigger Level      : %" PRId16 "\n", p.level );
+		printf("N Pretrig samples  : %" PRIu32 "\n", p.npts  );
+		printf("Autotrig timeout   : ");
+			if ( ACQ_PARAM_TIMEOUT_INF == p.autoTimeoutMS ) {
+				printf("<infinite>\n");
+			} else {
+				printf("%" PRIu32 " ms\n", p.autoTimeoutMS  );
+			}
+		printf("Decimation         : %" PRIu32 "\n", p.decimation);
+	}
+
+
 	if ( dumpAdc ) {
-		uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF );
-		int     j;
-		i = fifoXferFrame( fd, &cmd, 0, 0, buf, buflen );
+		int j;
+		printf("ADC Buffer size: %ld\n", buf_get_size( fw ));
+		if ( dumpAdc > 0 ) {
+			i = buf_read( fw, buf, buflen );
+		} else {
+			i = buf_flush( fw );
+		}
 		if ( i > 0 ) {
-			printf("ADC Data (cmd ret: 0x%02" PRIx8 ")\n", cmd);
+			printf("ADC Data\n");
 			for ( j = 0; j < i; j++ ) {
 				printf("0x%02" PRIx8 " ", buf[j]);
 				if ( 0xf == ( j & 0xf) ) {
@@ -404,10 +545,6 @@ int                dumpAdc   = 0;
 bail:
 	if ( fw ) {
 		fw_close( fw );
-	}
-	/* must close the fifo only AFTER FWInfo */
-	if ( fd >= 0 ) {
-		fifoClose( fd );
 	}
 	if ( (void*)progMap != MAP_FAILED ) {
 		munmap( (void*)progMap, progSize );

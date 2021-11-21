@@ -1,6 +1,6 @@
 all: bbcli
 
-CFLAGS=-O2 -Wall
+CFLAGS=-O2 -Wall -g
 
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 LOBJS+=lmh6882Sup.o

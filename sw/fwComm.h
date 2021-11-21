@@ -10,7 +10,7 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI } FWCmd;
+typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS } FWCmd;
 
 typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA } SPIDev;
 
@@ -32,6 +32,9 @@ fw_open_fd(int fd);
 
 void
 fw_close(FWInfo *fw);
+
+int64_t
+fw_get_version(FWInfo *fw);
 
 int
 bb_i2c_start(FWInfo *fw, int restart);
@@ -72,6 +75,78 @@ bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, ui
 int
 bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
 
+/*
+ * ADC Buffer / acquisition readout
+ */
+
+unsigned long
+buf_get_size(FWInfo *);
+
+int
+buf_flush(FWInfo *);
+
+int
+buf_read(FWInfo *, uint8_t *buf, size_t len);
+
+typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
+
+/* Immediate (manual) trigger can be achieved by 
+ * setting the auto-timeout to 0
+ */
+
+#define ACQ_PARAM_MSK_SRC (1<<0)
+#define ACQ_PARAM_MSK_EDG (1<<1)
+#define ACQ_PARAM_MSK_LVL (1<<2)
+#define ACQ_PARAM_MSK_NPT (1<<3)
+#define ACQ_PARAM_MSK_AUT (1<<4)
+#define ACQ_PARAM_MSK_DCM (1<<5)
+
+#define ACQ_PARAM_MSK_GET (0)
+#define ACQ_PARAM_MSK_ALL (0x3f)
+
+#define ACQ_PARAM_TIMEOUT_INF (0xffff)
+
+typedef struct AcqParams {
+    unsigned      mask;
+	TriggerSource src;
+	int           raising;
+	int16_t       level;
+	uint32_t      npts;
+	uint32_t      autoTimeoutMS;
+	uint32_t      decimation;
+} AcqParams;
+
+/* Set new parameters and obtain previous parameters.
+ * A new acquisition is started if any mask bit is set.
+ *
+ * Either 'set' or 'get' may be NULL with obvious semantics. 
+ */
+
+int
+acq_set_params(FWInfo *, AcqParams *set, AcqParams *get);
+
+/*
+ * Helpers
+ */
+int
+acq_manual(FWInfo *);
+
+int
+acq_set_level(FWInfo *, int16_t level);
+
+int
+acq_set_npts(FWInfo *, uint32_t npts);
+
+int
+acq_set_decimation(FWInfo *, uint32_t npts);
+
+/* rising: 1, falling: -1, leave previous value: 0 */
+int
+acq_set_source(FWInfo *, TriggerSource src, int rising);
+
+int
+acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
+	
 #ifdef __cplusplus
 }
 #endif

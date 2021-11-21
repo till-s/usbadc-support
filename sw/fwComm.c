@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #include "cmdXfer.h"
 #include "fwComm.h"
@@ -27,12 +28,29 @@
 #define BITS_FW_CMD_BB_PGA      (3<<4)
 #define BITS_FW_CMD_BB_I2C      (4<<4)
 #define BITS_FW_CMD_ADCBUF      0x02
+#define BITS_FW_CMD_ADCFLUSH    (1<<4)
+#define BITS_FW_CMD_MEMSIZE     (2<<4)
+#define BITS_FW_CMD_ACQPRM      0x03
+
+#define BITS_FW_CMD_ACQ_MSK_SRC  7
+#define BITS_FW_CMD_ACQ_SHF_SRC  0
+#define BITS_FW_CMD_ACQ_SHF_EDG  3
+
+#define BITS_FW_CMD_ACQ_IDX_MSK  0
+#define BITS_FW_CMD_ACQ_IDX_SRC  (BITS_FW_CMD_ACQ_IDX_MSK + sizeof( uint8_t))
+#define BITS_FW_CMD_ACQ_IDX_LVL  (BITS_FW_CMD_ACQ_IDX_SRC + sizeof( uint8_t))
+#define BITS_FW_CMD_ACQ_IDX_NPT  (BITS_FW_CMD_ACQ_IDX_LVL + sizeof( int16_t))
+#define BITS_FW_CMD_ACQ_IDX_AUT  (BITS_FW_CMD_ACQ_IDX_NPT + sizeof(uint16_t))
+#define BITS_FW_CMD_ACQ_IDX_DCM  (BITS_FW_CMD_ACQ_IDX_AUT + sizeof(uint16_t))
+
+#define BITS_FW_CMD_ACQ_IDX_LEN  (BITS_FW_CMD_ACQ_IDX_DCM + 3)
 
 struct FWInfo {
-	int        fd;
-	uint8_t    cmd;
-	int        debug;
-	int        ownFd;
+	int             fd;
+	uint8_t         cmd;
+	int             debug;
+	int             ownFd;
+	unsigned long   memSize;
 };
 
 static int
@@ -40,6 +58,10 @@ fw_xfer(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_t l
 
 static int
 __bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val);
+
+#define BUF_SIZE_FAILED ((long)-1L)
+static long
+__buf_get_size(FWInfo *fw);
 
 void
 fw_set_debug(FWInfo *fw, int level)
@@ -65,10 +87,11 @@ uint8_t
 fw_get_cmd(FWCmd aCmd)
 {
 	switch ( aCmd ) {
-		case FW_CMD_VERSION: return BITS_FW_CMD_VER;
-		case FW_CMD_ADC_BUF: return BITS_FW_CMD_ADCBUF;
-		case FW_CMD_BB_SPI : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
-		case FW_CMD_BB_I2C : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
+		case FW_CMD_VERSION    : return BITS_FW_CMD_VER;
+		case FW_CMD_ADC_BUF    : return BITS_FW_CMD_ADCBUF;
+		case FW_CMD_BB_SPI     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
+		case FW_CMD_BB_I2C     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
+		case FW_CMD_ACQ_PARMS  : return BITS_FW_CMD_ACQPRM;
 		default:
 			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
 			abort();
@@ -96,6 +119,7 @@ FWInfo *
 fw_open_fd(int fd)
 {
 FWInfo *rv;
+long    sz;
 
 	if ( ! (rv = malloc(sizeof(*rv))) ) {
 		perror("fw_open(): no memory");
@@ -105,6 +129,14 @@ FWInfo *rv;
 	rv->fd    = fd;
 	rv->cmd   = BITS_FW_CMD_BB;
 	rv->debug = 0;
+	rv->ownFd = 0;
+	sz = __buf_get_size( rv );
+	if ( BUF_SIZE_FAILED == sz ) {
+		fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
+		rv->memSize = 0;
+	} else {
+		rv->memSize = (unsigned long)sz;
+	}
 	return rv;
 }
 
@@ -429,4 +461,222 @@ int
 bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val)
 {
 	return bb_i2c_rw_reg(fw, sla, reg, val);
+}
+
+static long
+__buf_get_size(FWInfo *fw)
+{
+uint8_t buf[4];
+long    rval;
+uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
+
+	rval = fifoXferFrame( fw->fd, &cmd, 0, 0, buf, sizeof(buf) );
+
+	if ( 2 != rval ) {
+		fprintf(stderr, "Error: buf_get_size() -- unexpected frame size %ld\n", rval);
+		return BUF_SIZE_FAILED;
+	}
+	rval = 512L * ((long)((buf[1]<<8) | buf[0]) + 1);
+	return rval;
+}
+
+unsigned long
+buf_get_size(FWInfo *fw)
+{
+	return fw->memSize;
+}
+
+int
+buf_flush(FWInfo *fw)
+{
+	return buf_read(fw, 0, 0);
+}
+
+int
+buf_read(FWInfo *fw, uint8_t *buf, size_t len)
+{
+	uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF );
+	if ( 0 == len ) {
+		cmd |= BITS_FW_CMD_ADCFLUSH;
+	}
+	return fifoXferFrame( fw->fd, &cmd, 0, 0, buf, len );
+}
+
+int64_t
+fw_get_version(FWInfo *fw)
+{
+uint8_t buf[sizeof(int64_t)];
+int     got, i;
+uint8_t cmd = fw_get_cmd( FW_CMD_VERSION );
+int64_t rval;
+
+	got = fifoXferFrame( fw->fd, &cmd, 0, 0, buf, sizeof(buf) );
+	if ( got < 0 ) {
+		return (int64_t)-1;
+	}
+	rval = 0;
+	for ( i = 0; i < got; i++ ) {
+		rval = (rval << 8) | buf[i];
+	}
+	return rval;	
+}
+
+/* Set new parameters and obtain previous parameters.
+ * A new acquisition is started if any mask bit is set.
+ *
+ * Either 'set' or 'get' may be NULL with obvious semantics. 
+ */
+
+int
+acq_set_params(FWInfo *fw, AcqParams *set, AcqParams *get)
+{
+AcqParams p;
+uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
+uint8_t   buf[BITS_FW_CMD_ACQ_IDX_LEN];
+uint16_t  v16;
+uint32_t  v23;
+int       got;
+
+	p.mask = ACQ_PARAM_MSK_GET;
+
+	if ( ! set ) {
+		set = &p;
+	}
+
+	buf[BITS_FW_CMD_ACQ_IDX_MSK +  0]  = set->mask;
+	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0]  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
+	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] |= (set->raising ? 1 : 0)                << BITS_FW_CMD_ACQ_SHF_EDG;
+
+	buf[BITS_FW_CMD_ACQ_IDX_LVL +  0]  =  set->level       & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]  = (set->level >> 8) & 0xff;
+
+	if ( set->npts > fw->memSize - 1 ) {
+		v16 = fw->memSize - 1;
+		fprintf(stderr, "acq_set_params: WARNING npts > target memory size requested; clipping to %" PRId16 "\n", v16);
+	} else {
+		v16 = set->npts;
+	}
+
+	buf[BITS_FW_CMD_ACQ_IDX_NPT +  0]  =  v16       & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_NPT +  1]  = (v16 >> 8) & 0xff;
+
+	if ( set->autoTimeoutMS > (1<<sizeof(uint16_t)*8) - 1 ) {
+		v16 = (1<<sizeof(uint16_t)*8) - 1;
+	} else {
+		v16 = set->autoTimeoutMS;
+	}
+
+	buf[BITS_FW_CMD_ACQ_IDX_AUT +  0]  =  v16       & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]  = (v16 >> 8) & 0xff;
+
+	if ( set->decimation     > (1<<3*8) ) {
+		v23 = (1<<3*8) - 1;
+	} else if ( 0 == set->decimation ) {
+		v23 = 1 - 1;
+	} else {
+		v23 = set->decimation - 1;
+	}
+
+	buf[BITS_FW_CMD_ACQ_IDX_DCM +  0]  =  v23        & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]  = (v23 >>  8) & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]  = (v23 >> 16) & 0xff;
+
+	got = fifoXferFrame( fw->fd, &cmd, buf, sizeof(buf), buf, sizeof(buf) );
+
+	if ( got < 0 ) {
+		fprintf(stderr, "Error: acq_set_params(); fifo transfer failed\n");
+		return -1;
+	}
+
+	if ( got < BITS_FW_CMD_ACQ_IDX_LEN ) {
+		fprintf(stderr, "Error: acq_set_params(); fifo transfer short?\n");
+		return -1;
+	}
+
+	if ( ! get ) {
+		return 0;
+	}
+
+	get->mask = ACQ_PARAM_MSK_ALL;
+
+	switch ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_SRC) & BITS_FW_CMD_ACQ_MSK_SRC) {
+		case 0:  get->src = CHA; break;
+		case 1:  get->src = CHB; break;
+		default: get->src = EXT; break;
+	}
+
+	get->raising = !! ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
+
+	get->level   = (int16_t)(    (((uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]) << 8)
+                               | (uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  0] );
+
+	get->npts    =          (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  1]) << 8)
+                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  0] );
+
+	get->autoTimeoutMS =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]) << 8)
+                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  0] );
+
+	get->decimation    =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]) << 16)
+	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]) <<  8)
+                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  0] );
+	get->decimation   += 1; /* zero-based */
+	return 0;
+}
+
+/*
+ * Helpers
+ */
+int
+acq_manual(FWInfo *fw)
+{
+	return acq_set_autoTimeoutMs(fw, 0);
+}
+
+int
+acq_set_level(FWInfo *fw, int16_t level)
+{
+AcqParams p;
+	p.mask          = ACQ_PARAM_MSK_LVL;
+	p.level         = level;
+	return acq_set_params( fw, &p, 0 );
+}
+
+int
+acq_set_npts(FWInfo *fw, uint32_t npts)
+{
+AcqParams p;
+	p.mask          = ACQ_PARAM_MSK_NPT;
+	p.npts          = npts;
+	return acq_set_params( fw, &p, 0 );
+}
+
+int
+acq_set_decimation(FWInfo *fw, uint32_t decimation)
+{
+AcqParams p;
+	p.mask          = ACQ_PARAM_MSK_DCM;
+	p.decimation    = decimation;
+	return acq_set_params( fw, &p, 0 );
+}
+
+int
+acq_set_source(FWInfo *fw, TriggerSource src, int raising)
+{
+AcqParams p;
+	p.mask          = ACQ_PARAM_MSK_SRC;
+	p.src           = src;
+	if ( raising ) {
+		p.mask   |= ACQ_PARAM_MSK_EDG;
+		p.raising = !!raising;
+	}
+	return acq_set_params( fw, &p, 0 );
+}
+
+int
+acq_set_autoTimeoutMs(FWInfo *fw, uint32_t timeout)
+{
+AcqParams p;
+	p.mask          = ACQ_PARAM_MSK_AUT;
+	p.autoTimeoutMS = timeout;
+	return acq_set_params( fw, &p, 0 );
 }
