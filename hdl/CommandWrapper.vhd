@@ -4,6 +4,7 @@ use ieee.numeric_std.all;
 
 use work.CommandMuxPkg.all;
 use work.GitVersionPkg.all;
+use work.AcqCtlPkg.all;
 
 entity CommandWrapper is
    generic (
@@ -46,11 +47,12 @@ end entity CommandWrapper;
 
 architecture rtl of CommandWrapper is
 
-   constant NUM_CMDS_C        : natural := 3;
+   constant NUM_CMDS_C        : natural := 4;
 
    constant CMD_VER_IDX_C     : natural := 0;
    constant CMD_BB_IDX_C      : natural := 1;
    constant CMD_ADC_MEM_IDX_C : natural := 2;
+   constant CMD_ACQ_PRM_IDX_C : natural := 3;
 
    signal   bussesIb          : SimpleBusMstArray(NUM_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
    signal   readysIb          : std_logic_vector (NUM_CMDS_C - 1 downto 0) := (others => '1'                  );
@@ -64,6 +66,10 @@ architecture rtl of CommandWrapper is
 
    signal   deStufferSynced   : std_logic;
    signal   deStufferAbort    : std_logic;
+
+   signal   acqParms          : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
+   signal   acqParmsTgl       : std_logic      := '0';
+   signal   acqParmsAck       : std_logic;
 
    constant VERSION_C : Slv8Array := (
       0 => GIT_VERSION_C(31 downto 24),
@@ -186,7 +192,7 @@ begin
       end if;
    end process P_VERSION_SEQ;
 
-    G_BITBANG : if ( NUM_CMDS_C > 1 ) generate
+    G_BITBANG : if ( NUM_CMDS_C > CMD_BB_IDX_C ) generate
 
        U_BITBANG : entity work.CommandBitBang
           generic map (
@@ -211,7 +217,7 @@ begin
           );
     end generate G_BITBANG;
 
-    G_ADC : if ( NUM_CMDS_C > 2 ) generate
+    G_ADC : if ( NUM_CMDS_C > CMD_ADC_MEM_IDX_C ) generate
        U_ADC_BUF : entity work.MaxAdc
           generic map (
              ADC_CLOCK_FREQ_G => ADC_FREQ_G,
@@ -228,6 +234,10 @@ begin
              busClk       => clk,
              busRst       => rst,
 
+             parms        => acqParms,
+             parmsTgl     => acqParmsTgl,
+             parmsAck     => acqParmsAck,
+
              busIb        => bussesIb(CMD_ADC_MEM_IDX_C),
              rdyIb        => readysIb(CMD_ADC_MEM_IDX_C),
 
@@ -238,5 +248,26 @@ begin
              dcmRst       => '0'
           );
     end generate G_ADC;
+
+    G_PARM : if ( NUM_CMDS_C > CMD_ACQ_PRM_IDX_C ) generate
+       U_ACQ_PARMS : entity work.CommandAcqParm
+          generic map (
+             CLOCK_FREQ_G => FIFO_FREQ_G
+          )
+          port map (
+             clk          => clk,
+             rst          => rst,
+
+             mIb          => bussesIb(CMD_ACQ_PRM_IDX_C),
+             rIb          => readysIb(CMD_ACQ_PRM_IDX_C),
+
+             mOb          => bussesOb(CMD_ACQ_PRM_IDX_C),
+             rOb          => readysOb(CMD_ACQ_PRM_IDX_C),
+
+             parmsOb      => acqParms,
+             trgOb        => acqParmsTgl,
+             ackIb        => acqParmsAck
+          );
+    end generate G_PARM;
 
 end architecture rtl;
