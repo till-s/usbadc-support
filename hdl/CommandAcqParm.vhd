@@ -38,7 +38,7 @@ architecture rtl of CommandAcqParm is
    constant M_SET_AUT_BIT_C : natural  := 4;
    constant M_SET_DCM_BIT_C : natural  := 5;
 
-   constant CMD_LEN_C   : natural := acqCtlParmSizeBytes + ( MaskType'length + 7 ) / 8 ;
+   constant CMD_LEN_C   : natural := acqCtlParmSizeBytes;
 
    type MaskBitArray is array ( natural range 0 to CMD_LEN_C - 1 ) of natural range 0 to MaskType'length - 1;
 
@@ -130,7 +130,6 @@ begin
                   else
                      v.state  := ECHO;
                      mOb.lst  <= '1'; -- tell CommandMux we're done; they'll wait until 'mIb.lst' is seen
-assert false severity failure;
                   end if;
                else
                   v.count := r.count + 1;
