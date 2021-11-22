@@ -93,7 +93,7 @@ architecture rtl of MaxADC is
 
    type     WrRegType       is record
       state   : WrStateType;
-      taddr   : RamAddr;
+      saddr   : RamAddr;
       lstTrg  : std_logic;
       wasTrg  : boolean;
       nsmpls  : RamAddr;
@@ -105,7 +105,7 @@ architecture rtl of MaxADC is
 
    constant WR_REG_INIT_C   : WrRegType := (
       state   => FILL,
-      taddr   => (others => '0'),
+      saddr   => (others => '0'),
       lstTrg  => '0',
       wasTrg  => false,
       ovrA    => (others => '0'),
@@ -122,7 +122,7 @@ architecture rtl of MaxADC is
       raddr   : RamAddr;
       rdatA   : RamWord;
       rdatB   : RamWord;
-      taddr   : RamAddr;
+      saddr   : RamAddr;
       anb     : boolean;
       busOb   : SimpleBusMstType;
       lstDly  : std_logic;
@@ -134,7 +134,7 @@ architecture rtl of MaxADC is
       rdatA   => (others => 'X'),
       rdatB   => (others => 'X'),
       raddr   => (others => '0'),
-      taddr   => (others => '0'),
+      saddr   => (others => '0'),
       anb     => true,
       busOb   => SIMPLE_BUS_MST_INIT_C,
       lstDly  => '0',
@@ -173,7 +173,6 @@ architecture rtl of MaxADC is
 
    signal chnl0DataResynced : std_logic_vector(8 downto 0);
 
-   signal wrDis             : std_logic := '0';
    signal wrDon             : std_logic;
    signal memFull           : std_logic;
    signal rdDon             : std_logic;
@@ -347,7 +346,6 @@ begin
                DPRAMB( to_integer(waddr) )  <= wdatB;
                if ( waddr = END_ADDR_C ) then
                   waddr                     <= (others => '0');
-                  wrDis                     <= '1';
                else
                   waddr                     <= waddr + 1;
                end if;
@@ -372,7 +370,6 @@ begin
                DPRAMD( to_integer(waddr) ) <= wdatB & wdatA;
                if ( waddr = END_ADDR_C ) then
                   waddr                    <= (others => '0');
-                  wrDis                    <= '1';
                else
                   waddr                    <= waddr + 1;
                end if;
@@ -386,8 +383,6 @@ begin
    end generate GEN_ONEMEM_G;
 
    GEN_DDR_A_FIRST : if ( DDR_A_FIRST_G ) generate
-      rdatA    <= rdat0;
-      rdatB    <= rdat1;
       wdatA    <= chnl0DataResynced(8 downto 1);
       wdorA    <= chnl0DataResynced(         0);
       wdatB    <= chnl1Data        (8 downto 1);
@@ -395,8 +390,6 @@ begin
    end generate GEN_DDR_A_FIRST;
 
    GEN_DDR_B_FIRST : if ( not DDR_A_FIRST_G ) generate
-      rdatA    <= rdat1;
-      rdatB    <= rdat0;
       wdatA    <= chnl1Data        (8 downto 1);
       wdorA    <= chnl1Data        (         0);
       wdatB    <= chnl0DataResynced(8 downto 1);
@@ -405,7 +398,7 @@ begin
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB) is
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWr.saddr) is
       variable v : RdRegType;
    begin
       v     := rRd;
@@ -418,9 +411,17 @@ begin
          v.rdDon := '0';
       end if;
 
+      -- increment read address; this covers all relevant states
+      if ( (rdyOb = '1') and rRd.anb ) then
+         if ( rRd.raddr = MEM_DEPTH_G - 1 ) then
+            v.raddr := to_unsigned( 0, v.raddr'length );
+         else
+            v.raddr := rRd.raddr + 1;
+         end if;
+      end if;
+
       case ( rRd.state ) is
          when ECHO =>
-            v.raddr := (others => '0');
             v.anb   := true;
 
             busOb     <= busIb;
@@ -435,11 +436,16 @@ begin
                   v.busOb.vld := '1';
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
+                  -- seed the start address for reading
+                  v.raddr     := rWr.saddr;
+                  -- transmit start address -- not really necessary; we keep it for
+                  -- debugging purposes and maybe to convey additional info in the
+                  -- future... 
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat                := std_logic_vector(rRd.taddr(7 downto 0));
+                     v.busOb.dat                  := std_logic_vector(rRd.saddr(7 downto 0));
                   else
-                     v.busOb.dat                := (others => '0');
-                     v.busOb.dat(rRd.taddr'range) := std_logic_vector(rRd.taddr);
+                     v.busOb.dat                  := (others => '0');
+                     v.busOb.dat(rRd.saddr'range) := std_logic_vector(rRd.saddr);
                   end if;
                   v.busOb.vld := '1';
                   v.busOb.lst := '0';
@@ -470,12 +476,11 @@ begin
                if ( rRd.anb ) then
                   v.busOb.dat := (others => '0');
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rRd.taddr(rRd.taddr'left downto 8));
+                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rRd.saddr(rRd.saddr'left downto 8));
                   end if;
-                  -- prefetch/register
+                  -- prefetch/register (raddr is incremented; see above)
                   v.rdatA := rdatA;
                   v.rdatB := rdatB;
-                  v.raddr := rRd.raddr + 1;
                else
                   v.busOb.dat := rRd.rdatA(rRd.rdatA'left downto rRd.rdatA'left - v.busOb.dat'length + 1);
                   v.state     := READ;
@@ -487,13 +492,14 @@ begin
                v.anb := not rRd.anb;
                if ( rRd.anb ) then
                   v.busOb.dat := rRd.rdatB(rRd.rdatB'left downto rRd.rdatB'left - v.busOb.dat'length + 1);
+                  -- prefetch/register (raddr is incremented; see above)
                   v.rdatA     := rdatA;
                   v.rdatB     := rdatB;
-                  if ( rRd.raddr = END_ADDR_C ) then
+                  -- is the end reached (raddr wrapped around to saddr; mem[saddr] prefetched
+                  -- again but ignored...)
+                  if ( rRd.raddr = rWr.saddr ) then
                      v.lstDly    := '1';
                      v.busOb.lst := rRd.lstDly;
-                  else
-                     v.raddr     := rRd.raddr + 1;
                   end if;
                else
                   if ( rRd.busOb.lst = '1' ) then
@@ -577,8 +583,13 @@ begin
    begin
 
       v        := rWr;
-      v.nsmpls := rWr.nsmpls + 1;
       v.lstTrg := trg;
+      v.nsmpls := rWr.nsmpls + 1;
+      if ( rWr.saddr = MEM_DEPTH_G - 1 ) then
+         v.saddr := to_unsigned( 0, v.saddr'length );
+      else
+         v.saddr := rWr.saddr + 1;
+      end if;
 
       -- remember overrange 'seen' during the last MEM_DEPTH_G samples
       if ( wdorA = '1' ) then
@@ -602,15 +613,16 @@ begin
                if ( rWr.parms.autoTimeMs /= 0 ) then
                   v.timer := rWr.parms.autoTimeMs;
                end if;
+            else
+               v.saddr := rWr.saddr;
             end if;
 
          when RUN        =>
-            if ( msTick and ( rWr.timer /= unsigned(to_signed(-1, rWr.timer'length)) ) ) then
+            if ( msTick and ( rWr.timer /= AUTO_TIME_STOP_C ) ) then
                v.timer := rWr.timer - 1;
             end if;
             if ( not rWr.wasTrg and ( ( not rWr.lstTrg and trg ) = '1' or ( rWr.timer = 0 ) ) ) then
                v.wasTrg := true;
-               v.taddr  := waddr;
             end if;
             if ( v.wasTrg ) then
                -- compare to MEM_DEPTH_G - 1; this last sample still
@@ -618,6 +630,7 @@ begin
                if ( MEM_DEPTH_G - 1 = rWr.nsmpls ) then
                   v.state := HOLD;
                end if;
+               v.saddr  := rWr.saddr;
             else
                -- discard oldest sample
                v.nsmpls := rWr.nsmpls;
@@ -631,8 +644,10 @@ begin
             -- that is possibly read by the readout process
             v.nsmpls := rWr.nsmpls;
             v.lstTrg := rWr.lstTrg;
+            v.saddr  := rWr.saddr;
             if ( rdDon = '1' ) then
                v.nsmpls := to_unsigned( 0, v.nsmpls'length );
+               v.saddr  := waddr;
                v.state  := FILL;
                v.wasTrg := false;
                v.timer  := to_unsigned( 0, v.timer'length );
