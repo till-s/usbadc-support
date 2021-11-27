@@ -18,13 +18,13 @@ entity CicFilter is
       decmInp      : in  unsigned(LD_MAX_DCM_G - 1 downto 0)          := (others => '0');
       -- decimator control signals to run another subordinate
       -- filter in parallel
-      cenbOut      : out std_logic_vector(NUM_STAGES_G - 1 downto -1);
+      cenbOut      : out std_logic_vector(NUM_STAGES_G  downto 0);
       -- used by subordinate filter
-      cenbInp      : in  std_logic_vector(NUM_STAGES_G - 1 downto -1) := (others => '0');
+      cenbInp      : in  std_logic_vector(NUM_STAGES_G  downto 0)     := (others => '0');
       dataInp      : in  signed  (DATA_WIDTH_G - 1 downto 0);
       -- overrange in
       dovrInp      : in  std_logic                                    := '0';
-      dataOut      : out signed  (DATA_WIDTh_G + LD_MAX_DCM_G*NUM_STAGES_G - 1 downto 0);
+      dataOut      : out signed  (DATA_WIDTH_G + LD_MAX_DCM_G*NUM_STAGES_G - 1 downto 0);
       -- overrange_out
       dovrOut      : out std_logic;
       strbOut      : out std_logic
@@ -42,7 +42,7 @@ architecture rtl of CicFilter is
    signal   diffDecm  : DataArray(NUM_STAGES_G     downto 0)         := (others => (others => '0') );
    signal   dovrDDel  : std_logic_vector(NUM_STAGES_G downto 0)      := (others => '0');
 
-   signal   cenDecm   : std_logic_vector(NUM_STAGES_G - 1 downto -1) := (others => '0');
+   signal   cenDecm   : std_logic_vector(NUM_STAGES_G downto 0)      := (others => '0');
 
    signal   count     : unsigned(decmInp'range)                      := (others => '0');
 
@@ -86,7 +86,7 @@ begin
       P_DIFF : process ( clk ) is
       begin
          if ( rising_edge( clk ) ) then
-            if ( (cen and cenDecm(i)) = '1' ) then
+            if ( (cen and cenDecm(i+1)) = '1' ) then
                diffDecm(i) <= diffDecm(i+1) - dataDely(i);
                dataDely(i) <= diffDecm(i+1);
                dovrDDel(i) <= dovrDDel(i+1);
@@ -123,7 +123,7 @@ begin
    begin
       if ( rising_edge( clk ) ) then
          if ( cen = '1' ) then
-            if ( cenDecm(NUM_STAGES_G - 1) = '1' ) then
+            if ( cenDecm(cenDecm'left) = '1' ) then
                dovrDecm <= '0';
             else
                dovrDecm <= dovrDDel(NUM_STAGES_G);
