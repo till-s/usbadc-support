@@ -45,9 +45,9 @@ entity MaxADC is
       busOb       : out SimpleBusMstType;
       rdyOb       : in  std_logic;
 
-      dcmLocked   : out std_logic := '1';
+      pllLocked   : out std_logic := '1';
 
-      dcmRst      : in  std_logic := '0'
+      pllRst      : in  std_logic := '0'
    );
 end entity MaxADC;
 
@@ -213,12 +213,12 @@ begin
             CLKFB              => chnl0ClkL,
             CLK0               => dcmOutClk0,
             CLK180             => dcmOutClk180,
-            LOCKED             => dcmLocked,
+            LOCKED             => pllLocked,
             PSDONE             => dcmPSDone,
             PSCLK              => dcmPSClk,
             PSEN               => '0',
             PSINCDEC           => '0',
-            RST                => dcmRst
+            RST                => pllRst
          );
 
       U_BUFG_A : BUFG
@@ -238,7 +238,7 @@ begin
    GEN_NO_DCM : if ( not USE_DCM_G ) generate
       chnl0ClkL <= adcClk;
       chnl1ClkL <= '0';
-      dcmLocked <= '1';
+      pllLocked <= '1';
    end generate GEN_NO_DCM;
 
       -- The manual doesn't precisely explain timing of the multiplexed mode.
