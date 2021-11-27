@@ -167,6 +167,13 @@ architecture rtl of MaxADC is
    signal rdat0     : RamWord;
    signal rdat1     : RamWord;
 
+   -- raw ADC Data
+   signal fdatA     : RamWord;
+   signal fdatB     : RamWord;
+   signal fdorA     : std_logic;
+   signal fdorB     : std_logic;
+
+   -- data into RAM
    signal wdatA     : RamWord;
    signal wdatB     : RamWord;
    signal wdorA     : std_logic;
@@ -384,17 +391,17 @@ begin
    end generate GEN_ONEMEM_G;
 
    GEN_DDR_A_FIRST : if ( DDR_A_FIRST_G ) generate
-      wdatA    <= chnl0DataResynced(8 downto 1);
-      wdorA    <= chnl0DataResynced(         0);
-      wdatB    <= chnl1Data        (8 downto 1);
-      wdorB    <= chnl1Data        (         0);
+      fdatA    <= chnl0DataResynced(8 downto 1);
+      fdorA    <= chnl0DataResynced(         0);
+      fdatB    <= chnl1Data        (8 downto 1);
+      fdorB    <= chnl1Data        (         0);
    end generate GEN_DDR_A_FIRST;
 
    GEN_DDR_B_FIRST : if ( not DDR_A_FIRST_G ) generate
-      wdatA    <= chnl1Data        (8 downto 1);
-      wdorA    <= chnl1Data        (         0);
-      wdatB    <= chnl0DataResynced(8 downto 1);
-      wdorB    <= chnl0DataResynced(         0);
+      fdatA    <= chnl1Data        (8 downto 1);
+      fdorA    <= chnl1Data        (         0);
+      fdatB    <= chnl0DataResynced(8 downto 1);
+      fdorB    <= chnl0DataResynced(         0);
    end generate GEN_DDR_B_FIRST;
 
    -- ise doesn't seem to properly handle nested records
@@ -711,6 +718,135 @@ begin
             trg3 => bTrg3
          );
    end generate GEN_BUS_ILA;
+
+   B_DECIMATORS : block
+      -- at least one extra bit; because we cannot scale
+      -- precisely with just a right-shift.
+      constant STG0_OBITS_C         : natural := fdatA'length + 1;
+
+      constant STG0_STGS_C          : natural := 5;
+      constant STG0_LD_MAX_DCM_C    : natural := 4;
+
+      constant STG0_W_C             : natural := fdatA'length + STG0_LD_MAX_DCM_C*STG0_STGS_C;
+
+      signal   stg0Ctl              : std_logic_vector(STG0_STGS_C downto 0);
+
+      signal   cenOut0              : std_logic;
+
+      signal   stg0CicDatA          : signed(STG0_W_C - 1 downto 0);
+      signal   stg0CicDorA          : std_logic;
+      signal   stg0ShfDatA          : std_logic_vector(STG0_W_C - 1 downto 0);
+      signal   stg0ShfDorA          : std_logic;
+
+      signal   stg0CicDatB          : signed(STG0_W_C - 1 downto 0);
+      signal   stg0CicDorB          : std_logic;
+      signal   stg0ShfDatB          : std_logic_vector(STG0_W_C - 1 downto 0);
+      signal   stg0ShfDorB          : std_logic;
+
+      signal   stg0DatA             : std_logic_vector( STG0_OBITS_C - 1 downto 0 );
+      signal   stg0DatB             : std_logic_vector( STG0_OBITS_C - 1 downto 0 );
+   begin
+
+      U_CIC0_A : entity work.CicFilter
+         generic map (
+            DATA_WIDTH_G   => fdatA'length,
+            LD_MAX_DCM_G   => STG0_LD_MAX_DCM_C,
+            NUM_STAGES_G   => STG0_STGS_C,
+            DCM_MASTER_G   => true
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+
+            decmInp        => rWr.parms.decm(STG0_LD_MAX_DCM_C - 1 downto 0),
+
+            cenbOut        => stg0Ctl,
+            cenbInp        => open,
+
+            dataInp        => signed(fdatA),
+            dovrInp        => fdorA,
+
+            dataOut        => stg0CicDatA,
+            dovrOut        => stg0CicDorA,
+
+            strbOut        => cenOut0
+         );
+
+      U_SHF0_A : entity work.PipelinedRShifter
+         generic map (
+            DATW_G         => STG0_W_C,
+            AUXW_G         => 1,
+            SIGN_EXTEND_G  => true,
+            PIPL_SHIFT_G   => false
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+
+            shift          => std_logic_vector( rWr.parms.shift0(4 downto 0) ),
+
+            datInp         => std_logic_vector( stg0CicDatA ),
+            auxInp(0)      => stg0CicDorA,
+
+            datOut         => stg0ShfDatA,
+            auxOut(0)      => stg0ShfDorA
+         );
+
+      stg0DatA <= stg0ShfDatA( stg0DatA'range );
+
+      U_CIC0_B : entity work.CicFilter
+         generic map (
+            DATA_WIDTH_G   => fdatB'length,
+            LD_MAX_DCM_G   => STG0_LD_MAX_DCM_C,
+            NUM_STAGES_G   => STG0_STGS_C,
+            DCM_MASTER_G   => false
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+
+            decmInp        => rWr.parms.decm(STG0_LD_MAX_DCM_C - 1 downto 0),
+
+            cenbOut        => open,
+            cenbInp        => stg0Ctl,
+
+            dataInp        => signed(fdatB),
+            dovrInp        => fdorB,
+
+            dataOut        => stg0CicDatB,
+            dovrOut        => stg0CicDorB,
+
+            strbOut        => open
+         );
+
+      U_SHF0_B : entity work.PipelinedRShifter
+         generic map (
+            DATW_G         => STG0_W_C,
+            AUXW_G         => 1,
+            SIGN_EXTEND_G  => true,
+            PIPL_SHIFT_G   => false
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+
+            shift          => std_logic_vector( rWr.parms.shift0(4 downto 0) ),
+
+            datInp         => std_logic_vector( stg0CicDatB ),
+            auxInp(0)      => stg0CicDorB,
+
+            datOut         => stg0ShfDatB,
+            auxOut(0)      => stg0ShfDorB
+         );
+
+      stg0DatB <= stg0ShfDatB( stg0DatB'range );
+
+      wdatA <= stg0DatA( wdatA'range );
+      wdatB <= stg0DatB( wdatB'range );
+      wdorA <= stg0ShfDorA;
+      wdorB <= stg0ShfDorB;
+
+   end block B_DECIMATORS;
 
    smplClk <= memClk;
 
