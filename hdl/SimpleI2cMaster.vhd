@@ -78,6 +78,8 @@ use work.SimpleI2cMasterPkg.all;
 use ieee.math_real.all;
 use ieee.numeric_std.all;
 
+use work.BasicPkg.all;
+
 entity SimpleI2cMaster is
       generic (
          BUS_FREQ_HZ_G : real;
@@ -105,7 +107,7 @@ end entity SimpleI2cMaster;
 architecture rtl of SimpleI2cMaster is
 
    constant HALF_PER_C : integer := integer(ceil(BUS_FREQ_HZ_G/I2C_FREQ_HZ_G/2.0));
-   constant DIV_W_C    : integer := integer(ceil(log2(real(HALF_PER_C))));
+   constant DIV_W_C    : integer := numBits(HALF_PER_C - 1);
 
    constant COUNT_C    : unsigned(DIV_W_C - 1 downto 0) := to_unsigned(HALF_PER_C - 1, DIV_W_C);
 

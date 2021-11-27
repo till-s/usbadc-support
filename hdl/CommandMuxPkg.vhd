@@ -52,17 +52,9 @@ package CommandMuxPkg is
    function subCommandAcqParmGet(constant cmd : in std_logic_vector (7 downto 0))
       return SubCommandAcqParmType;
 
-   function numBits(constant x : integer) return integer;
-
 end package CommandMuxPkg;
 
 package body CommandMuxPkg is
-
-   function numBits(constant x : integer) return integer is
-   begin
-      if ( x = 0 ) then return 1; end if;
-      return integer( floor( log2( real( x ) ) ) ) + 1;
-   end function numBits;
 
    function subCommandBBGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandBBType is
    begin

@@ -3,6 +3,8 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 
+use work.BasicPkg.all;
+
 entity BitBangIF is
    generic (
       I2C_SCL_G    : integer := -1; -- index of I2C SCL (to handle clock stretching)
@@ -33,7 +35,7 @@ architecture rtl of BitBangIF is
 
    constant I2C_HPER_C    : integer := integer( ceil ( 0.5*CLOCK_FREQ_G/I2C_FREQ_G ) ) - 1;
    constant I2C_TIMO_C    : integer := integer( ceil ( 0.2*CLOCK_FREQ_G ) ) - 1;
-   constant I2C_LD_TIMO_C : integer := integer( floor( log2( real( I2C_TIMO_C ) ) ) )  + 1;
+   constant I2C_LD_TIMO_C : integer := numBits( I2C_TIMO_C );
 
 
    type RegType is record
