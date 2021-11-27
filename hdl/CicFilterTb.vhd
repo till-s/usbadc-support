@@ -10,8 +10,10 @@ architecture sim of CicFilterTb is
 
    constant D_W_C   : natural   := 5;
    constant L_D_C   : natural   := 3;
-   constant N_S_C   : natural   := 3;
-   constant DECM_C  : positive  := 1;
+   -- currently supported combinations: DECM: 1, N : any
+   --                                   DECM: 5, N : 2
+   constant N_S_C   : natural   := 2; --3;
+   constant DECM_C  : positive  := 5; --1;
 
    constant O_W_C   : natural   := D_W_C + N_S_C * L_D_C;
    
@@ -174,6 +176,9 @@ architecture sim of CicFilterTb is
       if ( DECM_C = 1 ) then
          v.len := DATA_C'length;
          v.cnt := DATA_C'length - 1 + N_S_C - 1;
+      elsif ( DECM_C = 5 and N_S_C = 2 ) then
+         v.len := RESULT_EXPECTED_N2_DECM5_C'length;
+         v.cnt := RESULT_EXPECTED_N2_DECM5_C'length - 1;
       else
          assert false report "Parameter combination not supported by test" severity failure;
       end if;
@@ -191,7 +196,11 @@ begin
          expected.data <= 0;
       else
          if ( DECM_C = 1 ) then
-            expected.data <= -16; --to_integer( DATA_C( DATA_C'length - 1 - expected.cnt ) );
+            expected.data <= to_integer( DATA_C( DATA_C'length - 1 - expected.cnt ) );
+         elsif ( DECM_C = 5 and N_S_C = 2 ) then
+            expected.data <= RESULT_EXPECTED_N2_DECM5_C( expected.cnt );
+         else
+            expected.data <= -1234568;
          end if;
       end if;
    end process P_MUX;
@@ -206,7 +215,7 @@ begin
       end if;
    end process P_CLK;
 
-   dataInp <= to_signed(-16,5); --DATA_C(count);
+   dataInp <= DATA_C(count);
 
    P_DRV : process( clk ) is
    begin
