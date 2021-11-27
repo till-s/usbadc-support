@@ -18,6 +18,7 @@ package AcqCtlPkg is
       nprets       : unsigned(15 downto 0);
       autoTimeMs   : unsigned(15 downto 0);
       decm         : unsigned(23 downto 0);
+      shift0       : unsigned( 4 downto 0);
    end record AcqCtlParmType;
 
    function toSlv(constant x : in AcqCtlParmType) return std_logic_vector;
@@ -30,7 +31,8 @@ package AcqCtlPkg is
       rising      => true,
       nprets      => (others => '0'),
       autoTimeMs  => AUTO_TIME_STOP_C,
-      decm        => (others => '0')
+      decm        => (others => '0'),
+      shift0      => (others => '0')
    );
 
    function acqCtlParmSizeBytes return natural;
@@ -50,6 +52,7 @@ package body AcqCtlPkg is
       v := v + ( x.nprets'length + 7) / 8;
       v := v + ( x.autoTimeMs'length + 7) / 8;
       v := v + ( x.decm'length + 7) / 8;
+      v := v + ( x.shift0'length + 7) / 8;
       return v;
    end function acqCtlParmSizeBytes;
 
@@ -61,7 +64,8 @@ package body AcqCtlPkg is
    function toSlv(constant x : in AcqCtlParmType) return std_logic_vector is
       constant e : std_logic        := ite( x.rising );
       constant v : std_logic_vector :=
-             (  std_logic_vector( x.decm       )
+             (  "000" & std_logic_vector( x.shift0     )
+              & std_logic_vector( x.decm       )
               & std_logic_vector( x.autoTimeMs )
               & std_logic_vector( x.nprets     )
               & std_logic_vector( x.lvl        )
@@ -88,6 +92,7 @@ report integer'image( x'left ) & " " & integer'image( x'right );
       v.nprets     := unsigned( x(39 downto 24) );
       v.autoTimeMs := unsigned( x(55 downto 40) );
       v.decm       := unsigned( x(79 downto 56) );
+      v.shift0     := unsigned( x(84 downto 80) );
       return v;
    end function toAcqCtlParmType;
 end package body AcqCtlPkg;

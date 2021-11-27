@@ -120,6 +120,7 @@ begin
                end if;
                if ( r.mask( M_SET_DCM_BIT_C ) = '0' ) then
                   v.p.decm       := r.p.decm;
+                  v.p.shift0     := r.p.shift0;
                end if;
                if ( r.count = CMD_LEN_C - 1 ) then
                   if ( ( r.mask /= M_GET_C ) and ( mIb.lst = '1' ) ) then
@@ -141,7 +142,7 @@ begin
             if ( ackIb = r.trg ) then
                mOb.vld <= '1';
                mOb.lst <= '1';
-               mOb.dat <= std_logic_vector( r.p.decm(23 downto 16) );
+               mOb.dat <= rb(7 + 8*r.count downto 8*r.count);
                v.state := ECHO;
             end if;
       end case;

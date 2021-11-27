@@ -14,7 +14,7 @@ all: commandwrappertb commandwrappersim cicfiltertb
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
 OBJS+=MaxAdc.o CommandWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
-OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o
+OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o PipelinedRShifter.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -101,6 +101,8 @@ MaxAdc.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.
 CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o GitVersionPkg.o CommandAcqParm.o
 CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
+
+PipelinedRShifter.o: BasicPkg.o
 
 CicFilterTb.o: CicFilter.o
 
