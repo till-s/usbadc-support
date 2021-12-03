@@ -46,6 +46,8 @@
 
 #define BITS_FW_CMD_ACQ_IDX_LEN  (BITS_FW_CMD_ACQ_IDX_SCL + 4*sizeof(uint8_t))
 
+#define BITS_FW_CMD_ACQ_DCM0_SHFT 20
+
 struct FWInfo {
 	int             fd;
 	uint8_t         cmd;
@@ -552,7 +554,7 @@ int       got;
 	buf[BITS_FW_CMD_ACQ_IDX_LVL +  0]  =  set->level       & 0xff;
 	buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]  = (set->level >> 8) & 0xff;
 
-	if ( set->npts > fw->memSize - 1 ) {
+	if ( (set->mask & ACQ_PARAM_MSK_NPT) && (set->npts > fw->memSize - 1) ) {
 		v16 = fw->memSize - 1;
 		fprintf(stderr, "acq_set_params: WARNING npts > target memory size requested; clipping to %" PRId16 "\n", v16);
 	} else {
@@ -578,7 +580,7 @@ int       got;
 	} else {
 		v24 = set->cic0Decimation - 1;
 	}
-    v24 <<= 20;
+    v24 <<= BITS_FW_CMD_ACQ_DCM0_SHFT;
 
 	if ( 0 != v24 ) {
 		if ( set->cic1Decimation > (1<<16) ) {
@@ -589,6 +591,8 @@ int       got;
 			v24 |= set->cic1Decimation - 1;
 		}
 	}
+
+if ( set->mask & ACQ_PARAM_MSK_DCM ) printf("SET V24: 0x%06x\n", v24);
 
 	buf[BITS_FW_CMD_ACQ_IDX_DCM +  0]  =  v24        & 0xff;
 	buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]  = (v24 >>  8) & 0xff;
@@ -652,8 +656,8 @@ int       got;
 	v32                 =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]) << 16)
 	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]) <<  8)
                                | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  0] );
-    get->cic0Decimation = ((v32 >> 16) & 0xf   ) + 1; /* zero-based */
-    get->cic1Decimation = ((v32 >>  0) & 0xffff) + 1; /* zero-based */
+    get->cic0Decimation = ((v32 >> BITS_FW_CMD_ACQ_DCM0_SHFT) & 0xf   ) + 1; /* zero-based */
+    get->cic1Decimation = ((v32 >>                         0) & 0xffff) + 1; /* zero-based */
 
 	v32                 =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  3]) << 24)
 	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  2]) << 16)

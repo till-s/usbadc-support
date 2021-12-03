@@ -13,15 +13,16 @@ use     unisim.vcomponents.all;
 
 entity MaxADC is
    generic (
-      ADC_CLOCK_FREQ_G : real    := 130.0E6;
-      MEM_DEPTH_G      : natural := 1024;
+      ADC_CLOCK_FREQ_G     : real    := 130.0E6;
+      MEM_DEPTH_G          : natural := 1024;
       -- depending on which port the muxed signal is shipped either A or B samples are
       -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
-      DDR_A_FIRST_G    : boolean := false;
-      ONE_MEM_G        : boolean := false;
-      USE_DCM_G        : boolean := false;
-      TEST_NO_DDR_G    : boolean := false;
-      TEST_NO_BUF_G    : boolean := false
+      DDR_A_FIRST_G        : boolean := false;
+      ONE_MEM_G            : boolean := false;
+      USE_DCM_G            : boolean := false;
+      TEST_NO_DDR_G        : boolean := false;
+      TEST_NO_BUF_G        : boolean := false;
+      DISABLE_DECIMATORS_G : boolean := false
    );
    port (
       adcClk      : in  std_logic;
@@ -461,16 +462,19 @@ begin
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   -- seed the start address for reading
-assert false report "FIXME" severity warning;
-                  v.raddr     := rWr.taddr;
+                  if ( rWr.taddr >= rWr.parms.nprets ) then
+                     v.raddr     := rWr.taddr - resize(rWr.parms.nprets, v.raddr'length);
+                  else
+                     v.raddr     := rWr.taddr - resize(rWr.parms.nprets, v.raddr'length) + MEM_DEPTH_G;
+                  end if;
                   -- transmit start address -- not really necessary; we keep it for
                   -- debugging purposes and maybe to convey additional info in the
                   -- future... 
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat                  := std_logic_vector(rRd.saddr(7 downto 0));
+                     v.busOb.dat                  := std_logic_vector(rWr.taddr(7 downto 0));
                   else
                      v.busOb.dat                  := (others => '0');
-                     v.busOb.dat(rRd.saddr'range) := std_logic_vector(rRd.saddr);
+                     v.busOb.dat(rRd.saddr'range) := std_logic_vector(rWr.taddr);
                   end if;
                   v.busOb.dat(0) := toSl(rWr.ovrA /= 0);
                   v.busOb.dat(1) := toSl(rWr.ovrB /= 0);
@@ -503,7 +507,7 @@ assert false report "FIXME" severity warning;
                if ( rRd.anb ) then
                   v.busOb.dat := (others => '0');
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rRd.saddr(rRd.saddr'left downto 8));
+                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rWr.taddr(rWr.taddr'left downto 8));
                   end if;
                   -- prefetch/register (raddr is incremented; see above)
                   v.rdatA := rdatA;
@@ -746,13 +750,15 @@ assert false report "FIXME" severity warning;
          );
    end generate GEN_BUS_ILA;
 
-   B_DECIMATORS : block
+   G_DECIMATORS : if ( not DISABLE_DECIMATORS_G ) generate
       -- at least one extra bit; because we cannot scale
       -- precisely with just a right-shift.
       constant STG0_OBITS_C         : natural := fdatA'length + 1;
 
-      constant STG0_STGS_C          : natural := 5;
+      constant STG0_STGS_C          : natural := 4;
       constant STG0_LD_MAX_DCM_C    : natural := 4;
+
+      constant STG0_SCL_LD_ONE_C    : natural := 16;
 
       constant STG0_W_C             : natural := fdatA'length + STG0_LD_MAX_DCM_C*STG0_STGS_C;
 
@@ -762,8 +768,8 @@ assert false report "FIXME" severity warning;
 
       constant STG1_W_C             : natural := STG0_OBITS_C + STG1_LD_MAX_DCM_C*STG1_STGS_C;
 
-
       signal   stg0Ctl              : std_logic_vector(STG0_STGS_C downto 0);
+      signal   stg0ShfCtl           : boolean;
 
       signal   cenOut0              : std_logic;
 
@@ -771,18 +777,21 @@ assert false report "FIXME" severity warning;
       signal   cenCic1              : std_logic;
       attribute KEEP of cenCic1     : signal is "TRUE";
 
+      -- one extra bit because of sign
+      signal   stg0Scl              : signed(STG0_SCL_LD_ONE_C + 1 downto 0);
+
       signal   stg0CicDatA          : signed(STG0_W_C - 1 downto 0);
       signal   stg0CicDorA          : std_logic;
-      signal   stg0ShfDatA          : std_logic_vector(STG0_W_C - 1 downto 0);
+      signal   stg0ShfDatA          : signed(stg0Scl'length + stg0CicDatA'length - 1 downto 0);
       signal   stg0ShfDorA          : std_logic;
 
       signal   stg0CicDatB          : signed(STG0_W_C - 1 downto 0);
       signal   stg0CicDorB          : std_logic;
-      signal   stg0ShfDatB          : std_logic_vector(STG0_W_C - 1 downto 0);
+      signal   stg0ShfDatB          : signed(stg0Scl'length + stg0CicDatB'length - 1 downto 0);
       signal   stg0ShfDorB          : std_logic;
 
-      signal   stg0DatA             : std_logic_vector( STG0_OBITS_C - 1 downto 0 );
-      signal   stg0DatB             : std_logic_vector( STG0_OBITS_C - 1 downto 0 );
+      signal   stg0DatA             : signed( STG0_OBITS_C - 1 downto 0 );
+      signal   stg0DatB             : signed( STG0_OBITS_C - 1 downto 0 );
 
       signal   stg1Ctl              : std_logic_vector(STG1_STGS_C downto 0);
 
@@ -811,6 +820,12 @@ assert false report "FIXME" severity warning;
       signal   mulDorDlyA           : std_logic_vector(1 downto 0)        := (others => '0');
       signal   mulDorDlyB           : std_logic_vector(1 downto 0)        := (others => '0');
 
+   -- parametrization of the stage-0 multiplier-shifter; break point is when
+   -- input data uses the full width of the factor: max |data| is |-2**7|
+   --  ->  decim**STG0_STGS * 2**7 <= 2**(FACT_WIDTH - 1)
+   --  ->  decim <= 2**( (FACT_WIDTH - 1 - (fdat'length - 1) ) / STG0_STGS )
+      constant DCM0_BRK_C           : natural := natural( floor( 2.0**(real(18 - fdatA'length)/real(STG0_STGS_C)) ) );
+
    begin
 
       U_CIC0_A : entity work.CicFilter
@@ -838,29 +853,6 @@ assert false report "FIXME" severity warning;
             strbOut        => cenOut0
          );
 
-      U_SHF0_A : entity work.PipelinedRShifter
-         generic map (
-            DATW_G         => STG0_W_C,
-            AUXW_G         => 1,
-            SIGN_EXTEND_G  => true,
-            PIPL_SHIFT_G   => false
-         )
-         port map (
-            clk            => adcClk,
-            rst            => adcRst,
-            cen            => cenOut0,
-
-            shift          => std_logic_vector( rWr.parms.shift0 ),
-
-            datInp         => std_logic_vector( stg0CicDatA ),
-            auxInp(0)      => stg0CicDorA,
-
-            datOut         => stg0ShfDatA,
-            auxOut(0)      => stg0ShfDorA
-         );
-
-      stg0DatA <= stg0ShfDatA( stg0DatA'range );
-
       U_CIC0_B : entity work.CicFilter
          generic map (
             DATA_WIDTH_G   => fdatB'length,
@@ -886,28 +878,68 @@ assert false report "FIXME" severity warning;
             strbOut        => open
          );
 
-      U_SHF0_B : entity work.PipelinedRShifter
+      -- might work up to a few more bits but requires rework
+      assert STG0_W_C <= 24 report "Need a pre-shifter if stage 0 width is > 24" severity failure;
+
+      -- use multipliers for scaling
+      -- max. range for data: +/- 2**17
+      --  -> if data  < 2**17 :    p = (data            * scale) / NORM
+      --  -> if data >= 2**17 :    p = (data/PRE_SCALE) * scale) / (NORM * PRE_SCALE)
+      -- numBits(data) - LD_PRE_SCALE <= 18 (multiplier width)
+      --   LD_PRE_SCALE >= STG0_W_C - 18
+      -- Condition for data < 2**17:  decm**STG0_STGS * data_max <= 2**17
+      --  STG0_STGS * log2(decm) <= 17 - log2(|data_max|)
+      --  -> decm <= floor( 2**( (17 - log2(|data_max|)) / STG0_STGS ) )
+
+      stg0ShfCtl <= (to_integer( rWr.parms.decm0 ) <= DCM0_BRK_C);
+--      stg0Scl    <= signed( resize( unsigned( rWr.parms.shift0 ), stg0Scl'length ) );
+--      stg0Scl <= to_signed( 65536, stg0Scl'length );
+      stg0Scl <= to_signed(   809, stg0Scl'length );
+
+      U_SHF0_A : entity work.MulShifter
          generic map (
-            DATW_G         => STG0_W_C,
-            AUXW_G         => 1,
-            SIGN_EXTEND_G  => true,
-            PIPL_SHIFT_G   => false
+            FBIG_WIDTH_G   => stg0CicDatA'length,
+            SCAL_WIDTH_G   => stg0Scl'length,
+            AUXV_WIDTH_G   => 1
          )
          port map (
             clk            => adcClk,
             rst            => adcRst,
             cen            => cenOut0,
 
-            shift          => std_logic_vector( rWr.parms.shift0 ),
+            fbigInp        => stg0CicDatA,
+            scalInp        => stg0Scl,
+            auxvInp(0)     => stg0CicDorA,
 
-            datInp         => std_logic_vector( stg0CicDatB ),
-            auxInp(0)      => stg0CicDorB,
+            ctl            => stg0ShfCtl,
 
-            datOut         => stg0ShfDatB,
-            auxOut(0)      => stg0ShfDorB
+            prodOut        => stg0ShfDatA,
+            auxvOut(0)     => stg0ShfDorA
          );
 
-      stg0DatB <= stg0ShfDatB( stg0DatB'range );
+      U_SHF0_B : entity work.MulShifter
+         generic map (
+            FBIG_WIDTH_G   => stg0CicDatB'length,
+            SCAL_WIDTH_G   => stg0Scl'length,
+            AUXV_WIDTH_G   => 1
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+            cen            => cenOut0,
+
+            fbigInp        => stg0CicDatB,
+            scalInp        => stg0Scl,
+            auxvInp(0)     => stg0CicDorB,
+
+            ctl            => stg0ShfCtl,
+
+            prodOut        => stg0ShfDatB,
+            auxvOut(0)     => stg0ShfDorB
+         );
+
+      stg0DatA <= resize( shift_right( stg0ShfDatA, STG0_SCL_LD_ONE_C ), stg0DatA'length );
+      stg0DatB <= resize( shift_right( stg0ShfDatB, STG0_SCL_LD_ONE_C ), stg0DatB'length );
 
       U_CIC1_A : entity work.CicFilter
          generic map (
@@ -927,7 +959,7 @@ assert false report "FIXME" severity warning;
             cenbOut        => stg1Ctl,
             cenbInp        => open,
 
-            dataInp        => signed(stg0DatA),
+            dataInp        => stg0DatA,
             dovrInp        => stg0ShfDorA,
 
             dataOut        => stg1CicDatA,
@@ -975,7 +1007,7 @@ assert false report "FIXME" severity warning;
             cenbOut        => open,
             cenbInp        => stg1Ctl,
 
-            dataInp        => signed(stg0DatB),
+            dataInp        => stg0DatB,
             dovrInp        => stg0ShfDorB,
 
             dataOut        => stg1CicDatB,
@@ -1012,8 +1044,8 @@ assert false report "FIXME" severity warning;
             mulbB <= rWr.parms.scale( rWr.parms.scale'left downto rwr.parms.scale'left - mulbB'length + 1 );
             if ( wrDecm = '1' ) then
                if ( rWr.decmIs1 ) then
-                  mulaA      <= signed(stg0DatA(mulaA'range));
-                  mulaB      <= signed(stg0DatB(mulaB'range));
+                  mulaA      <= stg0DatA(mulaA'range);
+                  mulaB      <= stg0DatB(mulaB'range);
 
                   mulDorDlyA <= mulDorDlyA(mulDorDlyA'left - 1 downto 0) & stg0ShfDorA;
                   mulDorDlyB <= mulDorDlyB(mulDorDlyB'left - 1 downto 0) & stg0ShfDorB;
@@ -1031,19 +1063,32 @@ assert false report "FIXME" severity warning;
          end if;
       end process P_MULT;
 
-
       stg1DatA <= stg1ShfDatA(stg1DatA'range);
       stg1DatB <= stg1ShfDatB(stg1DatB'range);
 
-      wdatAin <= std_logic_vector( mulpA(wdatAin'range) );
-      wdatBin <= std_logic_vector( mulpB(wdatBin'range) );
+      wdatAin <= std_logic_vector( resize( shift_right( mulpA, mulbA'length - 2 ), wdatAin'length ) );
+      wdatBin <= std_logic_vector( resize( shift_right( mulpB, mulbB'length - 2 ), wdatBin'length ) );
       wdorAin <= mulDorDlyA(mulDorDlyA'left);
       wdorBin <= mulDorDlyB(mulDorDlyB'left);
 
       cenCic1 <= '0'                   when rWr.decmIs1 else cenOut0;
       wrDecm  <= cenOut0               when rWr.decmIs1 else cenOut1;
 
-   end block B_DECIMATORS;
+   end generate G_DECIMATORS;
+
+   G_NO_DECIMATORS : if ( DISABLE_DECIMATORS_G ) generate
+     signal cenCic1 : std_logic := '1';
+     attribute KEEP of cenCic1: signal is "TRUE";
+   begin
+         wdatAin <= fdatA;
+         wdatBin <= fdatB;
+         wdorAin <= fdorA;
+         wdorBin <= fdorB;
+
+         wrDecm  <= '1';
+
+         cenCic1 <= '1';
+   end generate G_NO_DECIMATORS;
 
    smplClk <= memClk;
 

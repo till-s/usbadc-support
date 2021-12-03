@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use ieee.math_real.all;
 
 use work.CommandMuxPkg.all;
 
@@ -10,7 +11,7 @@ end entity CommandWrapperSim;
 architecture sim of CommandWrapperSim is
 
    constant MEM_DEPTH_C : natural := 1024;
-   constant ADC_FIRST_C : unsigned(7 downto 0) := x"A0";
+   constant ADC_FIRST_C : unsigned(7 downto 0)   := x"A0";
 
    signal clk     : std_logic := '0';
    signal rst     : std_logic_vector(4 downto 0) := (others => '1');
@@ -28,7 +29,12 @@ architecture sim of CommandWrapperSim is
    signal bbi     : std_logic_vector(7 downto 0) := x"FF";
    signal bbo     : std_logic_vector(7 downto 0) := x"FF";
 
-   signal adcDDR  : unsigned(7 downto 0) := ADC_FIRST_C;
+   signal adcDDR  : unsigned(7 downto 0)         := ADC_FIRST_C;
+   signal adcA    : unsigned(7 downto 0)         := ADC_FIRST_C;
+   signal adcB    : unsigned(7 downto 0)         := ADC_FIRST_C;
+   signal dorA    : std_logic                    := '0';
+   signal dorB    : std_logic                    := '0';
+   signal dorDDR  : std_logic                    := '0';
 
 begin
 
@@ -79,7 +85,7 @@ begin
          adcRst       => rst(rst'left),
 
          adcDataDDR(8 downto 1)  => std_logic_vector(adcDDR),
-         adcDataDDR(         0)  => adcDDR(3),
+         adcDataDDR(         0)  => dorDDR,
 
          smplClk      => open
       );
@@ -91,12 +97,37 @@ begin
       end if;
    end process P_RST;
 
-   P_FILL : process ( clk ) is
+   P_FILL_A : process ( clk ) is
    begin
-      if ( clk'event ) then
-         adcDDR <= adcDDR + 1;
+      if ( rising_edge( clk ) ) then
+         adcA <= adcA + 1;
       end if;
-   end process P_FILL;
+   end process P_FILL_A;
+
+   P_FILL_B : process ( clk ) is
+      variable i   : natural := 0;
+      constant P_C : natural := 1000;
+   begin
+      if ( falling_edge( clk ) ) then
+         adcB <= unsigned( to_signed( integer( round( 127.0 * sin(MATH_2_PI*real(i)/real(P_C)) ) ), adcB'length ) );
+         i := i + 1;
+         if ( i = P_C ) then
+            i := 0;
+         end if;
+      end if;
+   end process P_FILL_B;
+
+   P_DDR : process( clk, adcA, adcB, dorA, dorB ) is
+   begin
+      if ( clk = '1' ) then
+         adcDDR <= adcA;
+         dorDDR <= dorA;
+      else
+         adcDDR <= adcB;
+         dorDDR <= dorB;
+      end if;
+   end process P_DDR;
+
 
    P_BBMON : process (bbo) is
    begin

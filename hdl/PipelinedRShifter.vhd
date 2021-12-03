@@ -7,9 +7,10 @@ use     work.BasicPkg.all;
 entity PipelinedRShifter is
    generic (
       DATW_G        : natural;
-      AUXW_G        : natural := 0;
-      SIGN_EXTEND_G : boolean := false;
-      PIPL_SHIFT_G  : boolean := false
+      AUXW_G        : natural  := 0;
+      SIGN_EXTEND_G : boolean  := false;
+      PIPL_SHIFT_G  : boolean  := false;
+      STRIDE_G      : positive := 1
    );
    port (
       clk     : in  std_logic;

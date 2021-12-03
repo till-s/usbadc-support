@@ -5,12 +5,16 @@
 #include <string.h>
 #include <getopt.h>
 #include <ctype.h>
+#include <math.h>
 
 #include "fwComm.h"
 #include "fwUtil.h"
 #include "at25Sup.h"
 #include "dac47cxSup.h"
 #include "lmh6882Sup.h"
+
+#define LD_SCALE_ONE 30
+#define SCALE_ONE (1L<<LD_SCALE_ONE)
 
 static void usage(const char *nm)
 {
@@ -29,7 +33,7 @@ static void usage(const char *nm)
 	printf("   -V                 : dump firmware version.\n");
 	printf("   -B                 : dump ADC buffer (raw).\n");
     printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'factor').\n");
-    printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^30!\n");
+    printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", LD_SCALE_ONE);
 	printf("   -p                 : dump acquisition parameters.\n");
 	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : access PGA registers.\n");
@@ -90,9 +94,15 @@ scanDecm(const char *tok, const char *eq, long *d0p, long *d1p)
 static int
 scanScal(const char *tok, const char *eq, long *d0p, long *d1p, long *d2p)
 {
-	if ( 3 != sscanf( eq + 1, "%li:%li:%li", d0p, d1p, d2p ) ) {
+double s;
+	if ( 3 != sscanf( eq + 1, "%li:%li:%lf", d0p, d1p, &s ) ) {
 		fprintf(stderr, "Error -- parseAcqParam: unable to scan value in '%s'\n", tok);
 		return -1;
+	}
+    if ( s > 2.0 ) {
+		*d2p = (long)s;
+	} else {
+		*d2p = (long)round(exp2(LD_SCALE_ONE) * s);
 	}
 	return 0;
 }
@@ -330,7 +340,7 @@ const char        *trgOp     = 0;
 		printf("Scale\n");
         printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
         printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
-        printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/(double)(1<<30));
+        printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/exp2(LD_SCALE_ONE));
 	}
 
 
