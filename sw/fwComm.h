@@ -100,6 +100,7 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 #define ACQ_PARAM_MSK_NPT (1<<3)
 #define ACQ_PARAM_MSK_AUT (1<<4)
 #define ACQ_PARAM_MSK_DCM (1<<5)
+#define ACQ_PARAM_MSK_SCL (1<<6)
 
 #define ACQ_PARAM_MSK_GET (0)
 #define ACQ_PARAM_MSK_ALL (0x3f)
@@ -113,7 +114,11 @@ typedef struct AcqParams {
 	int16_t       level;
 	uint32_t      npts;
 	uint32_t      autoTimeoutMS;
-	uint32_t      decimation;
+	uint8_t       cic0Decimation;
+	uint32_t      cic1Decimation;
+	uint8_t       cic0Shift;
+	uint8_t       cic1Shift;
+	int32_t       scale;
 } AcqParams;
 
 /* Set new parameters and obtain previous parameters.
@@ -138,7 +143,10 @@ int
 acq_set_npts(FWInfo *, uint32_t npts);
 
 int
-acq_set_decimation(FWInfo *, uint32_t npts);
+acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation);
+
+int
+acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale);
 
 /* rising: 1, falling: -1, leave previous value: 0 */
 int

@@ -53,6 +53,7 @@ entity MaxADC is
 end entity MaxADC;
 
 architecture rtl of MaxADC is
+   attribute KEEP           : string;
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G - 1);
 
@@ -94,7 +95,7 @@ architecture rtl of MaxADC is
 
    type     WrRegType       is record
       state   : WrStateType;
-      saddr   : RamAddr;
+      taddr   : RamAddr;
       lstTrg  : std_logic;
       wasTrg  : boolean;
       nsmpls  : RamAddr;
@@ -102,18 +103,22 @@ architecture rtl of MaxADC is
       ovrB    : RamAddr;
       parms   : AcqCtlParmType;
       timer   : unsigned(15 downto 0);
+      expired : boolean;
+      decmIs1 : boolean;
    end record WrRegType;
 
    constant WR_REG_INIT_C   : WrRegType := (
       state   => FILL,
-      saddr   => (others => '0'),
+      taddr   => (others => '0'),
       lstTrg  => '0',
       wasTrg  => false,
       ovrA    => (others => '0'),
       ovrB    => (others => '0'),
       nsmpls  => (others => '0'),
       parms   => ACQ_CTL_PARM_INIT_C,
-      timer   => (others => '0')
+      timer   => (others => '0'),
+      expired => false,
+      decmIs1 => true
    );
 
    type     RdStateType     is (ECHO, MSIZE, HDR, READ);
@@ -178,8 +183,15 @@ architecture rtl of MaxADC is
    signal wdatB     : RamWord;
    signal wdorA     : std_logic;
    signal wdorB     : std_logic;
+   signal trg       : std_logic;
+   -- keep data in sync with registered trigger
+   signal wdatAin   : RamWord;
+   signal wdatBin   : RamWord;
+   signal wdorAin   : std_logic;
+   signal wdorBin   : std_logic;
+   signal trgin     : std_logic;
 
-   signal chnl0DataResynced : std_logic_vector(8 downto 0);
+   signal chnl0DataResynced : std_logic_vector(8 downto 0) := (others => '0');
 
    signal wrDon             : std_logic;
    signal memFull           : std_logic;
@@ -187,13 +199,12 @@ architecture rtl of MaxADC is
    signal wrEna             : boolean;
    signal wrDecm            : std_logic := '1';
    signal extTrgSyncDelayed : std_logic := '0'; -- must be delayed by decimation filter group delay
-   signal trg               : std_logic;
    signal startAcq          : std_logic := '0';
 
    signal acqTglIb          : std_logic;
    signal acqTglOb          : std_logic := '0';
 
-   signal msTick            : boolean;
+   signal msTick            : boolean   := false;
    signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
 
 begin
@@ -340,6 +351,13 @@ begin
 
    wrEna <= ( ( (not memFull) and wrDecm ) = '1' );
 
+   P_RESYNC_CH0 : process ( memClk ) is
+   begin
+      if ( rising_edge( memClk ) ) then
+         chnl0DataResynced <= chnl0Data;
+      end if;
+   end process P_RESYNC_CH0;
+
    GEN_TWOMEM_G : if ( not ONE_MEM_G ) generate
       signal DPRAMA    : RamArray;
       signal DPRAMB    : RamArray;
@@ -348,7 +366,6 @@ begin
       P_WR_AB : process ( memClk ) is
       begin
          if ( rising_edge( memClk ) ) then
-            chnl0DataResynced               <= chnl0Data;
             if ( wrEna ) then
                DPRAMA( to_integer(waddr) )  <= wdatA;
                DPRAMB( to_integer(waddr) )  <= wdatB;
@@ -373,7 +390,6 @@ begin
       P_WR_AB : process ( memClk ) is
       begin
          if ( rising_edge( memClk ) ) then
-            chnl0DataResynced              <= chnl0Data;
             if ( wrEna ) then
                DPRAMD( to_integer(waddr) ) <= wdatB & wdatA;
                if ( waddr = END_ADDR_C ) then
@@ -406,7 +422,7 @@ begin
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWr.saddr) is
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWr.taddr) is
       variable v : RdRegType;
    begin
       v     := rRd;
@@ -445,7 +461,8 @@ begin
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   -- seed the start address for reading
-                  v.raddr     := rWr.saddr;
+assert false report "FIXME" severity warning;
+                  v.raddr     := rWr.taddr;
                   -- transmit start address -- not really necessary; we keep it for
                   -- debugging purposes and maybe to convey additional info in the
                   -- future... 
@@ -455,6 +472,8 @@ begin
                      v.busOb.dat                  := (others => '0');
                      v.busOb.dat(rRd.saddr'range) := std_logic_vector(rRd.saddr);
                   end if;
+                  v.busOb.dat(0) := toSl(rWr.ovrA /= 0);
+                  v.busOb.dat(1) := toSl(rWr.ovrB /= 0);
                   v.busOb.vld := '1';
                   v.busOb.lst := '0';
                   v.lstDly    := '0';
@@ -505,7 +524,7 @@ begin
                   v.rdatB     := rdatB;
                   -- is the end reached (raddr wrapped around to saddr; mem[saddr] prefetched
                   -- again but ignored...)
-                  if ( rRd.raddr = rWr.saddr ) then
+                  if ( rRd.raddr = rWr.taddr ) then
                      v.lstDly    := '1';
                      v.busOb.lst := rRd.lstDly;
                   end if;
@@ -534,7 +553,7 @@ begin
       end if;
    end process P_RD_SEQ;
 
-   GEN_MEM_ILA : if ( true ) generate
+   GEN_MEM_ILA : if ( false ) generate
    begin
       U_ILA_MEM : component ILAWrapper
          port map (
@@ -546,19 +565,21 @@ begin
          );
    end generate GEN_MEM_ILA;
 
-   P_TRG : process ( rWr, wdatA, wdatB, extTrgSyncDelayed ) is
+   -- compare the un-delayed wdatAin/wdatBin to produce the registered
+   -- trigger 'trg'...
+   P_TRG : process ( rWr, wdatAin, wdatBin, extTrgSyncDelayed ) is
       variable v : std_logic;
-      variable l : signed(wdatA'range);
+      variable l : signed(wdatAin'range);
    begin
-      l := rWr.parms.lvl(rWr.parms.lvl'left downto rWr.parms.lvl'left - wdatA'length + 1);
+      l := rWr.parms.lvl(rWr.parms.lvl'left downto rWr.parms.lvl'left - wdatAin'length + 1);
       v := '0';
       case ( rWr.parms.src ) is
          when CHA =>
-            if ( signed(wdatA) >= l ) then
+            if ( signed(wdatAin) >= l ) then
                v := '1';
             end if;
          when CHB =>
-            if ( signed(wdatB) >= l ) then
+            if ( signed(wdatBin) >= l ) then
                v := '1';
             end if;
          when EXT =>
@@ -570,34 +591,45 @@ begin
          v :=  not v;
       end if;
 
-      trg <= v;
+      trgin <= v;
    end process P_TRG;
 
-   msTick <= (msTickCounter = 0);
+   -- register trigger and delay data to remain in-sync
+   P_TRG_SEQ : process ( adcClk ) is
+   begin
+      if ( rising_edge( adcClk ) ) then
+         if ( wrDecm = '1' ) then
+            trg   <= trgin;
+            wdatA <= wdatAin;
+            wdatB <= wdatBin;
+            wdorA <= wdorAin;
+            wdorB <= wdorBin;
+         end if;
+      end if;
+   end process P_TRG_SEQ;
+
 
    P_TICK : process ( memClk ) is
    begin
       if ( rising_edge( memClk ) ) then
-         if ( msTick ) then
+         if ( msTickCounter = 0 ) then
             msTickCounter <= MS_TICK_PERIOD_C - 1;
+            msTick        <= true;
          else
             msTickCounter <= msTickCounter - 1;
+            msTick        <= false;
          end if;
       end if;
    end process P_TICK;
 
-   P_WR_COMB : process ( rWr, trg, waddr, rdDon, msTick, wdorA, wdorB ) is
+   P_WR_COMB : process ( rWr, rWr.parms, trg, waddr, rdDon, msTick, wdorA, wdorB ) is
       variable v : WrRegType;
    begin
 
-      v        := rWr;
-      v.lstTrg := trg;
-      v.nsmpls := rWr.nsmpls + 1;
-      if ( rWr.saddr = MEM_DEPTH_G - 1 ) then
-         v.saddr := to_unsigned( 0, v.saddr'length );
-      else
-         v.saddr := rWr.saddr + 1;
-      end if;
+      v         := rWr;
+      v.lstTrg  := trg;
+      v.nsmpls  := rWr.nsmpls + 1;
+      v.expired := ( rWr.timer = 0 );
 
       -- remember overrange 'seen' during the last MEM_DEPTH_G samples
       if ( wdorA = '1' ) then
@@ -611,6 +643,7 @@ begin
          v.ovrB := rWr.ovrB - 1;
       end if;
 
+
       case ( rWr.state ) is
 
          when FILL       =>
@@ -618,19 +651,16 @@ begin
                v.state  := RUN;
                -- discard oldest sample (need 1 to fill 'lstTrg')
                v.nsmpls := resize( rWr.parms.nprets, v.nsmpls'length );
-               if ( rWr.parms.autoTimeMs /= 0 ) then
-                  v.timer := rWr.parms.autoTimeMs;
-               end if;
-            else
-               v.saddr := rWr.saddr;
+               v.timer  := rWr.parms.autoTimeMs;
             end if;
 
          when RUN        =>
             if ( msTick and ( rWr.timer /= AUTO_TIME_STOP_C ) ) then
                v.timer := rWr.timer - 1;
             end if;
-            if ( not rWr.wasTrg and ( ( not rWr.lstTrg and trg ) = '1' or ( rWr.timer = 0 ) ) ) then
+            if ( not rWr.wasTrg and ( ( ( not rWr.lstTrg and trg ) = '1' ) or rWr.expired ) ) then
                v.wasTrg := true;
+               v.taddr  := waddr;
             end if;
             if ( v.wasTrg ) then
                -- compare to MEM_DEPTH_G - 1; this last sample still
@@ -638,7 +668,6 @@ begin
                if ( MEM_DEPTH_G - 1 = rWr.nsmpls ) then
                   v.state := HOLD;
                end if;
-               v.saddr  := rWr.saddr;
             else
                -- discard oldest sample
                v.nsmpls := rWr.nsmpls;
@@ -652,13 +681,10 @@ begin
             -- that is possibly read by the readout process
             v.nsmpls := rWr.nsmpls;
             v.lstTrg := rWr.lstTrg;
-            v.saddr  := rWr.saddr;
             if ( rdDon = '1' ) then
                v.nsmpls := to_unsigned( 0, v.nsmpls'length );
-               v.saddr  := waddr;
                v.state  := FILL;
                v.wasTrg := false;
-               v.timer  := to_unsigned( 0, v.timer'length );
                v.ovrA   := to_unsigned( 0, v.ovrA'length );
                v.ovrB   := to_unsigned( 0, v.ovrB'length );
             end if;
@@ -689,8 +715,9 @@ begin
       if ( rising_edge( memClk ) ) then
          acqTglOb <= acqTglIb;
          if ( startAcq = '1' ) then
-            rWr       <= WR_REG_INIT_C;
-            rWr.parms <= parms;
+            rWr         <= WR_REG_INIT_C;
+            rWr.parms   <= parms;
+            rWr.decmIs1 <= (parms.decm0 = 0);
             if ( parms.nprets > MEM_DEPTH_G - 1 ) then
                rWr.parms.nprets <= to_unsigned( MEM_DEPTH_G - 1, rWr.parms.nprets'length );
             end if;
@@ -729,9 +756,20 @@ begin
 
       constant STG0_W_C             : natural := fdatA'length + STG0_LD_MAX_DCM_C*STG0_STGS_C;
 
+      constant STG1_OBITS_C         : natural := fdatA'length + 1; -- FIXME; multiplier width
+      constant STG1_STGS_C          : natural := 4;
+      constant STG1_LD_MAX_DCM_C    : natural :=12;
+
+      constant STG1_W_C             : natural := STG0_OBITS_C + STG1_LD_MAX_DCM_C*STG1_STGS_C;
+
+
       signal   stg0Ctl              : std_logic_vector(STG0_STGS_C downto 0);
 
       signal   cenOut0              : std_logic;
+
+      
+      signal   cenCic1              : std_logic;
+      attribute KEEP of cenCic1     : signal is "TRUE";
 
       signal   stg0CicDatA          : signed(STG0_W_C - 1 downto 0);
       signal   stg0CicDorA          : std_logic;
@@ -745,6 +783,34 @@ begin
 
       signal   stg0DatA             : std_logic_vector( STG0_OBITS_C - 1 downto 0 );
       signal   stg0DatB             : std_logic_vector( STG0_OBITS_C - 1 downto 0 );
+
+      signal   stg1Ctl              : std_logic_vector(STG1_STGS_C downto 0);
+
+      signal   cenOut1              : std_logic;
+
+      signal   stg1CicDatA          : signed(STG1_W_C - 1 downto 0);
+      signal   stg1CicDorA          : std_logic;
+      signal   stg1ShfDatA          : std_logic_vector(STG1_W_C - 1 downto 0);
+      signal   stg1ShfDorA          : std_logic;
+
+      signal   stg1CicDatB          : signed(STG1_W_C - 1 downto 0);
+      signal   stg1CicDorB          : std_logic;
+      signal   stg1ShfDatB          : std_logic_vector(STG1_W_C - 1 downto 0);
+      signal   stg1ShfDorB          : std_logic;
+
+      signal   stg1DatA             : std_logic_vector( STG1_OBITS_C - 1 downto 0 );
+      signal   stg1DatB             : std_logic_vector( STG1_OBITS_C - 1 downto 0 );
+
+      signal   mulaA                : signed(STG1_OBITS_C - 1 downto 0)   := (others => '0');
+      signal   mulaB                : signed(STG1_OBITS_C - 1 downto 0)   := (others => '0');
+      signal   mulbA                : signed(STG1_OBITS_C - 1 downto 0)   := (others => '0');
+      signal   mulbB                : signed(STG1_OBITS_C - 1 downto 0)   := (others => '0');
+      signal   mulpA                : signed(2*STG1_OBITS_C - 1 downto 0) := (others => '0');
+      signal   mulpB                : signed(2*STG1_OBITS_C - 1 downto 0) := (others => '0');
+
+      signal   mulDorDlyA           : std_logic_vector(1 downto 0)        := (others => '0');
+      signal   mulDorDlyB           : std_logic_vector(1 downto 0)        := (others => '0');
+
    begin
 
       U_CIC0_A : entity work.CicFilter
@@ -758,7 +824,7 @@ begin
             clk            => adcClk,
             rst            => adcRst,
 
-            decmInp        => rWr.parms.decm(STG0_LD_MAX_DCM_C - 1 downto 0),
+            decmInp        => rWr.parms.decm0,
 
             cenbOut        => stg0Ctl,
             cenbInp        => open,
@@ -782,8 +848,9 @@ begin
          port map (
             clk            => adcClk,
             rst            => adcRst,
+            cen            => cenOut0,
 
-            shift          => std_logic_vector( rWr.parms.shift0(4 downto 0) ),
+            shift          => std_logic_vector( rWr.parms.shift0 ),
 
             datInp         => std_logic_vector( stg0CicDatA ),
             auxInp(0)      => stg0CicDorA,
@@ -805,7 +872,7 @@ begin
             clk            => adcClk,
             rst            => adcRst,
 
-            decmInp        => rWr.parms.decm(STG0_LD_MAX_DCM_C - 1 downto 0),
+            decmInp        => rWr.parms.decm0,
 
             cenbOut        => open,
             cenbInp        => stg0Ctl,
@@ -829,8 +896,9 @@ begin
          port map (
             clk            => adcClk,
             rst            => adcRst,
+            cen            => cenOut0,
 
-            shift          => std_logic_vector( rWr.parms.shift0(4 downto 0) ),
+            shift          => std_logic_vector( rWr.parms.shift0 ),
 
             datInp         => std_logic_vector( stg0CicDatB ),
             auxInp(0)      => stg0CicDorB,
@@ -841,10 +909,139 @@ begin
 
       stg0DatB <= stg0ShfDatB( stg0DatB'range );
 
-      wdatA <= stg0DatA( wdatA'range );
-      wdatB <= stg0DatB( wdatB'range );
-      wdorA <= stg0ShfDorA;
-      wdorB <= stg0ShfDorB;
+      U_CIC1_A : entity work.CicFilter
+         generic map (
+            DATA_WIDTH_G   => stg0DatA'length,
+            LD_MAX_DCM_G   => STG1_LD_MAX_DCM_C,
+            NUM_STAGES_G   => STG1_STGS_C,
+            DCM_MASTER_G   => true
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+
+            cen            => cenCic1,
+
+            decmInp        => rWr.parms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0),
+
+            cenbOut        => stg1Ctl,
+            cenbInp        => open,
+
+            dataInp        => signed(stg0DatA),
+            dovrInp        => stg0ShfDorA,
+
+            dataOut        => stg1CicDatA,
+            dovrOut        => stg1CicDorA,
+
+            strbOut        => cenOut1
+         );
+
+      U_SHF1_A : entity work.PipelinedRShifter
+         generic map (
+            DATW_G         => STG1_W_C,
+            AUXW_G         => 1,
+            SIGN_EXTEND_G  => true,
+            PIPL_SHIFT_G   => false
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+            cen            => cenOut1,
+
+            shift          => std_logic_vector( rWr.parms.shift1( numBits(STG1_W_C) - 1 downto 0 ) ),
+
+            datInp         => std_logic_vector( stg1CicDatA ),
+            auxInp(0)      => stg1CicDorA,
+
+            datOut         => stg1ShfDatA,
+            auxOut(0)      => stg1ShfDorA
+         );
+
+      U_CIC1_B : entity work.CicFilter
+         generic map (
+            DATA_WIDTH_G   => stg0DatB'length,
+            LD_MAX_DCM_G   => STG1_LD_MAX_DCM_C,
+            NUM_STAGES_G   => STG1_STGS_C,
+            DCM_MASTER_G   => false
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+
+            cen            => cenCic1,
+
+            decmInp        => rWr.parms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0),
+
+            cenbOut        => open,
+            cenbInp        => stg1Ctl,
+
+            dataInp        => signed(stg0DatB),
+            dovrInp        => stg0ShfDorB,
+
+            dataOut        => stg1CicDatB,
+            dovrOut        => stg1CicDorB,
+
+            strbOut        => open
+         );
+
+      U_SHF1_B : entity work.PipelinedRShifter
+         generic map (
+            DATW_G         => STG1_W_C,
+            AUXW_G         => 1,
+            SIGN_EXTEND_G  => true,
+            PIPL_SHIFT_G   => false
+         )
+         port map (
+            clk            => adcClk,
+            rst            => adcRst,
+            cen            => cenOut1,
+
+            shift          => std_logic_vector( rWr.parms.shift1( numBits(STG1_W_C) - 1 downto 0 ) ),
+
+            datInp         => std_logic_vector( stg1CicDatB ),
+            auxInp(0)      => stg1CicDorB,
+
+            datOut         => stg1ShfDatB,
+            auxOut(0)      => stg1ShfDorB
+         );
+
+      P_MULT : process ( adcClk ) is
+      begin
+         if ( rising_edge( adcClk ) ) then
+            mulbA <= rWr.parms.scale( rWr.parms.scale'left downto rwr.parms.scale'left - mulbA'length + 1 );
+            mulbB <= rWr.parms.scale( rWr.parms.scale'left downto rwr.parms.scale'left - mulbB'length + 1 );
+            if ( wrDecm = '1' ) then
+               if ( rWr.decmIs1 ) then
+                  mulaA      <= signed(stg0DatA(mulaA'range));
+                  mulaB      <= signed(stg0DatB(mulaB'range));
+
+                  mulDorDlyA <= mulDorDlyA(mulDorDlyA'left - 1 downto 0) & stg0ShfDorA;
+                  mulDorDlyB <= mulDorDlyB(mulDorDlyB'left - 1 downto 0) & stg0ShfDorB;
+               else
+                  mulaA      <= signed(stg1DatA(mulaA'range));
+                  mulaB      <= signed(stg1DatB(mulaB'range));
+
+                  mulDorDlyA <= mulDorDlyA(mulDorDlyA'left - 1 downto 0) & stg1ShfDorA;
+                  mulDorDlyB <= mulDorDlyB(mulDorDlyB'left - 1 downto 0) & stg1ShfDorB;
+               end if;
+               mulpA <= mulaA * mulbA;
+               mulpB <= mulaB * mulbB;
+
+            end if;
+         end if;
+      end process P_MULT;
+
+
+      stg1DatA <= stg1ShfDatA(stg1DatA'range);
+      stg1DatB <= stg1ShfDatB(stg1DatB'range);
+
+      wdatAin <= std_logic_vector( mulpA(wdatAin'range) );
+      wdatBin <= std_logic_vector( mulpB(wdatBin'range) );
+      wdorAin <= mulDorDlyA(mulDorDlyA'left);
+      wdorBin <= mulDorDlyB(mulDorDlyB'left);
+
+      cenCic1 <= '0'                   when rWr.decmIs1 else cenOut0;
+      wrDecm  <= cenOut0               when rWr.decmIs1 else cenOut1;
 
    end block B_DECIMATORS;
 

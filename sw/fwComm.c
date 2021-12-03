@@ -42,8 +42,9 @@
 #define BITS_FW_CMD_ACQ_IDX_NPT  (BITS_FW_CMD_ACQ_IDX_LVL + sizeof( int16_t))
 #define BITS_FW_CMD_ACQ_IDX_AUT  (BITS_FW_CMD_ACQ_IDX_NPT + sizeof(uint16_t))
 #define BITS_FW_CMD_ACQ_IDX_DCM  (BITS_FW_CMD_ACQ_IDX_AUT + sizeof(uint16_t))
+#define BITS_FW_CMD_ACQ_IDX_SCL  (BITS_FW_CMD_ACQ_IDX_DCM + 3*sizeof(uint8_t))
 
-#define BITS_FW_CMD_ACQ_IDX_LEN  (BITS_FW_CMD_ACQ_IDX_DCM + 3)
+#define BITS_FW_CMD_ACQ_IDX_LEN  (BITS_FW_CMD_ACQ_IDX_SCL + 4*sizeof(uint8_t))
 
 struct FWInfo {
 	int             fd;
@@ -534,7 +535,8 @@ AcqParams p;
 uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
 uint8_t   buf[BITS_FW_CMD_ACQ_IDX_LEN];
 uint16_t  v16;
-uint32_t  v23;
+uint32_t  v24;
+uint32_t  v32;
 int       got;
 
 	p.mask = ACQ_PARAM_MSK_GET;
@@ -569,17 +571,48 @@ int       got;
 	buf[BITS_FW_CMD_ACQ_IDX_AUT +  0]  =  v16       & 0xff;
 	buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]  = (v16 >> 8) & 0xff;
 
-	if ( set->decimation     > (1<<3*8) ) {
-		v23 = (1<<3*8) - 1;
-	} else if ( 0 == set->decimation ) {
-		v23 = 1 - 1;
+	if ( set->cic0Decimation > 16 ) {
+		v24 = 15;
+	} else if ( 0 == set->cic0Decimation ) {
+		v24 = 1 - 1;
 	} else {
-		v23 = set->decimation - 1;
+		v24 = set->cic0Decimation - 1;
+	}
+    v24 <<= 20;
+
+	if ( 0 != v24 ) {
+		if ( set->cic1Decimation > (1<<16) ) {
+			v24 |= (1<<16) - 1;
+		} else if ( 0 == set->cic1Decimation ) {
+			v24 |= 1 - 1;
+		} else {
+			v24 |= set->cic1Decimation - 1;
+		}
 	}
 
-	buf[BITS_FW_CMD_ACQ_IDX_DCM +  0]  =  v23        & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]  = (v23 >>  8) & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]  = (v23 >> 16) & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_DCM +  0]  =  v24        & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]  = (v24 >>  8) & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]  = (v24 >> 16) & 0xff;
+
+	v32 = set->cic0Shift;
+    if ( v32 > 15 ) {
+		v32 = 15;
+	}
+	v32 <<= 7;
+	if ( set->cic1Shift > 16*4 - 1 ) {
+		v32 |= 16*4 - 1;
+	} else {
+		v32 |= set->cic1Shift;
+	}
+	v32 <<= 20;
+
+	v32 |= ( (set->scale >> (32 - 18)) & ( (1<<18) - 1 ) );
+
+	buf[BITS_FW_CMD_ACQ_IDX_SCL +  0]  =  v32        & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_SCL +  1]  = (v32 >>  8) & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_SCL +  2]  = (v32 >> 16) & 0xff;
+	buf[BITS_FW_CMD_ACQ_IDX_SCL +  3]  = (v32 >> 24) & 0xff;
+
 
 	got = fifoXferFrame( fw->fd, &cmd, buf, sizeof(buf), buf, sizeof(buf) );
 
@@ -610,16 +643,26 @@ int       got;
 	get->level   = (int16_t)(    (((uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]) << 8)
                                | (uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  0] );
 
-	get->npts    =          (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  1]) << 8)
+	get->npts           =   (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  1]) << 8)
                                | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  0] );
 
-	get->autoTimeoutMS =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]) << 8)
+	get->autoTimeoutMS  =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]) << 8)
                                | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  0] );
 
-	get->decimation    =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]) << 16)
+	v32                 =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]) << 16)
 	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]) <<  8)
                                | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  0] );
-	get->decimation   += 1; /* zero-based */
+    get->cic0Decimation = ((v32 >> 16) & 0xf   ) + 1; /* zero-based */
+    get->cic1Decimation = ((v32 >>  0) & 0xffff) + 1; /* zero-based */
+
+	v32                 =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  3]) << 24)
+	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  2]) << 16)
+	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  1]) <<  8)
+                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  0] );
+
+	get->cic0Shift      = ( v32 >> (20 + 7) ) & 0x1f;
+	get->cic1Shift      = ( v32 >> (20    ) ) & 0x7f;
+	get->scale          = ( v32 & ((1<<20) - 1)) << (32 - 18);
 	return 0;
 }
 
@@ -651,13 +694,26 @@ AcqParams p;
 }
 
 int
-acq_set_decimation(FWInfo *fw, uint32_t decimation)
+acq_set_decimation(FWInfo *fw, uint8_t cic0Decimation, uint32_t cic1Decimation)
 {
 AcqParams p;
-	p.mask          = ACQ_PARAM_MSK_DCM;
-	p.decimation    = decimation;
+	p.mask           = ACQ_PARAM_MSK_DCM;
+	p.cic0Decimation = cic0Decimation;
+	p.cic1Decimation = cic1Decimation;
 	return acq_set_params( fw, &p, 0 );
 }
+
+int
+acq_set_scale(FWInfo *fw, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale)
+{
+AcqParams p;
+	p.mask           = ACQ_PARAM_MSK_SCL;
+	p.cic0Shift      = cic0RShift;
+	p.cic1Shift      = cic1RShift;
+	p.scale          = scale;
+	return acq_set_params( fw, &p, 0 );
+}
+
 
 int
 acq_set_source(FWInfo *fw, TriggerSource src, int raising)

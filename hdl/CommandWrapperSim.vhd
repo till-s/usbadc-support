@@ -13,7 +13,7 @@ architecture sim of CommandWrapperSim is
    constant ADC_FIRST_C : unsigned(7 downto 0) := x"A0";
 
    signal clk     : std_logic := '0';
-   signal rst     : std_logic := '0';
+   signal rst     : std_logic_vector(4 downto 0) := (others => '1');
 
    signal datIbo  : std_logic_vector(7 downto 0);
    signal vldIbo  : std_logic;
@@ -62,7 +62,7 @@ begin
       )
       port map (
          clk          => clk,
-         rst          => rst,
+         rst          => rst(rst'left),
 
          datIb        => datIbo,
          vldIb        => vldIbo,
@@ -76,13 +76,20 @@ begin
          bbi          => bbi,
 
          adcClk       => clk,
-         adcRst       => rst,
+         adcRst       => rst(rst'left),
 
          adcDataDDR(8 downto 1)  => std_logic_vector(adcDDR),
-         adcDataDDR(         0)  => '0',
+         adcDataDDR(         0)  => adcDDR(3),
 
          smplClk      => open
       );
+
+   P_RST  : process ( clk ) is
+   begin
+      if ( rising_edge( clk ) ) then
+         rst <= rst(rst'left - 1 downto 0) & '0';
+      end if;
+   end process P_RST;
 
    P_FILL : process ( clk ) is
    begin

@@ -37,6 +37,7 @@ architecture rtl of CommandAcqParm is
    constant M_SET_NPT_BIT_C : natural  := 3;
    constant M_SET_AUT_BIT_C : natural  := 4;
    constant M_SET_DCM_BIT_C : natural  := 5;
+   constant M_SET_SCL_BIT_C : natural  := 6;
 
    constant CMD_LEN_C   : natural := acqCtlParmSizeBytes;
 
@@ -67,7 +68,7 @@ architecture rtl of CommandAcqParm is
 
 begin
 
-   P_COMB : process ( r, mIb, rOb, ackIb ) is
+   P_COMB : process ( r, r.p, mIb, rOb, ackIb ) is
       constant FOO_C   : std_logic_vector := toSlv( ACQ_CTL_PARM_INIT_C ); -- just to get the length/range
       variable v       : RegType;
       variable rb      : std_logic_vector(FOO_C'range);
@@ -119,8 +120,15 @@ begin
                   v.p.autoTimeMs := r.p.autoTimeMs;
                end if;
                if ( r.mask( M_SET_DCM_BIT_C ) = '0' ) then
-                  v.p.decm       := r.p.decm;
+                  v.p.decm0      := r.p.decm0;
+                  v.p.decm1      := r.p.decm1;
+               elsif ( v.p.decm0 = 0 ) then
+                  v.p.decm1      := (others => '0');
+               end if;
+               if ( r.mask( M_SET_SCL_BIT_C ) = '0' ) then
                   v.p.shift0     := r.p.shift0;
+                  v.p.shift1     := r.p.shift1;
+                  v.p.scale      := r.p.scale;
                end if;
                if ( r.count = CMD_LEN_C - 1 ) then
                   if ( ( r.mask /= M_GET_C ) and ( mIb.lst = '1' ) ) then
@@ -165,6 +173,25 @@ begin
          end if;
       end if;
    end process P_SEQ;
+
+   P_DBG : process ( clk ) is
+   begin
+      if ( rising_edge( clk ) ) then
+         if ( r.state = TRIG and ackIb = r.trg ) then
+            report "Source: " & integer'image( TriggerSrcType'pos( r.p.src ) );
+            report "Rising: " & boolean'image( r.p.rising );
+            report "Level : " & integer'image( to_integer( r.p.lvl ) );
+            report "NPTS  : " & integer'image( to_integer( r.p.nprets ) );
+            report "AutoTO: " & integer'image( to_integer( r.p.autoTimeMs ) );
+            report "CIC0 D: " & integer'image( to_integer( r.p.decm0 ) );
+            report "CIC1 D: " & integer'image( to_integer( r.p.decm1 ) );
+            report "CIC0 S: " & integer'image( to_integer( r.p.shift0 ) );
+            report "CIC1 S: " & integer'image( to_integer( r.p.shift1 ) );
+            report "Scale : " & integer'image( to_integer( r.p.scale ) );
+         end if;
+      end if;
+   end process P_DBG;
+
 
    parmsOb <= r.p;
    trgOb   <= r.trg;

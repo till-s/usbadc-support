@@ -28,7 +28,8 @@ static void usage(const char *nm)
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
 	printf("   -B                 : dump ADC buffer (raw).\n");
-    printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts').\n");
+    printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'factor').\n");
+    printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^30!\n");
 	printf("   -p                 : dump acquisition parameters.\n");
 	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : access PGA registers.\n");
@@ -77,6 +78,27 @@ scanl(const char *tok, const char *eq, long *vp)
 }
 
 static int
+scanDecm(const char *tok, const char *eq, long *d0p, long *d1p)
+{
+	if ( 2 != sscanf( eq + 1, "%lix%li", d0p, d1p ) ) {
+		fprintf(stderr, "Error -- parseAcqParam: unable to scan value in '%s'\n", tok);
+		return -1;
+	}
+	return 0;
+}
+
+static int
+scanScal(const char *tok, const char *eq, long *d0p, long *d1p, long *d2p)
+{
+	if ( 3 != sscanf( eq + 1, "%li:%li:%li", d0p, d1p, d2p ) ) {
+		fprintf(stderr, "Error -- parseAcqParam: unable to scan value in '%s'\n", tok);
+		return -1;
+	}
+	return 0;
+}
+
+
+static int
 parseAcqParams(AcqParams *pp, const char *ops)
 {
 char *str = strdup( ops );
@@ -85,7 +107,7 @@ char *tok;
 char *eq;
 char *val;
 int   rval = -1;
-long  v;
+long  v[4];
 
 	if ( ! str ) {	
 		fprintf(stderr, "Error -- parseAcqParams: no memory\n");
@@ -101,31 +123,51 @@ long  v;
 		}
 
 		switch ( toupper( tok[0] ) ) {
-			case 'L':
-				if ( scanl( tok, eq, &v ) ) goto bail;
-				pp->level = (int16_t) v;
-				pp->mask |= ACQ_PARAM_MSK_LVL;
-				break;
-			case 'N':
-				if ( scanl( tok, eq, &v ) ) goto bail;
-				pp->npts  = (uint32_t) v;
-				pp->mask |= ACQ_PARAM_MSK_NPT;
-				break;
 			case 'A':
 				for ( val = eq + 1; isspace( *val ); val++ )
 					/* nothing else */;
 				if ( 'I' == toupper( *val ) ) {
-					v = ACQ_PARAM_TIMEOUT_INF;
-				} else if ( scanl( tok, eq, &v ) ) {
+					v[0] = ACQ_PARAM_TIMEOUT_INF;
+				} else if ( scanl( tok, eq, &v[0] ) ) {
 					goto bail;
 				}
-				pp->autoTimeoutMS = (uint32_t) v;
+				pp->autoTimeoutMS = (uint32_t) v[0];
 				pp->mask |= ACQ_PARAM_MSK_AUT;
 				break;
 			case 'D':
-				if ( scanl( tok, eq, &v ) ) goto bail;
-				pp->decimation = (uint32_t) v;
+				if ( scanDecm( tok, eq, &v[0], &v[1] ) ) goto bail;
+				pp->cic0Decimation = (uint8_t)  v[0];
+				pp->cic1Decimation = (uint32_t) v[1];
 				pp->mask |= ACQ_PARAM_MSK_DCM;
+				break;
+			case 'E':
+				for ( val = eq + 1; isspace( *val ); val++ )
+					/* nothing else */;
+				switch( toupper( *val ) ) {
+					case 'R': pp->raising = 1; break;
+					case 'F': pp->raising = 0; break;
+					default :
+						fprintf(stderr, "Error -- parseAcqParams: Invalid trigger edge '%s'\n", val);
+						goto bail;
+				}
+				pp->mask |= ACQ_PARAM_MSK_EDG;
+				break;
+			case 'F':
+				if ( scanScal( tok, eq, &v[0], &v[1], &v[2] ) ) goto bail;
+				pp->cic0Shift      = (uint8_t)  v[0];
+				pp->cic1Shift      = (uint8_t)  v[1];
+				pp->scale          = (int32_t)  v[2];
+				pp->mask |= ACQ_PARAM_MSK_SCL;
+				break;
+			case 'L':
+				if ( scanl( tok, eq, &v[0] ) ) goto bail;
+				pp->level = (int16_t) v[0];
+				pp->mask |= ACQ_PARAM_MSK_LVL;
+				break;
+			case 'N':
+				if ( scanl( tok, eq, &v[0] ) ) goto bail;
+				pp->npts  = (uint32_t) v[0];
+				pp->mask |= ACQ_PARAM_MSK_NPT;
 				break;
 			case 'S':
 				for ( val = eq + 1; isspace( *val ); val++ )
@@ -150,18 +192,6 @@ long  v;
 					goto bail;
 				}
 				pp->mask |= ACQ_PARAM_MSK_SRC;
-				break;
-			case 'E':
-				for ( val = eq + 1; isspace( *val ); val++ )
-					/* nothing else */;
-				switch( toupper( *val ) ) {
-					case 'R': pp->raising = 1; break;
-					case 'F': pp->raising = 0; break;
-					default :
-						fprintf(stderr, "Error -- parseAcqParams: Invalid trigger edge '%s'\n", val);
-						goto bail;
-				}
-				pp->mask |= ACQ_PARAM_MSK_EDG;
 				break;
 			default:
 			    fprintf(stderr, "Error -- parseAcqParams: invalid operation: '%s'\n", tok);
@@ -287,6 +317,8 @@ const char        *trgOp     = 0;
 			CHA == p.src ? "Channel A" : (CHB == p.src ? "Channel B" : "External"));
 		printf("Edge               : %s\n", p.raising ? "raising" : "falling");
 		printf("Trigger Level      : %" PRId16 "\n", p.level );
+		printf(" NOTE: Trigger level is int16_t, ADC numbers are normalized to\n");
+		printf("       this range!\n");
 		printf("N Pretrig samples  : %" PRIu32 "\n", p.npts  );
 		printf("Autotrig timeout   : ");
 			if ( ACQ_PARAM_TIMEOUT_INF == p.autoTimeoutMS ) {
@@ -294,7 +326,11 @@ const char        *trgOp     = 0;
 			} else {
 				printf("%" PRIu32 " ms\n", p.autoTimeoutMS  );
 			}
-		printf("Decimation         : %" PRIu32 "\n", p.decimation);
+		printf("Decimation         : %" PRIu8 " x %" PRIu32 "\n", p.cic0Decimation, p.cic1Decimation);
+		printf("Scale\n");
+        printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
+        printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
+        printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/(double)(1<<30));
 	}
 
 
