@@ -9,7 +9,7 @@ GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
-all: commandwrappertb commandwrappersim cicfiltertb
+all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb
 
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
@@ -25,6 +25,9 @@ commandwrappersim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o  $@
 
 cicfiltertb: $(OBJS) CicFilterTb.o
+	$(GHDL) -e $(GHDLFLAGS)  $@
+
+pipelinedrshiftertb: PipelinedRShifterTb.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS)  $@
 
 # Run target
@@ -102,6 +105,7 @@ MaxAdc.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.
 CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o GitVersionPkg.o CommandAcqParm.o
 CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
+PipelinedRShifterTb.o: PipelinedRShifter.o
 
 MulShifter.o PipelinedRShifter.o: BasicPkg.o
 

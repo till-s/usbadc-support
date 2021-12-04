@@ -28,7 +28,7 @@ end entity PipelinedRShifter;
 
 architecture rtl of PipelinedRShifter is
 
-   constant LDW_C : natural := numBits( DATW_G - 1 );
+   constant LDW_C : natural := numBits( (DATW_G - 1) / STRIDE_G );
 
    type RegArray is array (0 to LDW_C) of std_logic_vector(datInp'range);
 
@@ -68,7 +68,7 @@ begin
    end generate GEN_SHIFT_PIPELINED;
 
    GEN_STAGE : for stg in LDW_C - 1 downto datReg'low generate
-      signal sgn : std_logic_vector(2**stg - 1 downto 0);
+      signal sgn : std_logic_vector(STRIDE_G * 2**stg - 1 downto 0);
    begin
 
       sgn <= (others => ite( SIGN_EXTEND_G, datReg(stg+1)(datReg(stg+1)'left), std_logic'('0') ) );
@@ -81,7 +81,7 @@ begin
                auxReg(stg) <= (others => '0');
             elsif ( cen = '1' ) then
                if ( shfReg(stg+1)(stg) = '1' ) then
-                  datReg(stg) <= sgn & datReg(stg+1)(datReg(stg)'left downto 2**stg);
+                  datReg(stg) <= sgn & datReg(stg+1)(datReg(stg)'left downto STRIDE_G * 2**stg);
                else
                   datReg(stg) <= datReg(stg+1);
                end if;
