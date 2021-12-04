@@ -132,7 +132,6 @@ architecture rtl of MaxADC is
       saddr   : RamAddr;
       anb     : boolean;
       busOb   : SimpleBusMstType;
-      lstDly  : std_logic;
       rdDon   : std_logic;
    end record RdRegType;
 
@@ -144,7 +143,6 @@ architecture rtl of MaxADC is
       saddr   => (others => '0'),
       anb     => true,
       busOb   => SIMPLE_BUS_MST_INIT_C,
-      lstDly  => '0',
       rdDon   => '0'
    );
 
@@ -467,6 +465,7 @@ begin
                   else
                      v.raddr     := rWr.taddr - resize(rWr.parms.nprets, v.raddr'length) + MEM_DEPTH_G;
                   end if;
+                  v.saddr     := v.raddr;
                   -- transmit start address -- not really necessary; we keep it for
                   -- debugging purposes and maybe to convey additional info in the
                   -- future... 
@@ -480,7 +479,6 @@ begin
                   v.busOb.dat(1) := toSl(rWr.ovrB /= 0);
                   v.busOb.vld := '1';
                   v.busOb.lst := '0';
-                  v.lstDly    := '0';
                else
                   busOb.lst <= '1';
                   if ( wrDon = '1' ) then  -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
@@ -528,9 +526,9 @@ begin
                   v.rdatB     := rdatB;
                   -- is the end reached (raddr wrapped around to saddr; mem[saddr] prefetched
                   -- again but ignored...)
-                  if ( rRd.raddr = rWr.taddr ) then
-                     v.lstDly    := '1';
-                     v.busOb.lst := rRd.lstDly;
+
+                  if ( rRd.raddr = rRd.saddr ) then
+                     v.busOb.lst := '1';
                   end if;
                else
                   if ( rRd.busOb.lst = '1' ) then
