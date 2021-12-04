@@ -117,7 +117,7 @@ begin
       cenDecm <= cenbInp;
    end generate GEN_DCM_SUB;
 
-   strbLoc <= cenDecm(cenDecm'right);
+   strbLoc <= cenDecm(cenDecm'right) and cen;
 
    P_OVR : process ( clk ) is
    begin

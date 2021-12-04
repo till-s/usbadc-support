@@ -759,6 +759,8 @@ begin
       constant STG0_LD_MAX_DCM_C    : natural := 4;
 
       constant STG0_SCL_LD_ONE_C    : natural := 16;
+      subtype  Stg0ScaleType        is signed(STG0_SCL_LD_ONE_C + 1 downto 0);
+      type     Stg0ScaleArray       is array (natural range <>) of Stg0ScaleType;
 
       constant STG0_W_C             : natural := fdatA'length + STG0_LD_MAX_DCM_C*STG0_STGS_C;
 
@@ -778,7 +780,7 @@ begin
       attribute KEEP of cenCic1     : signal is "TRUE";
 
       -- one extra bit because of sign
-      signal   stg0Scl              : signed(STG0_SCL_LD_ONE_C + 1 downto 0);
+      signal   stg0Scl              : Stg0ScaleType;
 
       signal   stg0CicDatA          : signed(STG0_W_C - 1 downto 0);
       signal   stg0CicDorA          : std_logic;
@@ -825,6 +827,35 @@ begin
    --  ->  decim**STG0_STGS * 2**7 <= 2**(FACT_WIDTH - 1)
    --  ->  decim <= 2**( (FACT_WIDTH - 1 - (fdat'length - 1) ) / STG0_STGS )
       constant DCM0_BRK_C           : natural := natural( floor( 2.0**(real(18 - fdatA'length)/real(STG0_STGS_C)) ) );
+
+
+      function CIC_SCL_F(
+         constant decm : in natural;
+         constant stgs : in natural;
+         constant ld_1 : in natural
+      ) return signed is
+         variable vr : real;
+         variable vi : natural;
+      begin
+          vr := round( 2.0**real(ld_1) / real(decm)**stgs );
+          vi := natural( vr );
+          if ( vi * decm**stgs > 2**ld_1 ) then
+             vi := vi - 1;
+          end if;
+         return to_signed( vi, ld_1 + 2 );
+      end function CIC_SCL_F;
+
+      function STG0_SCL_FILL_F return Stg0ScaleArray is
+         variable v : Stg0ScaleArray(2**STG0_LD_MAX_DCM_C - 1 downto 0);
+      begin
+         for i in v'range loop
+            -- decimation register value is actual decimation - 1
+            v(i) := CIC_SCL_F( i + 1, STG0_STGS_C, STG0_SCL_LD_ONE_C );
+         end loop;
+         return v;
+      end function STG0_SCL_FILL_F;
+
+      constant STG0_SHF_TBL_C : Stg0ScaleArray := STG0_SCL_FILL_F;
 
    begin
 
@@ -891,10 +922,12 @@ begin
       --  STG0_STGS * log2(decm) <= 17 - log2(|data_max|)
       --  -> decm <= floor( 2**( (17 - log2(|data_max|)) / STG0_STGS ) )
 
-      stg0ShfCtl <= (to_integer( rWr.parms.decm0 ) <= DCM0_BRK_C);
---      stg0Scl    <= signed( resize( unsigned( rWr.parms.shift0 ), stg0Scl'length ) );
---      stg0Scl <= to_signed( 65536, stg0Scl'length );
-      stg0Scl <= to_signed(   809, stg0Scl'length );
+--6,10,14
+
+      stg0ShfCtl <= (to_integer( rWr.parms.decm0 ) <= DCM0_BRK_C - 1);
+-- doesn't fit :-(
+      stg0Scl    <= STG0_SHF_TBL_C( to_integer( rWr.parms.decm0 ) );
+--      stg0Scl    <= resize( rWr.parms.scale, stg0Scl'length );
 
       U_SHF0_A : entity work.MulShifter
          generic map (
