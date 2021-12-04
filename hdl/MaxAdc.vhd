@@ -749,6 +749,9 @@ begin
    end generate GEN_BUS_ILA;
 
    G_DECIMATORS : if ( not DISABLE_DECIMATORS_G ) generate
+      -- HW multiplier (factor) width
+      constant MUL_FACT_W_C         : natural := 18;
+
       -- at least one extra bit; because we cannot scale
       -- precisely with just a right-shift.
       constant STG0_OBITS_C         : natural := fdatA'length + 1;
@@ -762,11 +765,41 @@ begin
 
       constant STG0_W_C             : natural := fdatA'length + STG0_LD_MAX_DCM_C*STG0_STGS_C;
 
-      constant STG1_OBITS_C         : natural := fdatA'length + 1; -- FIXME; multiplier width
+      constant STG1_OBITS_C         : natural := MUL_FACT_W_C;
       constant STG1_STGS_C          : natural := 4;
       constant STG1_LD_MAX_DCM_C    : natural :=12;
 
+
       constant STG1_W_C             : natural := STG0_OBITS_C + STG1_LD_MAX_DCM_C*STG1_STGS_C;
+
+      -- use some multiplier bits for the shifting - we
+      -- use a stride in the shifter and can then
+      -- do the last bits in the multiplier.
+      -- In the special case of having powers of two for the
+      -- number of CIC stages and for the stride then it becomes
+      -- easy to compute the breakpoints in the decimation
+      -- rate where we have to switch the shifter:
+      --   shifter:
+      --      N = 2^(STRIDE * shift)
+      --   CIC amplification:  decm^STAGES
+      -- Thus,  shift = log2(decimation) * STAGES/STRIDE
+      --
+      -- The hardware multiplier has 18 bits, thus we can
+      -- handle a growth of 8 bits in the multplier which
+      -- and thus a decimation ratio of 2^STRIDE/STAGES = 4
+      -- whenever his ratio is a is a power of two computing
+      -- the breakpoints is simple.
+      constant STG1_STRIDE_C        : natural := 8; -- chose so that stride/stages is a natural
+                                                    -- number (limited by multiplier width to
+                                                    -- something between 1 and 9 or 10.
+
+      constant STG1_RAT_C           : natural := STG1_STRIDE_C / STG1_STGS_C;
+
+      constant STG1_SHF_W_C         : natural := numBits( (STG1_W_C - 1) / STG1_STRIDE_C );
+
+      signal   stg1Shf              : std_logic_vector(STG1_SHF_W_C - 1 downto 0);
+      -- ensure this vector'length is a multiple of the STRIDE/STAGES ratio
+      signal   stg1ShfSel           : std_logic_vector( ( (STG1_LD_MAX_DCM_C + STG1_RAT_C - 1)/STG1_RAT_C) * STG1_RAT_C  - 1 downto 0);
 
       signal   stg0Ctl              : std_logic_vector(STG0_STGS_C downto 0);
       signal   stg0ShfCtl           : boolean;
@@ -825,7 +858,6 @@ begin
    --  ->  decim**STG0_STGS * 2**7 <= 2**(FACT_WIDTH - 1)
    --  ->  decim <= 2**( (FACT_WIDTH - 1 - (fdat'length - 1) ) / STG0_STGS )
       constant DCM0_BRK_C           : natural := natural( floor( 2.0**(real(18 - fdatA'length)/real(STG0_STGS_C)) ) );
-
 
       function CIC_SCL_F(
          constant decm : in natural;
@@ -999,19 +1031,40 @@ begin
             strbOut        => cenOut1
          );
 
+      assert ( STG1_STGS_C = 4 ) report "rework is required to change the number CIC1 stages" severity failure;
+
+      P_SHF_SEL : process ( rWr.parms.decm1, stg1ShfSel ) is
+         constant ZER_C : std_logic_vector(STG1_RAT_C - 1 downto 0) := (others => '0');
+      begin
+         stg1ShfSel <= (others => '0');
+         stg1ShfSel(STG1_LD_MAX_DCM_C - 1 downto 0) <= std_logic_vector( rWr.parms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0) );
+
+         -- default
+         stg1Shf    <= (others => '0');
+         -- compute correct shift for decimation ratio
+         -- we can infer from just looking at the bits in decim1 -- because
+         -- STG1_RAT_C is integer...
+         for i in stg1ShfSel'length/STG1_RAT_C - 1 downto 0 loop
+            if ( stg1ShfSel( (i + 1) * STG1_RAT_C - 1 downto i * STG1_RAT_C ) /= ZER_C ) then
+               stg1Shf <= std_logic_vector( to_unsigned( i , stg1Shf'length ) );
+            end if;
+         end loop;
+      end process P_SHF_SEL;
+
       U_SHF1_A : entity work.PipelinedRShifter
          generic map (
             DATW_G         => STG1_W_C,
             AUXW_G         => 1,
             SIGN_EXTEND_G  => true,
-            PIPL_SHIFT_G   => false
+            PIPL_SHIFT_G   => false,
+            STRIDE_G       => STG1_STRIDE_C
          )
          port map (
             clk            => adcClk,
             rst            => adcRst,
             cen            => cenOut1,
 
-            shift          => std_logic_vector( rWr.parms.shift1( numBits(STG1_W_C) - 1 downto 0 ) ),
+            shift          => stg1Shf,
 
             datInp         => std_logic_vector( stg1CicDatA ),
             auxInp(0)      => stg1CicDorA,
@@ -1052,14 +1105,15 @@ begin
             DATW_G         => STG1_W_C,
             AUXW_G         => 1,
             SIGN_EXTEND_G  => true,
-            PIPL_SHIFT_G   => false
+            PIPL_SHIFT_G   => false,
+            STRIDE_G       => STG1_STRIDE_C
          )
          port map (
             clk            => adcClk,
             rst            => adcRst,
             cen            => cenOut1,
 
-            shift          => std_logic_vector( rWr.parms.shift1( numBits(STG1_W_C) - 1 downto 0 ) ),
+            shift          => stg1Shf,
 
             datInp         => std_logic_vector( stg1CicDatB ),
             auxInp(0)      => stg1CicDorB,
@@ -1075,8 +1129,8 @@ begin
             mulbB <= rWr.parms.scale( rWr.parms.scale'left downto rwr.parms.scale'left - mulbB'length + 1 );
             if ( wrDecm = '1' ) then
                if ( rWr.decmIs1 ) then
-                  mulaA      <= stg0DatA(mulaA'range);
-                  mulaB      <= stg0DatB(mulaB'range);
+                  mulaA      <= resize(stg0DatA, mulaA'length);
+                  mulaB      <= resize(stg0DatB, mulaB'length);
 
                   mulDorDlyA <= mulDorDlyA(mulDorDlyA'left - 1 downto 0) & stg0ShfDorA;
                   mulDorDlyB <= mulDorDlyB(mulDorDlyB'left - 1 downto 0) & stg0ShfDorB;

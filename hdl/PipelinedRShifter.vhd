@@ -17,7 +17,7 @@ entity PipelinedRShifter is
       rst     : in  std_logic;
       cen     : in  std_logic := '1';
 
-      shift   : in  std_logic_vector(numBits(DATW_G - 1) - 1 downto 0);
+      shift   : in  std_logic_vector(numBits((DATW_G - 1)/STRIDE_G) - 1 downto 0);
 
       datInp  : in  std_logic_vector(DATW_G - 1 downto 0) := (others => '0');
       datOut  : out std_logic_vector(DATW_G - 1 downto 0);

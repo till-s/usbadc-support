@@ -34,6 +34,7 @@ architecture sim of PipelinedRShifterTb is
    end function cmp;
 begin
 
+assert false report integer'image( (3/2)*2 );
    P_CLK : process is
    begin
       if ( run ) then
@@ -155,7 +156,7 @@ begin
          clk             => clk,
          rst             => rst,
 
-         shift           => shf,
+         shift           => shf(1 downto 0),
 
          datInp          => datIS,
          auxInp          => auxI,
