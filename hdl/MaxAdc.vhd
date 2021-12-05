@@ -952,12 +952,8 @@ begin
       --  STG0_STGS * log2(decm) <= 17 - log2(|data_max|)
       --  -> decm <= floor( 2**( (17 - log2(|data_max|)) / STG0_STGS ) )
 
---6,10,14
-
       stg0ShfCtl <= (to_integer( rWr.parms.decm0 ) <= DCM0_BRK_C - 1);
--- doesn't fit :-(
       stg0Scl    <= STG0_SHF_TBL_C( to_integer( rWr.parms.decm0 ) );
---      stg0Scl    <= resize( rWr.parms.scale, stg0Scl'length );
 
       U_SHF0_A : entity work.MulShifter
          generic map (
