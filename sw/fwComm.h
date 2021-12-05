@@ -102,6 +102,10 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 #define ACQ_PARAM_MSK_DCM (1<<5)
 #define ACQ_PARAM_MSK_SCL (1<<6)
 
+#define ACQ_LD_SCALE_ONE 30
+#define ACQ_SCALE_ONE (1L<<ACQ_LD_SCALE_ONE)
+
+
 #define ACQ_PARAM_MSK_GET (0)
 #define ACQ_PARAM_MSK_ALL (0x3f)
 
@@ -141,6 +145,9 @@ acq_set_level(FWInfo *, int16_t level);
 
 int
 acq_set_npts(FWInfo *, uint32_t npts);
+
+int32_t
+acq_default_cic1Scale(uint32_t cic1Decimation);
 
 int
 acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation);
