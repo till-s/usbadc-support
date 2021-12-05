@@ -126,8 +126,8 @@ begin
                   v.p.decm1      := (others => '0');
                end if;
                if ( r.mask( M_SET_SCL_BIT_C ) = '0' ) then
-                  v.p.shift0     := r.p.shift0;
-                  v.p.shift1     := r.p.shift1;
+--                  v.p.shift0     := r.p.shift0;
+--                  v.p.shift1     := r.p.shift1;
                   v.p.scale      := r.p.scale;
                end if;
                if ( r.count = CMD_LEN_C - 1 ) then
@@ -185,8 +185,8 @@ begin
             report "AutoTO: " & integer'image( to_integer( r.p.autoTimeMs ) );
             report "CIC0 D: " & integer'image( to_integer( r.p.decm0 ) );
             report "CIC1 D: " & integer'image( to_integer( r.p.decm1 ) );
-            report "CIC0 S: " & integer'image( to_integer( r.p.shift0 ) );
-            report "CIC1 S: " & integer'image( to_integer( r.p.shift1 ) );
+--            report "CIC0 S: " & integer'image( to_integer( r.p.shift0 ) );
+--            report "CIC1 S: " & integer'image( to_integer( r.p.shift1 ) );
             report "Scale : " & integer'image( to_integer( r.p.scale ) );
          end if;
       end if;

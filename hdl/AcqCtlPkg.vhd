@@ -19,8 +19,8 @@ package AcqCtlPkg is
       autoTimeMs   : unsigned(15 downto 0);
       decm0        : unsigned( 3 downto 0);
       decm1        : unsigned(19 downto 0);
-      shift0       : unsigned( 4 downto 0);
-      shift1       : unsigned( 6 downto 0);
+--      shift0       : unsigned( 4 downto 0);
+--      shift1       : unsigned( 6 downto 0);
       scale        : signed  (17 downto 0);
    end record AcqCtlParmType;
 
@@ -36,8 +36,8 @@ package AcqCtlPkg is
       autoTimeMs  => AUTO_TIME_STOP_C,
       decm0       => (others => '0'),
       decm1       => (others => '0'),
-      shift0      => (others => '0'),
-      shift1      => (others => '0'),
+--      shift0      => (others => '0'),
+--      shift1      => (others => '0'),
       scale       => (16 => '1', others => '0')
    );
 
@@ -58,7 +58,8 @@ package body AcqCtlPkg is
       v := v + ( x.nprets'length + 7) / 8;
       v := v + ( x.autoTimeMs'length + 7) / 8;
       v := v + ( x.decm0'length  + x.decm1'length  + 7) / 8;
-      v := v + ( x.shift0'length + x.shift1'length + x.scale'length + 7) / 8;
+--      v := v + ( x.shift0'length + x.shift1'length + x.scale'length + 7) / 8;
+      v := v + ( 5 + 7 + x.scale'length + 7) / 8;
       return v;
    end function acqCtlParmSizeBytes;
 
@@ -71,8 +72,8 @@ package body AcqCtlPkg is
       constant e : std_logic        := ite( x.rising );
       constant v : std_logic_vector :=
              (
-                std_logic_vector( x.shift0     )   --  5
-              & std_logic_vector( x.shift1     )   --  7
+                "00000"   -- std_logic_vector( x.shift0     )   --  5
+              & "0000000" -- std_logic_vector( x.shift1     )   --  7
               & "00" & std_logic_vector( x.scale ) -- 20
               & std_logic_vector( x.decm0      )
               & std_logic_vector( x.decm1      )
@@ -97,15 +98,14 @@ package body AcqCtlPkg is
          v.src := EXT;
       end if;
       v.rising     := (x(3) = '1');
-report integer'image( x'left ) & " " & integer'image( x'right );
       v.lvl        :=   signed( x( 23 downto   8) );
       v.nprets     := unsigned( x( 39 downto  24) );
       v.autoTimeMs := unsigned( x( 55 downto  40) );
       v.decm1      := unsigned( x( 75 downto  56) );
       v.decm0      := unsigned( x( 79 downto  76) );
       v.scale      :=   signed( x( 97 downto  80) );
-      v.shift1     := unsigned( x(106 downto 100) );
-      v.shift0     := unsigned( x(111 downto 107) );
+--      v.shift1     := unsigned( x(106 downto 100) );
+--      v.shift0     := unsigned( x(111 downto 107) );
       return v;
    end function toAcqCtlParmType;
 end package body AcqCtlPkg;
