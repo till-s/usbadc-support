@@ -102,7 +102,7 @@ architecture rtl of MaxADC is
       nsmpls  : RamAddr;
       ovrA    : RamAddr;
       ovrB    : RamAddr;
-      parms   : AcqCtlParmType;
+--      parms   : AcqCtlParmType;
       timer   : unsigned(15 downto 0);
       expired : boolean;
       decmIs1 : boolean;
@@ -116,7 +116,7 @@ architecture rtl of MaxADC is
       ovrA    => (others => '0'),
       ovrB    => (others => '0'),
       nsmpls  => (others => '0'),
-      parms   => ACQ_CTL_PARM_INIT_C,
+--      parms   => ACQ_CTL_PARM_INIT_C,
       timer   => (others => '0'),
       expired => false,
       decmIs1 => true
@@ -206,9 +206,13 @@ architecture rtl of MaxADC is
    signal msTick            : boolean   := false;
    signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
 
+   signal lparms            : AcqCtlParmType;
+
 begin
 
    assert MEM_DEPTH_G mod 1024 = 0 and MEM_DEPTH_G >= 1024 report "Cannot report accurate memory size" severity warning;
+
+   lparms <= parms;
 
    GEN_DCM : if ( USE_DCM_G ) generate
       signal dcmOutClk0   : std_logic;
@@ -421,8 +425,8 @@ begin
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWr.taddr) is
-      variable v : RdRegType;
+   P_RD_COMB : process (rRd, lparms, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWr) is
+      variable v      : RdRegType;
    begin
       v     := rRd;
 
@@ -460,10 +464,10 @@ begin
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   -- seed the start address for reading
-                  if ( rWr.taddr >= rWr.parms.nprets ) then
-                     v.raddr     := rWr.taddr - resize(rWr.parms.nprets, v.raddr'length);
+                  if ( rWr.taddr >= lparms.nprets ) then
+                     v.raddr     := rWr.taddr - resize(lparms.nprets, v.raddr'length);
                   else
-                     v.raddr     := rWr.taddr - resize(rWr.parms.nprets, v.raddr'length) + MEM_DEPTH_G;
+                     v.raddr     := rWr.taddr - resize(lparms.nprets, v.raddr'length) + MEM_DEPTH_G;
                   end if;
                   v.saddr     := v.raddr;
                   -- transmit start address -- not really necessary; we keep it for
@@ -569,13 +573,13 @@ begin
 
    -- compare the un-delayed wdatAin/wdatBin to produce the registered
    -- trigger 'trg'...
-   P_TRG : process ( rWr, wdatAin, wdatBin, extTrgSyncDelayed ) is
-      variable v : std_logic;
-      variable l : signed(wdatAin'range);
+   P_TRG : process ( rWr, lparms, wdatAin, wdatBin, extTrgSyncDelayed ) is
+      variable v      : std_logic;
+      variable l      : signed(wdatAin'range);
    begin
-      l := rWr.parms.lvl(rWr.parms.lvl'left downto rWr.parms.lvl'left - wdatAin'length + 1);
+      l := lparms.lvl(lparms.lvl'left downto lparms.lvl'left - wdatAin'length + 1);
       v := '0';
-      case ( rWr.parms.src ) is
+      case ( lparms.src ) is
          when CHA =>
             if ( signed(wdatAin) >= l ) then
                v := '1';
@@ -589,7 +593,7 @@ begin
          when others => -- manual
             -- handle separately
       end case;
-      if ( not rWr.parms.rising ) then
+      if ( not lparms.rising ) then
          v :=  not v;
       end if;
 
@@ -624,7 +628,7 @@ begin
       end if;
    end process P_TICK;
 
-   P_WR_COMB : process ( rWr, rWr.parms, trg, waddr, rdDon, msTick, wdorA, wdorB ) is
+   P_WR_COMB : process ( rWr, lparms, trg, waddr, rdDon, msTick, wdorA, wdorB ) is
       variable v : WrRegType;
    begin
 
@@ -649,11 +653,11 @@ begin
       case ( rWr.state ) is
 
          when FILL       =>
-            if ( rWr.nsmpls >= rWr.parms.nprets ) then
+            if ( rWr.nsmpls >= lparms.nprets ) then
                v.state  := RUN;
                -- discard oldest sample (need 1 to fill 'lstTrg')
-               v.nsmpls := resize( rWr.parms.nprets, v.nsmpls'length );
-               v.timer  := rWr.parms.autoTimeMs;
+               v.nsmpls := resize( lparms.nprets, v.nsmpls'length );
+               v.timer  := lparms.autoTimeMs;
             end if;
 
          when RUN        =>
@@ -718,11 +722,11 @@ begin
          acqTglOb <= acqTglIb;
          if ( startAcq = '1' ) then
             rWr         <= WR_REG_INIT_C;
-            rWr.parms   <= parms;
+--            rWr.parms   <= parms;
             rWr.decmIs1 <= (parms.decm0 = 0);
-            if ( parms.nprets > MEM_DEPTH_G - 1 ) then
-               rWr.parms.nprets <= to_unsigned( MEM_DEPTH_G - 1, rWr.parms.nprets'length );
-            end if;
+--            if ( parms.nprets > MEM_DEPTH_G - 1 ) then
+--               rWr.parms.nprets <= to_unsigned( MEM_DEPTH_G - 1, rWr.parms.nprets'length );
+--            end if;
          elsif ( wrDecm = '1' ) then
             rWr <= rinWr;
          end if;
@@ -900,7 +904,7 @@ begin
             clk            => adcClk,
             rst            => adcRst,
 
-            decmInp        => rWr.parms.decm0,
+            decmInp        => lparms.decm0,
 
             cenbOut        => stg0Ctl,
             cenbInp        => open,
@@ -925,7 +929,7 @@ begin
             clk            => adcClk,
             rst            => adcRst,
 
-            decmInp        => rWr.parms.decm0,
+            decmInp        => lparms.decm0,
 
             cenbOut        => open,
             cenbInp        => stg0Ctl,
@@ -952,8 +956,8 @@ begin
       --  STG0_STGS * log2(decm) <= 17 - log2(|data_max|)
       --  -> decm <= floor( 2**( (17 - log2(|data_max|)) / STG0_STGS ) )
 
-      stg0ShfCtl <= (to_integer( rWr.parms.decm0 ) <= DCM0_BRK_C - 1);
-      stg0Scl    <= STG0_SHF_TBL_C( to_integer( rWr.parms.decm0 ) );
+      stg0ShfCtl <= (to_integer( lparms.decm0 ) <= DCM0_BRK_C - 1);
+      stg0Scl    <= STG0_SHF_TBL_C( to_integer( lparms.decm0 ) );
 
       U_SHF0_A : entity work.MulShifter
          generic map (
@@ -1013,7 +1017,7 @@ begin
 
             cen            => cenCic1,
 
-            decmInp        => rWr.parms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0),
+            decmInp        => lparms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0),
 
             cenbOut        => stg1Ctl,
             cenbInp        => open,
@@ -1029,11 +1033,11 @@ begin
 
       assert ( STG1_STGS_C = 4 ) report "rework is required to change the number CIC1 stages" severity failure;
 
-      P_SHF_SEL : process ( rWr.parms.decm1, stg1ShfSel ) is
+      P_SHF_SEL : process ( lparms.decm1, stg1ShfSel ) is
          constant ZER_C : std_logic_vector(STG1_RAT_C - 1 downto 0) := (others => '0');
       begin
          stg1ShfSel <= (others => '0');
-         stg1ShfSel(STG1_LD_MAX_DCM_C - 1 downto 0) <= std_logic_vector( rWr.parms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0) );
+         stg1ShfSel(STG1_LD_MAX_DCM_C - 1 downto 0) <= std_logic_vector( lparms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0) );
 
          -- default
          stg1Shf    <= (others => '0');
@@ -1082,7 +1086,7 @@ begin
 
             cen            => cenCic1,
 
-            decmInp        => rWr.parms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0),
+            decmInp        => lparms.decm1(STG1_LD_MAX_DCM_C - 1 downto 0),
 
             cenbOut        => open,
             cenbInp        => stg1Ctl,
@@ -1121,8 +1125,8 @@ begin
       P_MULT : process ( adcClk ) is
       begin
          if ( rising_edge( adcClk ) ) then
-            mulbA <= rWr.parms.scale( rWr.parms.scale'left downto rwr.parms.scale'left - mulbA'length + 1 );
-            mulbB <= rWr.parms.scale( rWr.parms.scale'left downto rwr.parms.scale'left - mulbB'length + 1 );
+            mulbA <= lparms.scale( lparms.scale'left downto lparms.scale'left - mulbA'length + 1 );
+            mulbB <= lparms.scale( lparms.scale'left downto lparms.scale'left - mulbB'length + 1 );
             if ( wrDecm = '1' ) then
                if ( rWr.decmIs1 ) then
                   mulaA      <= resize(stg0DatA, mulaA'length);
