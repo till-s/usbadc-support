@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <math.h>
 
 #include "cmdXfer.h"
 #include "fwComm.h"
@@ -547,6 +548,24 @@ int       got;
 		set = &p;
 	}
 
+	if ( ( set->mask & ACQ_PARAM_MSK_DCM ) ) {
+        if ( 1 >= set->cic0Decimation ) {
+printf("Forcing cic1 decimation to 1");
+			set->cic1Decimation = 1;
+        }
+printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
+		/* If they change the decimation but not explicitly the scale
+		 * then adjust the scale automatically
+		 */
+		if (  ! ( set->mask & ACQ_PARAM_MSK_SCL ) ) {
+			set->mask  |= ACQ_PARAM_MSK_SCL;
+			set->cic0Shift = 0;
+			set->cic1Shift = 0;
+			set->scale     = acq_default_cic1Scale( set->cic1Decimation );
+printf("Default scale %d\n", set->scale);
+		}
+	}
+
 	buf[BITS_FW_CMD_ACQ_IDX_MSK +  0]  = set->mask;
 	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0]  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
 	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] |= (set->raising ? 1 : 0)                << BITS_FW_CMD_ACQ_SHF_EDG;
@@ -591,8 +610,6 @@ int       got;
 			v24 |= set->cic1Decimation - 1;
 		}
 	}
-
-if ( set->mask & ACQ_PARAM_MSK_DCM ) printf("SET V24: 0x%06x\n", v24);
 
 	buf[BITS_FW_CMD_ACQ_IDX_DCM +  0]  =  v24        & 0xff;
 	buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]  = (v24 >>  8) & 0xff;
@@ -695,6 +712,37 @@ AcqParams p;
 	p.mask          = ACQ_PARAM_MSK_NPT;
 	p.npts          = npts;
 	return acq_set_params( fw, &p, 0 );
+}
+
+#define CIC1_SHF_STRIDE  8
+#define CIC1_STAGES      4
+#define STRIDE_STAGS_RAT 2
+
+int32_t
+acq_default_cic1Scale(uint32_t cic1Decimation)
+{
+uint32_t nbits;
+/* details based on the ration of shifter stride to number of CIC
+ * stages being an integer number
+ */
+uint32_t shift;
+double   scale;
+
+	if ( cic1Decimation < 2 ) {
+		shift = 0;
+        nbits = 0;
+	} else {
+        nbits = (uint32_t)floor( log2( (double)(cic1Decimation - 1) ) ) + 1;
+        /* implicit 'floor' in integer operation */
+		shift = (nbits - 1) / STRIDE_STAGS_RAT;
+	}
+	/* Correct the CIC1 gain */
+
+	scale = 1./pow((double)cic1Decimation, (double)CIC1_STAGES);
+
+	/* Adjust for built-in shifter operation */
+	scale /= exp2(-(double)(shift * CIC1_SHF_STRIDE));
+	return (int32_t)floor( scale * (double)ACQ_SCALE_ONE );
 }
 
 int
