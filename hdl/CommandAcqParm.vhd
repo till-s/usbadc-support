@@ -122,8 +122,6 @@ begin
                if ( r.mask( M_SET_DCM_BIT_C ) = '0' ) then
                   v.p.decm0      := r.p.decm0;
                   v.p.decm1      := r.p.decm1;
-               elsif ( v.p.decm0 = 0 ) then
-                  v.p.decm1      := (others => '0');
                end if;
                if ( r.mask( M_SET_SCL_BIT_C ) = '0' ) then
                   v.p.shift0     := r.p.shift0;
@@ -132,6 +130,11 @@ begin
                end if;
                if ( r.count = CMD_LEN_C - 1 ) then
                   if ( ( r.mask /= M_GET_C ) and ( mIb.lst = '1' ) ) then
+                     if ( r.mask( M_SET_DCM_BIT_C ) = '1' ) then
+                        if ( v.p.decm0 = 0 ) then
+                           v.p.decm1      := (others => '0');
+                        end if;
+                     end if;
                      v.trg    := not r.trg;
                      v.state  := TRIG;
                      -- hold off sending last byte until trigger is acked
