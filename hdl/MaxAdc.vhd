@@ -400,8 +400,8 @@ begin
          end if;
       end process P_WR_AB;
 
-      rdatA <= DPRAMD( to_integer( rRd.raddr ) )( 8 downto  1);
-      rdatB <= DPRAMD( to_integer( rRd.raddr ) )(15 downto  8);
+      rdatA <= DPRAMD( to_integer( rRd.raddr ) )( rdatA'left                downto rdatA'right                );
+      rdatB <= DPRAMD( to_integer( rRd.raddr ) )( rdatB'left + rdatA'length downto rdatB'right + rdatA'length );
 
    end generate GEN_ONEMEM_G;
 
