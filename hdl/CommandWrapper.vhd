@@ -223,7 +223,6 @@ begin
           generic map (
              ADC_CLOCK_FREQ_G     => ADC_FREQ_G,
              MEM_DEPTH_G          => MEM_DEPTH_G,
-             ONE_MEM_G            => True,
              DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
           )
           port map (
