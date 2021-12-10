@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/fcntl.h>
+#include <errno.h>
 #include <sys/select.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
