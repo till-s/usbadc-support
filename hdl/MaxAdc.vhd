@@ -212,7 +212,7 @@ begin
 
    assert MEM_DEPTH_G mod 1024 = 0 and MEM_DEPTH_G >= 1024 report "Cannot report accurate memory size" severity warning;
 
-   lparms <= parms;
+   lparms <= rWr.parms;
 
    GEN_DCM : if ( USE_DCM_G ) generate
       signal dcmOutClk0   : std_logic;
