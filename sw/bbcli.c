@@ -219,7 +219,8 @@ FWInfo            *fw        = 0;
 int                rval      = 1;
 unsigned           speed     = 115200; /* not sure this really matters */
 uint8_t           *buf       = 0;
-unsigned           buflen    = 8192;
+/* max # samples in 200 device is 16k */
+unsigned           buflen    = 33000;
 int                i;
 int                reg       =  0;
 int                val       = -1;

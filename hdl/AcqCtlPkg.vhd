@@ -97,7 +97,6 @@ package body AcqCtlPkg is
          v.src := EXT;
       end if;
       v.rising     := (x(3) = '1');
-report integer'image( x'left ) & " " & integer'image( x'right );
       v.lvl        :=   signed( x( 23 downto   8) );
       v.nprets     := unsigned( x( 39 downto  24) );
       v.autoTimeMs := unsigned( x( 55 downto  40) );

@@ -8,14 +8,15 @@ use work.AcqCtlPkg.all;
 
 entity CommandWrapper is
    generic (
-      I2C_SCL_G    : integer := -1;        -- index of I2C SCL (to handle clock stretching)
-      BBO_INIT_G   : std_logic_vector(7 downto 0) := x"FF";
-      I2C_FREQ_G   : real    := 100.0E3;
-      FIFO_FREQ_G  : real;
-      ADC_FREQ_G   : real    := 130.0E6;
-      MEM_DEPTH_G  : natural := 1024;
-      COMMA_G      : std_logic_vector(7 downto 0) := x"CA";
-      ESCAP_G      : std_logic_vector(7 downto 0) := x"55"
+      I2C_SCL_G                : integer := -1;        -- index of I2C SCL (to handle clock stretching)
+      BBO_INIT_G               : std_logic_vector(7 downto 0) := x"FF";
+      I2C_FREQ_G               : real    := 100.0E3;
+      FIFO_FREQ_G              : real;
+      ADC_FREQ_G               : real    := 130.0E6;
+      MEM_DEPTH_G              : natural := 1024;
+      COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
+      ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
+      DISABLE_DECIMATORS_G     : boolean := false
    );
    port (
       clk          : in  std_logic;
@@ -220,8 +221,9 @@ begin
     G_ADC : if ( NUM_CMDS_C > CMD_ADC_MEM_IDX_C ) generate
        U_ADC_BUF : entity work.MaxAdc
           generic map (
-             ADC_CLOCK_FREQ_G => ADC_FREQ_G,
-             MEM_DEPTH_G      => MEM_DEPTH_G
+             ADC_CLOCK_FREQ_G     => ADC_FREQ_G,
+             MEM_DEPTH_G          => MEM_DEPTH_G,
+             DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
           )
           port map (
              adcClk       => adcClk,
