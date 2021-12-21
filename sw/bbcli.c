@@ -343,15 +343,16 @@ const char        *trgOp     = 0;
 
 
 	if ( dumpAdc ) {
-		int j;
+		int      j;
+		uint16_t hdr;
 		printf("ADC Buffer size: %ld\n", buf_get_size( fw ));
 		if ( dumpAdc > 0 ) {
-			i = buf_read( fw, buf, buflen );
+			i = buf_read( fw, &hdr, buf, buflen );
 		} else {
 			i = buf_flush( fw );
 		}
 		if ( i > 0 ) {
-			printf("ADC Data\n");
+			printf("ADC Data (header: 0x%04" PRIx16 "\n", hdr);
 			for ( j = 0; j < i; j++ ) {
 				printf("0x%02" PRIx8 " ", buf[j]);
 				if ( 0xf == ( j & 0xf) ) {

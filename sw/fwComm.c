@@ -493,17 +493,36 @@ buf_get_size(FWInfo *fw)
 int
 buf_flush(FWInfo *fw)
 {
-	return buf_read(fw, 0, 0);
+	return buf_read(fw, 0, 0, 0);
 }
 
 int
-buf_read(FWInfo *fw, uint8_t *buf, size_t len)
+buf_read(FWInfo *fw, uint16_t *hdr, uint8_t *buf, size_t len)
 {
+uint8_t h[2];
+rbufvec v[2];
+size_t  rcnt;
+int     rv;
+
+	v[0].buf = h;
+	v[0].len = sizeof(h);
+	v[1].buf = buf;
+	v[1].len = len;
+
+	rcnt = (! hdr && 0 == len ? 0 : 2);
+
 	uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF );
 	if ( 0 == len ) {
 		cmd |= BITS_FW_CMD_ADCFLUSH;
 	}
-	return fifoXferFrame( fw->fd, &cmd, 0, 0, buf, len );
+	rv = fifoXferFrameVec( fw->fd, &cmd, 0, 0, v, rcnt );
+	if ( hdr ) {
+		*hdr = (h[1]<<8) | h[0];
+	}
+	if ( rv >= 2 ) {
+		rv -= 2;
+	}
+	return rv;
 }
 
 int64_t

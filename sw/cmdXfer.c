@@ -173,19 +173,42 @@ int oldVal = fifoDebug;
 int
 fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen)
 {
+tbufvec tvec[1];
+rbufvec rvec[0];
+	tvec[0].buf = tbuf;
+	tvec[0].len = tlen;
+
+	rvec[0].buf = rbuf;
+	rvec[0].len = rlen;
+
+	return fifoXferFrameVec( fd, cmdp, tvec, tlen ? 1 : 0, rvec, rlen ? 1 : 0 );
+}
+
+int
+fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
+{
 uint8_t tbufs[MAXLEN];
 uint8_t rbufs[MAXLEN];
-size_t  i, j, tlens, rlens, puts, put, got;
+size_t  i, j, tlens, rlens, puts, put, got, tidx, ridx, tlen, rlen;
 fd_set  rfds, tfds;
 RxState state       = RX;
-int     warned      = (0 == rlen ? 1 : 0);
+int     warned;
 int     eofSent     = 0;
 int     cmdReadback = 0;
 
 	tlens = 0;
 	rlens = sizeof(rbufs); 
-	put   = got = 0;
+	put   = got  = 0;
 	puts  = 0;
+	tidx  = ridx = 0;
+    tlen  = 0;
+    while ( tidx < tcnt && 0 == (tlen = tbuf[tidx].len) ) {
+		tidx++;
+	}
+    while ( ridx < rcnt && 0 == (rlen = rbuf[ridx].len) ) {
+		ridx++;
+	}
+    warned = (0 == rlen ? 1 : 0);
 
 	if ( cmdp ) {
 		tlens      += stuff( tbufs + tlens, cmdp );
@@ -201,8 +224,12 @@ int     cmdReadback = 0;
 			if ( ( tlen > put ) ) {
 				while ( ( tlen > put ) && ( tlens < sizeof(tbufs) - 3 ) ) {
 					/* Stuff tbuf */
-					tlens += stuff( tbufs + tlens, tbuf + put );
+					tlens += stuff( tbufs + tlens, tbuf[tidx].buf + put );
 					put++;
+					while ( put == tlen && ++tidx < tcnt ) {
+						put  = 0;
+						tlen = tbuf[tidx].len;
+					}
 				}
 			} else if ( ! eofSent ) {
 				tbufs[tlens] = COMMA;
@@ -270,8 +297,12 @@ int     cmdReadback = 0;
 								warned = 1;
 							}
 						} else {
-							rbuf[got] = rbufs[j];
+							rbuf[ridx].buf[got] = rbufs[j];
 							got++;
+							while ( got == rlen && ++ridx < rcnt ) {
+								got  = 0;
+								rlen = rbuf[ridx].len;
+							}
 						}
 					}
 				}
