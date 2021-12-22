@@ -352,7 +352,7 @@ const char        *trgOp     = 0;
 			i = buf_flush( fw );
 		}
 		if ( i > 0 ) {
-			printf("ADC Data (header: 0x%04" PRIx16 "\n", hdr);
+			printf("ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
 			for ( j = 0; j < i; j++ ) {
 				printf("0x%02" PRIx8 " ", buf[j]);
 				if ( 0xf == ( j & 0xf) ) {

@@ -189,7 +189,7 @@ fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const 
 {
 uint8_t tbufs[MAXLEN];
 uint8_t rbufs[MAXLEN];
-size_t  i, j, tlens, rlens, puts, put, got, tidx, ridx, tlen, rlen;
+size_t  i, j, tlens, rlens, puts, put, got, tot, tidx, ridx, tlen, rlen;
 fd_set  rfds, tfds;
 RxState state       = RX;
 int     warned;
@@ -198,7 +198,7 @@ int     cmdReadback = 0;
 
 	tlens = 0;
 	rlens = sizeof(rbufs); 
-	put   = got  = 0;
+	put   = got  = tot = 0;
 	puts  = 0;
 	tidx  = ridx = 0;
     tlen  = 0;
@@ -300,6 +300,7 @@ int     cmdReadback = 0;
 							rbuf[ridx].buf[got] = rbufs[j];
 							got++;
 							while ( got == rlen && ++ridx < rcnt ) {
+                                tot += got;
 								got  = 0;
 								rlen = rbuf[ridx].len;
 							}
@@ -310,7 +311,9 @@ int     cmdReadback = 0;
 		}
 	}
 
-	return got;
+	tot += got;
+
+	return tot;
 	
 bail:
 	return -1;
