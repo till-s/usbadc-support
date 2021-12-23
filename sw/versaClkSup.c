@@ -22,21 +22,23 @@ writeReg(FWInfo *fw, unsigned reg, uint8_t val)
 int
 versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)
 {
-	if ( writeReg( fw, 0x17, (idiv >> 4 ) ) < 0 ) return -1;
-	if ( writeReg( fw, 0x18, (idiv & 0xf) ) < 0 ) return -1;
-	if ( writeReg( fw, 0x19, (fdiv >> 16) ) < 0 ) return -1;
-	if ( writeReg( fw, 0x1A, (fdiv >>  8) ) < 0 ) return -1;
-	if ( writeReg( fw, 0x1B, (fdiv >>  0) ) < 0 ) return -1;
+	if ( writeReg( fw, 0x17, (idiv >> 4 )        ) < 0 ) return -1;
+	if ( writeReg( fw, 0x18, (idiv << 4 ) & 0xf0 ) < 0 ) return -1;
+	if ( writeReg( fw, 0x19, (fdiv >> 16)        ) < 0 ) return -1;
+	if ( writeReg( fw, 0x1A, (fdiv >>  8)        ) < 0 ) return -1;
+	if ( writeReg( fw, 0x1B, (fdiv >>  0)        ) < 0 ) return -1;
 	return 0;
 }
 
 int
 versaClkSetFBDivFlt(FWInfo *fw, double div)
 {
-int      idiv;
+unsigned idiv;
 unsigned fdiv;
+double   intg;
 
-	fdiv = (unsigned) round( exp2(24.0) * frexp( fabs( div ), & idiv ) );
+	fdiv = (unsigned) round( exp2(24.0) * modf( fabs( div ), &intg ) );
+    idiv = (unsigned) intg;
 
 	return versaClkSetFBDiv( fw, idiv, fdiv );
 }
@@ -67,7 +69,7 @@ uint8_t  val;
 		return writeReg( fw, divCReg, 0x01 );
 	}
 	if ( writeReg( fw, idivReg + 0, (idiv >> 4 )        ) < 0 ) return -1;
-	if ( writeReg( fw, idivReg + 1, (idiv & 0xf)        ) < 0 ) return -1;
+	if ( writeReg( fw, idivReg + 1, (idiv << 4 ) & 0xf0 ) < 0 ) return -1;
 	if ( writeReg( fw, fdivReg + 0, (fdiv >> 22)        ) < 0 ) return -1;
 	if ( writeReg( fw, fdivReg + 1, (fdiv >> 14)        ) < 0 ) return -1;
 	if ( writeReg( fw, fdivReg + 2, (fdiv >>  6)        ) < 0 ) return -1;
@@ -85,11 +87,12 @@ uint8_t  val;
 int
 versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div)
 {
-int           idiv;
+unsigned      idiv;
 unsigned long fdiv;
+double        intg;
 
-	fdiv = (unsigned long) round( exp2(30.0) * frexp( fabs( div ), & idiv ) );
-
+	fdiv = (unsigned long) round( exp2(30.0) * modf( fabs( div ), & intg ) );
+    idiv = (unsigned)      intg;
 	return versaClkSetOutDiv( fw, outp, idiv, fdiv );
 }
 
@@ -100,7 +103,7 @@ unsigned outCReg = OUTP1_CR + ((outp - 1) * 2);
 
 	if ( checkOut( "versaClkSetOutEna()", outp )            ) return -3;
 
-	if ( writeReg( fw, outCReg + 1, ena ? 0x80 : 0x00 ) < 0 ) return -1;
+	if ( writeReg( fw, outCReg + 1, ena ? 0x01 : 0x00 ) < 0 ) return -1;
 
 	return 0;
 }
@@ -113,10 +116,9 @@ uint8_t  val;
 
 	if ( checkOut( "versaClkSetOutCfg()", outp ) ) return -3;
 
-	val = ( (slew & 0x3) << 6 ) | ( ( level & 0x3 ) << 4 ) | ( ( mode & 0x7 ) << 0 );
+	val = ( ( mode & 0x7 ) << 5 ) | ( ( level & 0x3 ) << 3 ) | ( (slew & 0x3) << 0 );
 
 	if ( writeReg( fw, outCReg , val )  < 0       ) return -1;
-
 
 	return 0;
 }

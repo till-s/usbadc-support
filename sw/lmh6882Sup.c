@@ -41,7 +41,7 @@ lmh6882GetAtt(FWInfo *fw, unsigned channel)
 {
 int v;
 	if ( channel > 1 ) {
-		return -1.0;
+		return -2.0;
 	}
 	if ( ( v = lmh6882ReadReg( fw, PGA_REG_ATT_CHA + channel ) ) < 0 ) {
 		return -1.0;
@@ -53,9 +53,12 @@ int
 lmh6882SetAtt(FWInfo *fw, unsigned channel, float att)
 {
 uint8_t v;
+	if ( channel > 1 ) {
+		return -2;
+	}
 	if ( att < 0.0 || att > 20.0 ) {
 		fprintf(stderr, "lmh6228SetAtt: value out of range (0..20)\n");
-		return -1;
+		return -2;
 	}
 	v = round( att * 4.0 );
 	return lmh6882WriteReg( fw, PGA_REG_ATT_CHA + channel, v );
