@@ -3,7 +3,7 @@ all: bbcli
 CFLAGS=-O2 -Wall -g -fpic
 
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
-LOBJS+=lmh6882Sup.o max195xxSup.o
+LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o
 
 PYINC=/usr/include/python3.8
 
@@ -15,18 +15,19 @@ bbcli: bbcli.o $(LOBJS)
 pyfwcomm.o: pyfwcomm.c
 	$(CC) $(CFLAGS) -c -o $@ $^ -I $(PYINC)
 
-pyfwcomm.c: pyfwcomm.pyx fwComm.h pyfwcomm.pxd
+pyfwcomm.c: pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
 	cython3 $<
 
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-bbcli.o: fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h dac47cxSup.h max195xxSup.h
+bbcli.o pyfwcomm.c: fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h dac47cxSup.h max195xxSup.h versaClkSup.h
 fwComm.o: fwComm.h cmdXfer.h
 cmdXfer.o: cmdXfer.h
 at25Sup.o: fwComm.h cmdXfer.h
 max195xxSup.o: fwComm.h max195xxSup.h
+versaClkSup.o: fwComm.h versaClkSup.h
 
 .PHONY: clean
 
