@@ -17,6 +17,8 @@ cdef extern from "fwComm.h":
   int            acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation)
   int            acq_set_source(FWInfo *, TriggerSource src, int rising)
   int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
+  int            acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale)
+
 
 cpdef enum TriggerSource:
   CHA
