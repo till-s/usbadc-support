@@ -20,7 +20,20 @@ int fifoClose(int fd);
  */
 int fifoSetDebug(int val);
 
+typedef struct rbufvec {
+	uint8_t *buf;
+	size_t   len;
+} rbufvec;
+
+typedef struct tbufvec {
+	const uint8_t *buf;
+	size_t         len;
+} tbufvec;
+
+
 int fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen);
+
+int fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);
 
 #ifdef __cplusplus
 }

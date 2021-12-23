@@ -86,7 +86,7 @@ int
 buf_flush(FWInfo *);
 
 int
-buf_read(FWInfo *, uint8_t *buf, size_t len);
+buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len);
 
 typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 

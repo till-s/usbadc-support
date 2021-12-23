@@ -103,8 +103,6 @@ architecture rtl of MaxADC is
       ovrA    : RamAddr;
       ovrB    : RamAddr;
 --      parms   : AcqCtlParmType;
-      timer   : unsigned(15 downto 0);
-      expired : boolean;
       decmIs1 : boolean;
    end record WrRegType;
 
@@ -117,8 +115,6 @@ architecture rtl of MaxADC is
       ovrB    => (others => '0'),
       nsmpls  => (others => '0'),
 --      parms   => ACQ_CTL_PARM_INIT_C,
-      timer   => (others => '0'),
-      expired => false,
       decmIs1 => true
    );
 
@@ -203,8 +199,11 @@ architecture rtl of MaxADC is
    signal acqTglIb          : std_logic;
    signal acqTglOb          : std_logic := '0';
 
-   signal msTick            : boolean   := false;
    signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
+   signal msTimer           : unsigned( 15 downto 0 )                 := AUTO_TIME_STOP_C;
+   signal msTimerExpired    : boolean   := false;
+
+   signal msTimerStart      : std_logic := '0';
 
    signal lparms            : AcqCtlParmType;
 
@@ -622,24 +621,34 @@ begin
    P_TICK : process ( memClk ) is
    begin
       if ( rising_edge( memClk ) ) then
+         -- not absolutely precise timing...
+         if ( msTimer = 0 ) then
+            msTimerExpired <= true;
+         end if;
          if ( msTickCounter = 0 ) then
             msTickCounter <= MS_TICK_PERIOD_C - 1;
-            msTick        <= true;
+            if ( msTimer /= AUTO_TIME_STOP_C ) then
+               msTimer <= msTimer - 1;
+            end if;
          else
             msTickCounter <= msTickCounter - 1;
-            msTick        <= false;
+         end if;
+         if ( msTimerStart = '1' ) then
+           msTimer        <= lparms.autoTimeMs;
+           msTimerExpired <= false;
          end if;
       end if;
    end process P_TICK;
 
-   P_WR_COMB : process ( rWr, lparms, trg, waddr, rdDon, msTick, wdorA, wdorB ) is
+   P_WR_COMB : process ( rWr, lparms, trg, waddr, rdDon, wdorA, wdorB, msTimerExpired ) is
       variable v : WrRegType;
    begin
 
-      v         := rWr;
-      v.lstTrg  := trg;
-      v.nsmpls  := rWr.nsmpls + 1;
-      v.expired := ( rWr.timer = 0 );
+      v            := rWr;
+      v.lstTrg     := trg;
+      v.nsmpls     := rWr.nsmpls + 1;
+
+      msTimerStart <= '0';
 
       -- remember overrange 'seen' during the last MEM_DEPTH_G samples
       if ( wdorA = '1' ) then
@@ -658,17 +667,14 @@ begin
 
          when FILL       =>
             if ( rWr.nsmpls >= lparms.nprets ) then
-               v.state  := RUN;
+               v.state      := RUN;
                -- discard oldest sample (need 1 to fill 'lstTrg')
-               v.nsmpls := resize( lparms.nprets, v.nsmpls'length );
-               v.timer  := lparms.autoTimeMs;
+               v.nsmpls     := resize( lparms.nprets, v.nsmpls'length );
+               msTimerStart <= '1';
             end if;
 
          when RUN        =>
-            if ( msTick and ( rWr.timer /= AUTO_TIME_STOP_C ) ) then
-               v.timer := rWr.timer - 1;
-            end if;
-            if ( not rWr.wasTrg and ( ( ( not rWr.lstTrg and trg ) = '1' ) or rWr.expired ) ) then
+            if ( not rWr.wasTrg and ( ( ( not rWr.lstTrg and trg ) = '1' ) or msTimerExpired ) ) then
                v.wasTrg := true;
                v.taddr  := waddr;
             end if;

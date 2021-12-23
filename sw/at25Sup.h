@@ -52,9 +52,6 @@ at25_block_erase(FWInfo *fw, unsigned addr, size_t sz);
 int
 at25_prog(FWInfo *fw, unsigned addr, const uint8_t *data, size_t len, int check);
 
-void
-dac47cxSetVolt(FWInfo *fw, unsigned channel, float val);
-
 #ifdef __cplusplus
 }
 #endif

@@ -11,23 +11,32 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-void
+int
 dac47cxReset(FWInfo *fw);
 
-uint16_t
-dac47cxReadReg(FWInfo *fw, unsigned reg);
+int
+dac47cxReadReg(FWInfo *fw, unsigned reg, uint16_t *val);
 
-void
+int
 dac47cxWriteReg(FWInfo *fw, unsigned reg, uint16_t val);
 
-void
+int
 dac47cxInit(FWInfo *fw);
 
 void
-dac46cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax);
+dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax);
 
-void
+int
 dac47cxSet(FWInfo *fw, unsigned channel, int val);
+
+int
+dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val);
+
+int
+dac47cxSetVolt(FWInfo *fw, unsigned channel, float val);
+
+int
+dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val);
 
 #ifdef __cplusplus
 }

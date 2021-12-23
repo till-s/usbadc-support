@@ -12,6 +12,7 @@
 #include "at25Sup.h"
 #include "dac47cxSup.h"
 #include "lmh6882Sup.h"
+#include "max195xxSup.h"
 
 static void usage(const char *nm)
 {
@@ -343,15 +344,16 @@ const char        *trgOp     = 0;
 
 
 	if ( dumpAdc ) {
-		int j;
+		int      j;
+		uint16_t hdr;
 		printf("ADC Buffer size: %ld\n", buf_get_size( fw ));
 		if ( dumpAdc > 0 ) {
-			i = buf_read( fw, buf, buflen );
+			i = buf_read( fw, &hdr, buf, buflen );
 		} else {
 			i = buf_flush( fw );
 		}
 		if ( i > 0 ) {
-			printf("ADC Data\n");
+			printf("ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
 			for ( j = 0; j < i; j++ ) {
 				printf("0x%02" PRIx8 " ", buf[j]);
 				if ( 0xf == ( j & 0xf) ) {
@@ -529,7 +531,8 @@ const char        *trgOp     = 0;
 				} else {
 					if ( dac ) {
 						if ( val < 0 ) {
-							uint16_t dacdat = dac47cxReadReg( fw, reg );
+							uint16_t dacdat;
+							dac47cxReadReg( fw, reg, &dacdat );
 							buf[0] = dacdat >> 8;
 							buf[1] = dacdat >> 0;
 							rdl    = 2;
@@ -563,12 +566,13 @@ const char        *trgOp     = 0;
 				break;
 
 			case TEST_ADC:
-                buf[2] = 0x00;
-                buf[3] = (val < 0 ? 0xff : 0x00);
-				buf[0] = (val < 0 ? 0x80 : 0x00 ) | (reg & 0x7f);
-				buf[1] = (val < 0 ? 0x00 : val  );
-				bb_spi_xfer(fw, SPI_ADC, buf, buf, buf+2, 2);
-				rdl = (val < 0 ? 2 : 0);
+				if ( val < 0 ) {
+					max195xxReadReg( fw, reg, buf );
+				} else {
+					buf[0] = val;
+					max195xxWriteReg( fw, reg, buf[0] );
+				}
+				rdl = (val < 0 ? 1 : 0);
 				break;
 
 			default:
