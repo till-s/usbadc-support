@@ -12,6 +12,16 @@ cdef extern from "fwComm.h":
   unsigned long  buf_get_size(FWInfo *)
   int            buf_flush(FWInfo *)
   int            buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len)
+  int            acq_set_level(FWInfo *, int16_t level)
+  int            acq_set_npts(FWInfo *, int32_t npts)
+  int            acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation)
+  int            acq_set_source(FWInfo *, TriggerSource src, int rising)
+  int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
+
+cpdef enum TriggerSource:
+  CHA
+  CHB
+  EXT
 
 cdef extern from "lmh6882Sup.h":
   float          lmh6882GetAtt(FWInfo *fw, unsigned channel)
@@ -22,6 +32,9 @@ cdef extern from "dac47cxSup.h":
   int            dac47cxInit(FWInfo *)
   void           dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax)
   int            dac47cxSetVolt(FWInfo *fw, unsigned channel, float val)
+  int            dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val)
+  int            dac47cxSet(FWInfo *fw, unsigned channel, int val)
+  int            dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val)
 
 cdef extern from "max195xxSup.h":
   int            max195xxReset( FWInfo *fw );

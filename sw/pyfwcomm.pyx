@@ -4,6 +4,8 @@ from pyfwcomm cimport *
 from cpython.exc cimport *
 from cpython     cimport *
 
+import numpy
+
 cdef class VersaClk:
   cdef FWInfo     *_fw
 
@@ -69,7 +71,7 @@ cdef class Max195xxADC:
       raise IOError("Max195xxADC.setCMVolt()")
 
 
-cdef class Dac47CX:
+cdef class DAC47CX:
   cdef FWInfo     *_fw
 
   def __cinit__(self, FwComm fw):
@@ -77,32 +79,65 @@ cdef class Dac47CX:
 
   def reset(self):
     if ( dac47cxReset( self._fw ) < 0 ):
-      raise IOError("Dac47CX.reset()")
+      raise IOError("DAC47CX.reset()")
 
   def init(self):
     if ( dac47cxInit( self._fw ) < 0 ):
-      raise IOError("Dac47CX.init()")
+      raise IOError("DAC47CX.init()")
  
   def getRange(self):
     cdef float vmin, vmax
     dac47cxGetRange( NULL, NULL, &vmin, &vmax )
     return (vmin, vmax)
 
-  def set(self, int channel, float volt):
+  def setTicks(self, int channel, int ticks):
+    cdef int rv
+    rv = dac47cxSet( self._fw, channel, ticks )
+    if ( rv < 0 ):
+      if ( -2 == rv ):
+        raise ValueError("DAC47CX.setTicks(): Invalid Channel")
+      else:
+        raise IOError("DAC47CX.setTicks()")
+
+  def getTicks(self, int channel):
+    cdef int      rv
+    cdef uint16_t ticks
+    rv = dac47cxGet( self._fw, channel, &ticks )
+    if ( rv < 0 ):
+      if ( -1 > rv ):
+        raise ValueError("DAC47CX.getTicks(): Invalid Channel")
+      else:
+        raise IOError("DAC47CX.getTicks()")
+    return ticks
+
+
+  def setVolt(self, int channel, float volt):
     cdef int rv
     rv = dac47cxSetVolt( self._fw, channel, volt )
     if ( rv < 0 ):
       if ( -2 == rv ):
-        raise ValueError("Dac47CX.set(): Invalid Channel")
+        raise ValueError("DAC47CX.setVolt(): Invalid Channel")
       else:
-        raise IOError("Dac47CX.set()")
+        raise IOError("DAC47CX.setVolt()")
+
+  def getVolt(self, int channel):
+    cdef int    rv
+    cdef float  volt
+    rv = dac47cxGetVolt( self._fw, channel, &volt )
+    if ( rv < 0 ):
+      if ( -1 > rv ):
+        raise ValueError("DAC47CX.getVolt(): Invalid Channel")
+      else:
+        raise IOError("DAC47CX.getVolt()")
+    return volt
 
 cdef class FwComm:
   cdef FWInfo     *_fw
   cdef const char *_nm
   cdef VersaClk    _clk
-  cdef Dac47CX     _dac
+  cdef DAC47CX     _dac
   cdef Max195xxADC _adc
+  cdef int         _bufsz
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
     self._fw = fw_open(name, speed)
@@ -112,21 +147,36 @@ cdef class FwComm:
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     self._clk = VersaClk( self )
-    self._dac = Dac47CX( self )
+    self._dac = DAC47CX( self )
     self._adc = Max195xxADC( self )
 
   def init( self ):
+    self._bufsz = self.getBufSize()
     for o in [SEL_EXT, SEL_ADC, SEL_FPGA]:
       self._clk.setOutCfg( o, OUT_CMOS, SLEW_100, LEVEL_18 )
-    # 130MHz clock
-    self.setClkFBDiv( 104.0 )
-    self.setClkOutDiv( SEL_ADC, 10.0 )
+    if False:
+      # 130MHz clock
+      self.setClkFBDiv( 104.0 )
+      self.setClkOutDiv( SEL_ADC, 10.0 )
+    else:
+      # 100MHz clock
+      self.setClkOutDiv( SEL_ADC, 14.0 )
     self.setClkOutEna( SEL_ADC, True )
     self._dac.init()
     self._adc.init()
 
-  def setDAC( self, ch, v):
-    self._dac.set( ch, v )
+  def setDACVolt( self, ch, v):
+    self._dac.setVolt( ch, v )
+
+  def getDACVolt( self, ch ):
+    return self._dac.getVolt( ch )
+
+  def setDACTicks( self, ch, v):
+    self._dac.setTicks( ch, v )
+
+  def getDACTicks( self, ch ):
+    return self._dac.getTicks( ch )
+
 
   def getDACRange( self ):
     return self._dac.getRange()
@@ -187,6 +237,52 @@ cdef class FwComm:
     if ( rv < 0 ):
       PyErr_SetFromErrnoWithFilenameObject(OSError, self._nm)
     return rv
+
+  def setAcqTriggerLevelPercent(self, float lvl):
+    cdef int16_t l
+    if ( lvl > 100.0 or lvl < -100.0 ):
+      raise ValueError("setAcqTriggerLevelPercent(): trigger (percentage) level must be -100 <= level <= +100")
+    l = round( 32767.0 * lvl/100.0 )
+    if ( acq_set_level( self._fw, l ) < 0 ):
+      raise IOError("setAcqTriggerLevelPercent()")
+
+  def setAcqNPreTriggerSamples(self, int n):
+    if ( n < 0 or n > self._bufsz - 1 ):
+      raise ValueError("setAcqNPreTriggerSamples(): # pre-trigger samples out of range")
+    if ( acq_set_npts( self._fw, n ) < 0 ):
+      raise IOError("setAcqNPreTriggerSamples()")
+
+  def setAcqDecimation(self, n0, n1 = None):
+    cdef uint8_t  cic0Dec
+    cdef uint32_t cic1Dec
+    if ( not n1 is None ):
+      n0 *= n1
+    if ( n0 < 1 or n0 > 16 * 2**12):
+      raise ValueError("setAcqDecimation(): decimation out of range")
+    if ( 1 == n0 ):
+      cic0Dec = 1
+      cic1Dec = 1
+    else:
+      for cic0Dec in range(16,1,-1):
+        if ( n0 % cic0Dec == 0 ):
+          cic1Dec = int(n0 / cic0Dec)
+          if ( acq_set_decimation( self._fw, cic0Dec, cic1Dec ) < 0 ):
+            raise IOError("setAcqDecimation()")
+          return
+      raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
+
+  def setAcqTriggerSource(self, TriggerSource src, bool rising = True):
+    if ( acq_set_source( self._fw, src, rising ) < 0 ):
+      raise IOError("setAcqTriggerSource()")
+
+  def setAcqAutoTimeoutMs(self, int timeout):
+    if ( timeout < 0 ):
+      timeout = 0
+    if ( acq_set_autoTimeoutMs( self._fw, timeout ) < 0 ):
+      raise IOError("setAcqAutoTimeoutMs()")
+
+  def mkBuf(self):
+    return numpy.zeros( (self._bufsz, 2), dtype = "int8" )
 
   def __dealloc__(self):
     fw_close( self._fw )

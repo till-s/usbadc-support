@@ -9,7 +9,7 @@
 /* could go into the FWInfo struct */
 #define SLA 0xc2
 
-uint16_t
+int
 dac47cxReadReg(FWInfo *fw, unsigned reg, uint16_t *val)
 {
 uint8_t     buf[2];
@@ -80,7 +80,7 @@ uint16_t val;
 	if ( dac47cxReset( fw )                   < 0 ) return -1;
 	if ( dac47cxReadReg( fw, REG_VAL0, &val ) < 0 ) return -1;
 	dacMax = val;
-	dacMax = (dacMax + 1) << 1;
+	dacMax = ((dacMax + 1) << 1) - 1;
 	/* select internal bandgap (leave at gain 1)
 	 * according to datasheet, if we use the internal
 	 * bandgap then
@@ -92,8 +92,13 @@ uint16_t val;
 	return 0;
 }
 
-#define VOLT_MAX (1.214/2.0)
-#define VOLT_MIN (-(VOLT_MAX))
+/* Analog circuit: Vamp = - Vref/2 + Vdac * 2 */
+
+#define VOLT_REF   1.214
+#define VOLT_MIN   (-VOLT_REF/2.0)
+#define VOLT(tick) (VOLT_MIN + VOLT_REF * ((float)(tick)) / (float)(dacMax + 1))
+#define VOLT_MAX   VOLT(dacMax)
+#define TICK(volt) round( (volt - VOLT_MIN)/(VOLT_MAX - VOLT_MIN) * (float)dacMax )
 
 void
 dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax)
@@ -103,8 +108,8 @@ dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax)
 	}
 	if ( tickMin ) *tickMin = 0;
 	if ( tickMax ) *tickMax = dacMax;
-	if ( voltMin ) *voltMin = VOLT_MIN;
-	if ( voltMax ) *voltMax = VOLT_MAX;
+	if ( voltMin ) *voltMin = VOLT( 0      );
+	if ( voltMax ) *voltMax = VOLT( dacMax );
 }
 
 int
@@ -127,6 +132,16 @@ dac47cxSet(FWInfo *fw, unsigned channel, int val)
 }
 
 int
+dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val)
+{
+	if ( channel > 1 ) {
+		fprintf(stderr, "Error -- dac47cxGet(): invalid channel\n");
+		return -2;
+	}
+	if ( dac47cxReadReg( fw, REG_VAL0 + channel, val ) < 0 ) return -1;
+	return 0;
+}
+int
 dac47cxSetVolt(FWInfo *fw, unsigned channel, float val)
 {
 int ival;
@@ -139,11 +154,28 @@ int ival;
 		val = VOLT_MAX;
 	}
 
-	ival = round(val/(2.0*VOLT_MAX) - (VOLT_MIN/VOLT_MAX));
+
+	ival = TICK( val );
 
 	if ( -1         == ival ) ival = 0;
 	if ( dacMax + 1 == ival ) ival = dacMax;
 	return dac47cxSet( fw, channel, ival );
+}
+
+int
+dac47cxGetVolt(FWInfo *fw, unsigned channel, float *valp)
+{
+uint16_t val;
+
+	if ( channel > 1 ) {
+		fprintf(stderr, "dac47xxGetVolt(): invalid channel\n");
+		return -2;
+	}
+	if ( dac47cxGet( fw, channel, &val ) < 0 ) return -1;
+
+	*valp = VOLT( val );
+
+	return 0;
 }
 
 #ifdef __cplusplus

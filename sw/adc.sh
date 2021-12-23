@@ -4,7 +4,7 @@ if [ -z "${BB:+set}" ] ; then
   BB=./bbcli
 fi
 
-if ! [ "0x8003" = `./bbcli -A 0 | awk '{print $3}'` ] ; then
+if ! [ "0x03" = `./bbcli -A 0 | awk '{print $3}'` ] ; then
   echo "ADC readback test failed -- is the PLL initialized (does the ADC have a clock) ?"
   exit 1
 fi

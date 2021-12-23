@@ -30,7 +30,13 @@ int
 dac47cxSet(FWInfo *fw, unsigned channel, int val);
 
 int
+dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val);
+
+int
 dac47cxSetVolt(FWInfo *fw, unsigned channel, float val);
+
+int
+dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val);
 
 #ifdef __cplusplus
 }
