@@ -461,10 +461,6 @@ begin
                   v.busOb.dat := std_logic_vector( MSIZE_INFO_C(7 downto 0) );
                   v.busOb.lst := '0';
                   v.busOb.vld := '1';
-                  -- use this command also to flush the read data
-                  if ( wrDon = '1' ) then
-                     v.rdDon  := '1';
-                  end if;
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   -- seed the start address for reading

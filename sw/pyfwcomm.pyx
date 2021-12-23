@@ -177,7 +177,6 @@ cdef class FwComm:
   def getDACTicks( self, ch ):
     return self._dac.getTicks( ch )
 
-
   def getDACRange( self ):
     return self._dac.getRange()
 
@@ -280,6 +279,12 @@ cdef class FwComm:
       timeout = 0
     if ( acq_set_autoTimeoutMs( self._fw, timeout ) < 0 ):
       raise IOError("setAcqAutoTimeoutMs()")
+
+  def setAcqScale(self, float scale):
+    cdef int32_t iscale
+    iscale = round( scale * 2.0**30 )
+    if ( acq_set_scale( self._fw, 0, 0, iscale ) < 0 ):
+      raise IOError("setAcqScale()")
 
   def mkBuf(self):
     return numpy.zeros( (self._bufsz, 2), dtype = "int8" )
