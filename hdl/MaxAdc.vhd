@@ -1051,9 +1051,10 @@ begin
          -- compute correct shift for decimation ratio
          -- we can infer from just looking at the bits in decim1 -- because
          -- STG1_RAT_C is integer...
-         for i in stg1ShfSel'length/STG1_RAT_C - 1 downto 0 loop
+         L_SHF_SEL : for i in stg1ShfSel'length/STG1_RAT_C - 1 downto 0 loop
             if ( stg1ShfSel( (i + 1) * STG1_RAT_C - 1 downto i * STG1_RAT_C ) /= ZER_C ) then
                stg1Shf <= std_logic_vector( to_unsigned( i , stg1Shf'length ) );
+               exit L_SHF_SEL; -- break this loop
             end if;
          end loop;
       end process P_SHF_SEL;
