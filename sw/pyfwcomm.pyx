@@ -255,20 +255,27 @@ cdef class FwComm:
     cdef uint8_t  cic0Dec
     cdef uint32_t cic1Dec
     if ( not n1 is None ):
-      n0 *= n1
-    if ( n0 < 1 or n0 > 16 * 2**12):
-      raise ValueError("setAcqDecimation(): decimation out of range")
-    if ( 1 == n0 ):
-      cic0Dec = 1
-      cic1Dec = 1
+      if ( n0 < 1 or n0 > 16 or  n1 < 1 or n1 > 2**12 ):
+        raise ValueError("setAcqDecimation(): decimation out of range")
+      if ( n1 != 1 and 1 == n0 ):
+        raise ValueError("setAcqDecimation(): if CIC1 decimation > 1 then CIC0 must be > 1, too")
+      cic0Dec = n0
+      cic1Dec = n1
     else:
-      for cic0Dec in range(16,1,-1):
-        if ( n0 % cic0Dec == 0 ):
-          cic1Dec = int(n0 / cic0Dec)
-          if ( acq_set_decimation( self._fw, cic0Dec, cic1Dec ) < 0 ):
-            raise IOError("setAcqDecimation()")
-          return
-      raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
+      if ( n0 < 1 or n0 > 16 * 2**12):
+        raise ValueError("setAcqDecimation(): decimation out of range")
+      if ( 1 == n0 ):
+        cic0Dec = 1
+        cic1Dec = 1
+      else:
+        for cic0Dec in range(16,0,-1):
+          if ( n0 % cic0Dec == 0 ):
+            cic1Dec = int(n0 / cic0Dec)
+            break
+        if 1 == cic0Dec:
+          raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
+    if ( acq_set_decimation( self._fw, cic0Dec, cic1Dec ) < 0 ):
+      raise IOError("setAcqDecimation()")
 
   def setAcqTriggerSource(self, TriggerSource src, bool rising = True):
     if ( acq_set_source( self._fw, src, rising ) < 0 ):
