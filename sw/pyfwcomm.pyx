@@ -226,16 +226,17 @@ cdef class FwComm:
   def read(self, pyb):
     cdef Py_buffer b
     cdef int       rv
+    cdef uint16_t  hdr
     if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
       raise ValueError("FwComm.read arg must support buffer protocol")
     if ( b.itemsize != 1 ):
       PyBuffer_Release( &b )
       raise ValueError("FwComm.read arg buffer itemsize must be 1")
-    rv = buf_read( self._fw, NULL, <uint8_t*>b.buf, b.len )
+    rv = buf_read( self._fw, &hdr, <uint8_t*>b.buf, b.len )
     PyBuffer_Release( &b )
     if ( rv < 0 ):
       PyErr_SetFromErrnoWithFilenameObject(OSError, self._nm)
-    return rv
+    return (rv, hdr)
 
   def setAcqTriggerLevelPercent(self, float lvl):
     cdef int16_t l
