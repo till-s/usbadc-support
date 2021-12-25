@@ -18,6 +18,12 @@ max195xxWriteReg( FWInfo *fw, unsigned reg, uint8_t val );
 int
 max195xxReset( FWInfo *fw );
 
+/* Return 0 if DLL is locked, -3 if unlocked, other negative value if 
+ * read error occurs
+ */
+int
+max195xxDLLLocked( FWInfo *fw );
+
 int
 max195xxInit( FWInfo *fw );
 

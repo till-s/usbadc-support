@@ -42,7 +42,7 @@ max195xxReset( FWInfo *fw )
 }
 
 int
-max195xxInit( FWInfo *fw )
+max195xxDLLLocked( FWInfo *fw )
 {
 int     rv;
 uint8_t val;
@@ -50,9 +50,20 @@ uint8_t val;
 	rv = max195xxReadReg( fw, 0xa, &val ); 
 	if ( rv < 0 ) return rv;
 
-	if ( (val & 0x11) != 0x11 ) {
-		fprintf(stderr, "max195xxInit(): DLL not locked -- probably no ADC clock!");
-		return -3;
+	return (val & 0x11) == 0x11 ? 0 : -3;
+}
+
+int
+max195xxInit( FWInfo *fw )
+{
+int     rv;
+
+	rv = max195xxDLLLocked( fw );
+	if ( rv < 0 ) {
+		if ( -3 == rv ) {
+			fprintf(stderr, "max195xxInit(): DLL not locked -- probably no ADC clock!");
+		}
+		return rv;
 	}
 
 	/* Set muxed-mode on channel B */

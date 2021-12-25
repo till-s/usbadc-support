@@ -18,6 +18,20 @@ cdef extern from "fwComm.h":
   int            acq_set_source(FWInfo *, TriggerSource src, int rising)
   int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
   int            acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale)
+  struct AcqParams:
+    unsigned      mask
+    TriggerSource src
+    int           rising
+    int16_t       level
+    uint32_t      npts
+    uint32_t      autoTimeoutMS
+    uint8_t       cic0Decimation
+    uint32_t      cic1Decimation
+    uint8_t       cic0Shift
+    uint8_t       cic1Shift
+    int32_t       scale
+  int            ACQ_PARAM_TIMEOUT_INF
+  int            acq_set_params(FWInfo *, AcqParams *set, AcqParams *get)
 
 
 cpdef enum TriggerSource:
@@ -41,6 +55,7 @@ cdef extern from "dac47cxSup.h":
 cdef extern from "max195xxSup.h":
   int            max195xxReset( FWInfo *fw );
   int            max195xxInit( FWInfo *fw );
+  int            max195xxDLLLocked( FWInfo *fw );
   int            max195xxSetTestMode(FWInfo *fw, Max195xxTestMode m);
   int            max195xxSetCMVolt( FWInfo *fw, Max195xxCMVolt cmA, Max195xxCMVolt cmB );
   

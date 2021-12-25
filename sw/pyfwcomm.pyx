@@ -70,6 +70,9 @@ cdef class Max195xxADC:
     if ( max195xxSetCMVolt( self._fw, cmA, cmB ) < 0 ):
       raise IOError("Max195xxADC.setCMVolt()")
 
+  def dllLocked(self):
+    return max195xxDLLLocked( self._fw ) == 0
+
 
 cdef class DAC47CX:
   cdef FWInfo     *_fw
@@ -138,12 +141,16 @@ cdef class FwComm:
   cdef DAC47CX     _dac
   cdef Max195xxADC _adc
   cdef int         _bufsz
+  cdef AcqParams   _parmCache
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
     self._fw = fw_open(name, speed)
     self._nm = name
     if self._fw is NULL:
       PyErr_SetFromErrnoWithFilenameObject( OSError, name )
+    if ( acq_set_params( self._fw, NULL, &self._parmCache ) < 0 ):
+      raise IOError("FwComm.__cinit__(): acq_set_params failed")
+
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     self._clk = VersaClk( self )
@@ -236,21 +243,39 @@ cdef class FwComm:
     PyBuffer_Release( &b )
     if ( rv < 0 ):
       PyErr_SetFromErrnoWithFilenameObject(OSError, self._nm)
-    return (rv, hdr)
+    return rv, hdr
+
+  def isADCDLLLocked(self):
+    return self._adc.dllLocked()
+
+  def getAcqTriggerLevelPercent(self):
+    100.0 * float(self._parmCache.level) / 32767.0
 
   def setAcqTriggerLevelPercent(self, float lvl):
     cdef int16_t l
     if ( lvl > 100.0 or lvl < -100.0 ):
       raise ValueError("setAcqTriggerLevelPercent(): trigger (percentage) level must be -100 <= level <= +100")
     l = round( 32767.0 * lvl/100.0 )
+    if ( self._parmCache.level == l ):
+      return
     if ( acq_set_level( self._fw, l ) < 0 ):
       raise IOError("setAcqTriggerLevelPercent()")
+    self._parmCache.level = l
+
+  def getAcqNPreTriggerSamples(self):
+    return self._parmCache.npts
 
   def setAcqNPreTriggerSamples(self, int n):
     if ( n < 0 or n > self._bufsz - 1 ):
       raise ValueError("setAcqNPreTriggerSamples(): # pre-trigger samples out of range")
+    if ( self._parmCache.npts == n ):
+      return
     if ( acq_set_npts( self._fw, n ) < 0 ):
       raise IOError("setAcqNPreTriggerSamples()")
+    self._parmCache.npts = n
+
+  def getAcqDecimation(self):
+    return self._parmCache.cic0Decimation, self._parmCache.cic1Decimation
 
   def setAcqDecimation(self, n0, n1 = None):
     cdef uint8_t  cic0Dec
@@ -275,24 +300,50 @@ cdef class FwComm:
             break
         if 1 == cic0Dec:
           raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
+    if ( self._parmCache.cic0Decimation == cic0Dec and self._parmCache.cic1Decimation == cic1Dec ):
+      return
     if ( acq_set_decimation( self._fw, cic0Dec, cic1Dec ) < 0 ):
       raise IOError("setAcqDecimation()")
+    self._parmCache.cic0Decimation = cic0Dec
+    self._parmCache.cic1Decimation = cic1Dec
+
+  def getAcqTriggerSource(self):
+    return self._parmCache.src, self._parmCache.rising
 
   def setAcqTriggerSource(self, TriggerSource src, bool rising = True):
+    if ( TriggerSource(self._parmCache.src) == src and bool(self._parmCache.rising) == rising ):
+      return
     if ( acq_set_source( self._fw, src, rising ) < 0 ):
       raise IOError("setAcqTriggerSource()")
+    self._parmCache.src    = src
+    self._parmCache.rising = rising
+
+  def getAcqAutoTimeoutMs(self):
+    timeout = self._parmCache.autoTimeoutMs
+    if ( timeout == ACQ_PARAM_TIMEOUT_INF ):
+      timeout = -1
+    return timeout
 
   def setAcqAutoTimeoutMs(self, int timeout):
     if ( timeout < 0 ):
-      timeout = 0
+      timeout = ACQ_PARAM_TIMEOUT_INF
+    if ( self._parmCache.autoTimeoutMs == timeout ):
+      return
     if ( acq_set_autoTimeoutMs( self._fw, timeout ) < 0 ):
       raise IOError("setAcqAutoTimeoutMs()")
+    self._parmCache.autoTimeoutMs = timeout
+
+  def getAcqScale(self):
+    return float(self._parmCache.scale) / 2.0**30
 
   def setAcqScale(self, float scale):
     cdef int32_t iscale
     iscale = round( scale * 2.0**30 )
+    if ( self._parmCache.scale == iscale ):
+      return
     if ( acq_set_scale( self._fw, 0, 0, iscale ) < 0 ):
       raise IOError("setAcqScale()")
+    self._parmCache.scale = iscale
 
   def mkBuf(self):
     return numpy.zeros( (self._bufsz, 2), dtype = "int8" )
