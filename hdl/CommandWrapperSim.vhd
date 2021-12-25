@@ -111,8 +111,10 @@ begin
       if ( falling_edge( clk ) ) then
          adcB <= unsigned( to_signed( integer( round( 127.0 * sin(MATH_2_PI*real(i)/real(P_C)) ) ), adcB'length ) );
          i := i + 1;
+         dorB <= '0';
          if ( i = P_C ) then
-            i := 0;
+            i    := 0;
+            dorB <= '1';
          end if;
       end if;
    end process P_FILL_B;
