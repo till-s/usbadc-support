@@ -152,8 +152,8 @@ long  v[4];
 				for ( val = eq + 1; isspace( *val ); val++ )
 					/* nothing else */;
 				switch( toupper( *val ) ) {
-					case 'R': pp->raising = 1; break;
-					case 'F': pp->raising = 0; break;
+					case 'R': pp->rising = 1; break;
+					case 'F': pp->rising = 0; break;
 					default :
 						fprintf(stderr, "Error -- parseAcqParams: Invalid trigger edge '%s'\n", val);
 						goto bail;
@@ -324,7 +324,7 @@ const char        *trgOp     = 0;
 		}
 		printf("Trigger Source     : %s\n",
 			CHA == p.src ? "Channel A" : (CHB == p.src ? "Channel B" : "External"));
-		printf("Edge               : %s\n", p.raising ? "raising" : "falling");
+		printf("Edge               : %s\n", p.rising ? "rising" : "falling");
 		printf("Trigger Level      : %" PRId16 "\n", p.level );
 		printf(" NOTE: Trigger level is int16_t, ADC numbers are normalized to\n");
 		printf("       this range!\n");

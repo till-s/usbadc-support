@@ -114,7 +114,7 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 typedef struct AcqParams {
     unsigned      mask;
 	TriggerSource src;
-	int           raising;
+	int           rising;
 	int16_t       level;
 	uint32_t      npts;
 	uint32_t      autoTimeoutMS;

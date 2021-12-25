@@ -587,7 +587,7 @@ printf("Default scale %d\n", set->scale);
 
 	buf[BITS_FW_CMD_ACQ_IDX_MSK +  0]  = set->mask;
 	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0]  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
-	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] |= (set->raising ? 1 : 0)                << BITS_FW_CMD_ACQ_SHF_EDG;
+	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
 
 	buf[BITS_FW_CMD_ACQ_IDX_LVL +  0]  =  set->level       & 0xff;
 	buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]  = (set->level >> 8) & 0xff;
@@ -678,7 +678,7 @@ printf("Default scale %d\n", set->scale);
 		default: get->src = EXT; break;
 	}
 
-	get->raising = !! ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
+	get->rising  = !! ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
 
 	get->level   = (int16_t)(    (((uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]) << 8)
                                | (uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  0] );
@@ -787,14 +787,14 @@ AcqParams p;
 
 
 int
-acq_set_source(FWInfo *fw, TriggerSource src, int raising)
+acq_set_source(FWInfo *fw, TriggerSource src, int rising)
 {
 AcqParams p;
 	p.mask          = ACQ_PARAM_MSK_SRC;
 	p.src           = src;
-	if ( raising ) {
+	if ( rising ) {
 		p.mask   |= ACQ_PARAM_MSK_EDG;
-		p.raising = !!raising;
+		p.rising  = !!rising;
 	}
 	return acq_set_params( fw, &p, 0 );
 }
