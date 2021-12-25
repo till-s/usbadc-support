@@ -153,12 +153,12 @@ cdef class FwComm:
 
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
-    self._clk = VersaClk( self )
-    self._dac = DAC47CX( self )
-    self._adc = Max195xxADC( self )
+    self._clk   = VersaClk( self )
+    self._dac   = DAC47CX( self )
+    self._adc   = Max195xxADC( self )
+    self._bufsz = self.getBufSize()
 
   def init( self ):
-    self._bufsz = self.getBufSize()
     for o in [SEL_EXT, SEL_ADC, SEL_FPGA]:
       self._clk.setOutCfg( o, OUT_CMOS, SLEW_100, LEVEL_18 )
     if False:
@@ -249,7 +249,7 @@ cdef class FwComm:
     return self._adc.dllLocked()
 
   def getAcqTriggerLevelPercent(self):
-    100.0 * float(self._parmCache.level) / 32767.0
+    return 100.0 * float(self._parmCache.level) / 32767.0
 
   def setAcqTriggerLevelPercent(self, float lvl):
     cdef int16_t l
@@ -308,7 +308,7 @@ cdef class FwComm:
     self._parmCache.cic1Decimation = cic1Dec
 
   def getAcqTriggerSource(self):
-    return self._parmCache.src, self._parmCache.rising
+    return self._parmCache.src, bool(self._parmCache.rising)
 
   def setAcqTriggerSource(self, TriggerSource src, bool rising = True):
     if ( TriggerSource(self._parmCache.src) == src and bool(self._parmCache.rising) == rising ):
@@ -319,7 +319,7 @@ cdef class FwComm:
     self._parmCache.rising = rising
 
   def getAcqAutoTimeoutMs(self):
-    timeout = self._parmCache.autoTimeoutMs
+    timeout = self._parmCache.autoTimeoutMS
     if ( timeout == ACQ_PARAM_TIMEOUT_INF ):
       timeout = -1
     return timeout
@@ -327,11 +327,11 @@ cdef class FwComm:
   def setAcqAutoTimeoutMs(self, int timeout):
     if ( timeout < 0 ):
       timeout = ACQ_PARAM_TIMEOUT_INF
-    if ( self._parmCache.autoTimeoutMs == timeout ):
+    if ( self._parmCache.autoTimeoutMS == timeout ):
       return
     if ( acq_set_autoTimeoutMs( self._fw, timeout ) < 0 ):
       raise IOError("setAcqAutoTimeoutMs()")
-    self._parmCache.autoTimeoutMs = timeout
+    self._parmCache.autoTimeoutMS = timeout
 
   def getAcqScale(self):
     return float(self._parmCache.scale) / 2.0**30
