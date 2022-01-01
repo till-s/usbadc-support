@@ -4,25 +4,44 @@ from pyfwcomm cimport *
 from cpython.exc cimport *
 from cpython     cimport *
 
+cdef extern from "pthread.h":
+  ctypedef struct pthread_mutexattr_t
+  ctypedef struct pthread_mutex_t:
+    pass
+  int pthread_mutex_init(pthread_mutex_t *, pthread_mutexattr_t *)
+  int pthread_mutex_lock(pthread_mutex_t *)
+  int pthread_mutex_unlock(pthread_mutex_t *)
+
 import numpy
 
 cdef class FwMgr:
   cdef FWInfo     *_fw
   cdef const char *_nm
-  
+  cdef pthread_mutex_t _mtx 
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
+    cdef int st
     self._fw = fw_open(name, speed)
     self._nm = name
     if self._fw is NULL:
       PyErr_SetFromErrnoWithFilenameObject( OSError, name )
+    st = pthread_mutex_init( &self._mtx, NULL )
+    if ( st != 0 ):
+      raise OSError("pthread_mutex_init failed with status {:d}".format(st))
+     
 
   cdef FWInfo * __enter__(self):
-    print("ENTER")
+    cdef int st
+    st = pthread_mutex_lock( &self._mtx )
+    if ( st != 0 ):
+      raise OSError("pthread_mutex_lock failed with status {:d}".format(st))
     return self._fw
 
   def __exit__(self, exc_typ, exc_val, trc):
-    print("EXIT")
+    cdef int st
+    st = pthread_mutex_unlock( &self._mtx )
+    if ( st != 0 ):
+      raise OSError("pthread_mutex_unlock failed with status {:d}".format(st))
     return False # re-raise exception
 
   def __dealloc__(self):
