@@ -6,23 +6,45 @@ from cpython     cimport *
 
 import numpy
 
-cdef class VersaClk:
+cdef class FwMgr:
   cdef FWInfo     *_fw
+  cdef const char *_nm
+  
 
-  def __cinit__(self, FwComm fw):
-    self._fw = fw._fw
+  def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
+    self._fw = fw_open(name, speed)
+    self._nm = name
+    if self._fw is NULL:
+      PyErr_SetFromErrnoWithFilenameObject( OSError, name )
+
+  cdef FWInfo * __enter__(self):
+    print("ENTER")
+    return self._fw
+
+  def __exit__(self, exc_typ, exc_val, trc):
+    print("EXIT")
+    return False # re-raise exception
+
+  def __dealloc__(self):
+    fw_close( self._fw )
+
+cdef class VersaClk:
+  cdef FwMgr _mgr
+
+  def __cinit__(self, FwMgr mgr):
+    self._mgr = mgr
 
   def setFBDiv(self, float div):
     cdef int st
-    with nogil:
-      st = versaClkSetFBDivFlt( self._fw, div )
+    with self._mgr as fw, nogil:
+      st = versaClkSetFBDivFlt( fw, div )
     if ( st < 0 ):
       raise IOError("VersaClk.setFBDiv()")
 
   def setOutDiv(self, int out, float div):
     cdef int rv
-    with nogil:
-      rv = versaClkSetOutDivFlt( self._fw, out, div )
+    with self._mgr as fw, nogil:
+      rv = versaClkSetOutDivFlt( fw, out, div )
     if ( rv < 0 ):
       if ( -3 == rv ):
         raise ValueError("VersaClk.setOutDiv() -- invalid output")
@@ -32,8 +54,8 @@ cdef class VersaClk:
   def setOutEna(self, int out, bool en):
     cdef int rv, ien
     ien = en
-    with nogil:
-      rv = versaClkSetOutEna( self._fw, out, ien )
+    with self._mgr as fw, nogil:
+      rv = versaClkSetOutEna( fw, out, ien )
     if ( rv < 0 ):
       if ( -3 == rv ):
         raise ValueError("VersaClk.setOutEna() -- invalid output")
@@ -42,8 +64,10 @@ cdef class VersaClk:
 
   def setOutCfg(self, int out, VersaClkOutMode mode, VersaClkOutSlew slew, VersaClkOutLevel level):
     cdef int rv
-    with nogil:
-      rv = versaClkSetOutCfg( self._fw, out, mode, slew, level )
+    cdef VersaClkOutMode cmode
+    cmode = mode
+    with self._mgr as fw, nogil:
+      rv = versaClkSetOutCfg( fw, out, cmode, slew, level )
     if ( rv < 0 ):
       if ( -3 == rv ):
         raise ValueError("VersaClk.setOutCfg() -- invalid output")
@@ -51,22 +75,22 @@ cdef class VersaClk:
         raise IOError("VersaClk.setOutCfg()")
 
 cdef class Max195xxADC:
-  cdef FWInfo     *_fw
+  cdef FwMgr _mgr
 
-  def __cinit__(self, FwComm fw):
-    self._fw = fw._fw
+  def __cinit__(self, FwMgr mgr):
+    self._mgr = mgr
 
   def reset(self):
     cdef int st
-    with nogil:
-      st = max195xxReset( self._fw )
+    with self._mgr as fw, nogil:
+      st = max195xxReset( fw )
     if ( st < 0 ):
       raise IOError("Max195xxADC.reset()")
 
   def init(self):
     cdef int rv
-    with nogil:
-      rv = max195xxInit( self._fw )
+    with self._mgr as fw, nogil:
+      rv = max195xxInit( fw )
     if ( rv < 0 ):
       if ( -3 == rv ):
         raise RuntimeError("Max195ccADC.init(): ADC may have no clock")
@@ -75,55 +99,54 @@ cdef class Max195xxADC:
 
   def setTestMode(self, Max195xxTestMode m):
     cdef int st
-    with nogil:
-      st = max195xxSetTestMode( self._fw, m )
+    with self._mgr as fw, nogil:
+      st = max195xxSetTestMode( fw, m )
     if ( st < 0 ):
       raise IOError("Max195xxADC.setTestMode()")
 
   def setCMVolt(self, Max195xxCMVolt cmA, Max195xxCMVolt cmB):
     cdef int st
-    with nogil:
-      st = max195xxSetCMVolt( self._fw, cmA, cmB )
+    with self._mgr as fw, nogil:
+      st = max195xxSetCMVolt( fw, cmA, cmB )
     if ( st < 0 ):
       raise IOError("Max195xxADC.setCMVolt()")
 
   def dllLocked(self):
     cdef int st
-    with nogil:
-      st = max195xxDLLLocked( self._fw )
+    with self._mgr as fw, nogil:
+      st = max195xxDLLLocked( fw )
     return st == 0
 
-
 cdef class DAC47CX:
-  cdef FWInfo     *_fw
+  cdef FwMgr _mgr
 
-  def __cinit__(self, FwComm fw):
-    self._fw = fw._fw
+  def __cinit__(self, FwMgr mgr):
+    self._mgr = mgr
 
   def reset(self):
     cdef int st
-    with nogil:
-      st = dac47cxReset( self._fw )
+    with self._mgr as fw, nogil:
+      st = dac47cxReset( fw )
     if ( st < 0 ):
       raise IOError("DAC47CX.reset()")
 
   def init(self):
     cdef int st
-    with nogil:
-      st = dac47cxInit( self._fw )
+    with self._mgr as fw, nogil:
+      st = dac47cxInit( fw )
     if ( st < 0 ):
       raise IOError("DAC47CX.init()")
  
   def getRange(self):
     cdef float vmin, vmax
-    with nogil:
+    with self._mgr as fw, nogil:
       dac47cxGetRange( NULL, NULL, &vmin, &vmax )
     return (vmin, vmax)
 
   def setTicks(self, int channel, int ticks):
     cdef int rv
-    with nogil:
-      rv = dac47cxSet( self._fw, channel, ticks )
+    with self._mgr as fw, nogil:
+      rv = dac47cxSet( fw, channel, ticks )
     if ( rv < 0 ):
       if ( -2 == rv ):
         raise ValueError("DAC47CX.setTicks(): Invalid Channel")
@@ -133,8 +156,8 @@ cdef class DAC47CX:
   def getTicks(self, int channel):
     cdef int      rv
     cdef uint16_t ticks
-    with nogil:
-      rv = dac47cxGet( self._fw, channel, &ticks )
+    with self._mgr as fw, nogil:
+      rv = dac47cxGet( fw, channel, &ticks )
     if ( rv < 0 ):
       if ( -1 > rv ):
         raise ValueError("DAC47CX.getTicks(): Invalid Channel")
@@ -145,8 +168,8 @@ cdef class DAC47CX:
 
   def setVolt(self, int channel, float volt):
     cdef int rv
-    with nogil:
-      rv = dac47cxSetVolt( self._fw, channel, volt )
+    with self._mgr as fw, nogil:
+      rv = dac47cxSetVolt( fw, channel, volt )
     if ( rv < 0 ):
       if ( -2 == rv ):
         raise ValueError("DAC47CX.setVolt(): Invalid Channel")
@@ -156,8 +179,8 @@ cdef class DAC47CX:
   def getVolt(self, int channel):
     cdef int    rv
     cdef float  volt
-    with nogil:
-      rv = dac47cxGetVolt( self._fw, channel, &volt )
+    with self._mgr as fw, nogil:
+      rv = dac47cxGetVolt( fw, channel, &volt )
     if ( rv < 0 ):
       if ( -1 > rv ):
         raise ValueError("DAC47CX.getVolt(): Invalid Channel")
@@ -166,7 +189,7 @@ cdef class DAC47CX:
     return volt
 
 cdef class FwComm:
-  cdef FWInfo     *_fw
+  cdef FwMgr       _mgr
   cdef const char *_nm
   cdef VersaClk    _clk
   cdef DAC47CX     _dac
@@ -175,18 +198,18 @@ cdef class FwComm:
   cdef AcqParams   _parmCache
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
-    self._fw = fw_open(name, speed)
-    self._nm = name
-    if self._fw is NULL:
-      PyErr_SetFromErrnoWithFilenameObject( OSError, name )
-    if ( acq_set_params( self._fw, NULL, &self._parmCache ) < 0 ):
-      raise IOError("FwComm.__cinit__(): acq_set_params failed")
-
+    pass
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
-    self._clk   = VersaClk( self )
-    self._dac   = DAC47CX( self )
-    self._adc   = Max195xxADC( self )
+    cdef int st
+    self._mgr   = FwMgr( name, speed, args, kwargs )
+    with self._mgr as fw, nogil:
+      st = acq_set_params( fw, NULL, &self._parmCache )
+    if ( st < 0 ):
+      raise IOError("FwComm.__init__(): acq_set_params failed")
+    self._clk   = VersaClk( self._mgr )
+    self._dac   = DAC47CX( self._mgr )
+    self._adc   = Max195xxADC( self._mgr )
     self._bufsz = self.getBufSize()
 
   def init( self ):
@@ -235,8 +258,8 @@ cdef class FwComm:
 
   def getS2Att(self, int channel):
     cdef float rv
-    with nogil:
-      rv = lmh6882GetAtt( self._fw, channel )
+    with self._mgr as fw, nogil:
+      rv = lmh6882GetAtt( fw, channel )
     if ( rv < 0 ):
       if ( rv < -1.0 ):
         raise ValueError("getS2Att(): invalid channel")
@@ -246,8 +269,8 @@ cdef class FwComm:
 
   def setS2Att(self, int channel, float att):
     cdef float rv
-    with nogil:
-      rv = lmh6882SetAtt( self._fw, channel, att )
+    with self._mgr as fw, nogil:
+      rv = lmh6882SetAtt( fw, channel, att )
     if ( rv < 0 ):
       if ( rv < -1 ):
         raise ValueError("setS2Att(): invalid channel or attenuation")
@@ -256,20 +279,20 @@ cdef class FwComm:
 
   def version(self):
     cdef int64_t ver
-    with nogil:
-      ver = fw_get_version( self._fw )
+    with self._mgr as fw, nogil:
+      ver = fw_get_version( fw )
     return ver
 
   def getBufSize(self):
     cdef unsigned long sz
-    with nogil:
-      sz = buf_get_size( self._fw )
+    with self._mgr as fw, nogil:
+      sz = buf_get_size( fw )
     return sz
 
   def flush(self):
     cdef int st
-    with nogil:
-      st = buf_flush( self._fw )
+    with self._mgr as fw, nogil:
+      st = buf_flush( fw )
     return st
 
   def read(self, pyb):
@@ -281,8 +304,8 @@ cdef class FwComm:
     if ( b.itemsize != 1 ):
       PyBuffer_Release( &b )
       raise ValueError("FwComm.read arg buffer itemsize must be 1")
-    with nogil:
-      rv = buf_read( self._fw, &hdr, <uint8_t*>b.buf, b.len )
+    with self._mgr as fw, nogil:
+      rv = buf_read( fw, &hdr, <uint8_t*>b.buf, b.len )
     PyBuffer_Release( &b )
     if ( rv < 0 ):
       PyErr_SetFromErrnoWithFilenameObject(OSError, self._nm)
@@ -302,8 +325,8 @@ cdef class FwComm:
     l = round( 32767.0 * lvl/100.0 )
     if ( self._parmCache.level == l ):
       return
-    with nogil:
-      st = acq_set_level( self._fw, l )
+    with self._mgr as fw, nogil:
+      st = acq_set_level( fw, l )
     if ( st < 0 ):
       raise IOError("setAcqTriggerLevelPercent()")
     self._parmCache.level = l
@@ -317,8 +340,8 @@ cdef class FwComm:
       raise ValueError("setAcqNPreTriggerSamples(): # pre-trigger samples out of range")
     if ( self._parmCache.npts == n ):
       return
-    with nogil:
-      st = acq_set_npts( self._fw, n )
+    with self._mgr as fw, nogil:
+      st = acq_set_npts( fw, n )
     if ( st < 0 ):
       raise IOError("setAcqNPreTriggerSamples()")
     self._parmCache.npts = n
@@ -352,8 +375,8 @@ cdef class FwComm:
           raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
     if ( self._parmCache.cic0Decimation == cic0Dec and self._parmCache.cic1Decimation == cic1Dec ):
       return
-    with nogil:
-      st = acq_set_decimation( self._fw, cic0Dec, cic1Dec )
+    with self._mgr as fw, nogil:
+      st = acq_set_decimation( fw, cic0Dec, cic1Dec )
     if ( st < 0 ):
       raise IOError("setAcqDecimation()")
     self._parmCache.cic0Decimation = cic0Dec
@@ -368,8 +391,8 @@ cdef class FwComm:
     if ( TriggerSource(self._parmCache.src) == src and bool(self._parmCache.rising) == rising ):
       return
     irising = rising
-    with nogil:
-      st = acq_set_source( self._fw, src, irising )
+    with self._mgr as fw, nogil:
+      st = acq_set_source( fw, src, irising )
     if ( st < 0 ):
       raise IOError("setAcqTriggerSource()")
     self._parmCache.src    = src
@@ -387,8 +410,8 @@ cdef class FwComm:
       timeout = ACQ_PARAM_TIMEOUT_INF
     if ( self._parmCache.autoTimeoutMS == timeout ):
       return
-    with nogil:
-      st = acq_set_autoTimeoutMs( self._fw, timeout )
+    with self._mgr as fw, nogil:
+      st = acq_set_autoTimeoutMs( fw, timeout )
     if ( st < 0 ):
       raise IOError("setAcqAutoTimeoutMs()")
     self._parmCache.autoTimeoutMS = timeout
@@ -402,8 +425,8 @@ cdef class FwComm:
     iscale = round( scale * 2.0**30 )
     if ( self._parmCache.scale == iscale ):
       return
-    with nogil:
-      st = acq_set_scale( self._fw, 0, 0, iscale )
+    with self._mgr as fw, nogil:
+      st = acq_set_scale( fw, 0, 0, iscale )
     if ( st < 0 ):
       raise IOError("setAcqScale()")
     self._parmCache.scale = iscale
@@ -411,5 +434,4 @@ cdef class FwComm:
   def mkBuf(self):
     return numpy.zeros( (self._bufsz, 2), dtype = "int8" )
 
-  def __dealloc__(self):
-    fw_close( self._fw )
+

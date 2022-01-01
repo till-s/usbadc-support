@@ -7,22 +7,24 @@ LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o
 
 PYINC=/usr/include/python3.8
 
+PYFWCOMM_C=pyfwcomm.c
+
 all: bbcli pyfwcomm.so
 
 bbcli: bbcli.o $(LOBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-pyfwcomm.o: pyfwcomm.c
+pyfwcomm.o: $(PYFWCOMM_C)
 	$(CC) $(CFLAGS) -c -o $@ $^ -I $(PYINC)
 
-pyfwcomm.c: pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
-	cython3 $<
+$(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
+	cython3  $<
 
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-bbcli.o pyfwcomm.c: fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h dac47cxSup.h max195xxSup.h versaClkSup.h
+bbcli.o $(PYFWCOMM_C): fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h dac47cxSup.h max195xxSup.h versaClkSup.h
 fwComm.o: fwComm.h cmdXfer.h
 cmdXfer.o: cmdXfer.h
 at25Sup.o: fwComm.h cmdXfer.h
@@ -32,7 +34,7 @@ versaClkSup.o: fwComm.h versaClkSup.h
 .PHONY: clean
 
 clean:
-	$(RM) bbcli.o bbcli $(LOBJS) pyfwcomm.c
+	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C)
 
 pyfwcomm.so: pyfwcomm.o $(LOBJS)
 	$(CC) $^ -shared -o $@
