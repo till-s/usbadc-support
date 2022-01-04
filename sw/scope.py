@@ -3,8 +3,48 @@ import sys
 import pyfwcomm  as fw
 from   PyQt5     import QtCore, QtGui, QtWidgets, Qwt
 from   Utils     import createValidator, MenuButton
+import numpy     as np
+from   threading import Thread, RLock, Lock, Condition
+import time
+
+class Buf(object):
+  def __init__(self, sz, npts = -1, scal = 1.0, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self._curv = [ QtGui.QPolygonF(sz), QtGui.QPolygonF(sz) ]
+    # no way to find out if Qt was configured for single-
+    # or double-precision float without resorting e.g., to cython...
+    # just assume double
+    dt         = np.dtype('float64')
+    self._sz   = sz
+    self._npts = npts
+    self._scal = scal
+    self._mem  = [ np.frombuffer( p.data().asarray( 2 * dt.itemsize * sz ), dtype=dt ) for p in self._curv ]
+    self.updateX( npts )
+
+  def updateX(self, npts, scal = 1.0):
+    if ( (self._scal != scal or self._npts != npts) and (self._npts >= 0 or npts >= 0) ):
+      if ( npts >= 0 ):
+        self._npts = npts
+      if ( scal > 0. ):
+        self._scal = scal
+      strt       = -npts * self._scal
+      stop       = (self._sz - 1 - npts) * self._scal
+      self._mem[0][0::2] = np.linspace(strt, stop, self._sz, endpoint=True)
+      for m in self._mem[1:]:
+        m[0::2] = self._mem[0][0::2]
+
+  def updateY(self, buf):
+    stride = len(self._mem)
+    for idx in range(stride):
+      self._mem[idx][1::2] = buf[:,idx]
+
+  def getCurv(self, idx):
+    return self._curv[idx]
 
 class scope(QtCore.QObject):
+
+  haveData = QtCore.pyqtSignal()
+
   def __init__(self, devnam, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self._fw       = fw.FwComm( devnam )
@@ -15,6 +55,9 @@ class scope(QtCore.QObject):
     self._main.setCentralWidget( self._cent )
     hlay           = QtWidgets.QHBoxLayout()
     self._plot     = Qwt.QwtPlot()
+    self._plot.setAutoReplot( True )
+    self.updateYAxis()
+    self.updateXAxis()
     hlay.addWidget( self._plot )
     vlay           = QtWidgets.QVBoxLayout()
     hlay.addLayout( vlay )
@@ -64,9 +107,10 @@ class scope(QtCore.QObject):
       def activated(mb, act):
         super().activated(act)
         txt     = act.text()
-        src,edg = self._fw.getAcqTriggerSource()
-        edg     = (txt == "Rising")
-        self._fw.setAcqTriggerSource( src, edg )
+        with self._reader._lck:
+          src,edg = self._fw.getAcqTriggerSource()
+          edg     = (txt == "Rising")
+          self._fw.setAcqTriggerSource( src, edg )
  
     frm.addRow( QtWidgets.QLabel("Trigger Edge"), TrgEdgMenu() )
 
@@ -80,7 +124,8 @@ class scope(QtCore.QObject):
         super().activated(act)
         txt     = act.text()
         val     = 100 if txt == "On" else -1
-        self._fw.setAcqAutoTimeoutMs( val )
+        with self._reader._lck:
+          self._fw.setAcqAutoTimeoutMs( val )
  
     frm.addRow( QtWidgets.QLabel("Trigger Auto"), TrgAutMenu() )
 
@@ -90,6 +135,7 @@ class scope(QtCore.QObject):
       return str( self._fw.getAcqNPreTriggerSamples() )
     def s(s):
       self._fw.setAcqNPreTriggerSamples( int(s) )
+      self.updateXAxis()
     createValidator( edt, g, s, QtGui.QIntValidator, 0, self._fw.getBufSize() - 1  )
     frm.addRow( QtWidgets.QLabel("Trigger Sample #"), edt )
 
@@ -110,6 +156,36 @@ class scope(QtCore.QObject):
     sl             = self.mksl(1)
     vlay.addLayout( sl )
 
+    self._c1 = Qwt.QwtPlotCurve()
+    self._c1.attach( self._plot )
+    self._c2 = Qwt.QwtPlotCurve()
+    self._c2.attach( self._plot )
+    self._reader = Reader( self )
+
+    self.haveData.connect( self.updateData, QtCore.Qt.QueuedConnection )
+    self._data   = None
+    self._reader.start()
+
+  def updateYAxis(self):
+    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -128, 127 )
+
+  def updateXAxis(self):
+    n = self._fw.getBufSize() - 1
+    t = self._fw.getAcqNPreTriggerSamples()
+    xmax = n - t
+    xmin = xmax - n
+    self._plot.setAxisScale( Qwt.QwtPlot.xBottom, xmin, xmax )
+
+  def updateData(self):
+    d = self._reader.getData()
+    if d is None:
+      return
+    if not self._data is None:
+      self._reader.putBuf( self._data )
+    self._data = d
+    self._c1.setSamples( d.getCurv( 0 ) )
+    self._c2.setSamples( d.getCurv( 1 ) )
+
   def mksl(self, ch):
     hb             = QtWidgets.QHBoxLayout()
     sl             = QtWidgets.QSlider( QtCore.Qt.Horizontal )
@@ -128,9 +204,94 @@ class scope(QtCore.QObject):
     hb.addWidget(lb)
     return hb
 
+  def getFw(self):
+    return self._fw
+
   def show(self):
     self._main.show()
 
+  def notify(self):
+    self.haveData.emit()
+
+class Reader(QtCore.QThread):
+
+  def __init__(self, scope, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self._lck            = RLock()
+    self._cnd            = Condition( self._lck )
+    self._scope          = scope
+    self._fw             = self._scope.getFw() 
+    sz                   = self._fw.getBufSize()
+    self._bufs           = [ Buf(sz) for i in range(3) ] 
+    self._rbuf           = self._fw.mkBuf()
+    # read time for 2x16k = 32k samples is ~50ms
+    self._pollInterval   = 0.10
+    self._npts           = self._fw.getAcqNPreTriggerSamples()
+    self._scal           = 1.0
+    self._processedBuf   = None
+
+  def read(self):
+    rm = 0
+    while True:
+      with self._lck:
+        rv, hdr = self._fw.read( self._rbuf )
+      if ( rv > 0 ):
+        return
+      time.sleep( self._pollInterval )
+
+  def run(self):
+    then = time.monotonic()
+    lp   = 0
+    while True:
+      b    = self.getBuf()
+      self.read()
+      b.updateY( self._rbuf )
+      with self._lck:
+        npts = self._npts
+        scal = self._scal
+      b.updateX( npts, scal )
+      with self._lck:
+        if (not self._processedBuf is None):
+          self._bufs.append( self._processedBuf )
+        self._processedBuf = b
+      self._scope.notify()
+      now   = time.monotonic()
+      delta = self._pollInterval - (now - then)
+      then  = now
+      if ( delta > 0.0 ):
+        time.sleep( delta )
+        lp += 1
+        if lp == 10:
+          print(".")
+          lp = 0
+      else:
+        print("Nosleep {:f}".format(delta))
+        time.sleep(.1)
+
+  def getData(self):
+    with self._lck:
+      rv = self._processedBuf
+      self._processedBuf = None
+    return rv
+
+  def getBuf(self):
+    with self._cnd:
+      while ( len(self._bufs) == 0 ):
+        self._cnd.wait()
+      return self._bufs.pop(0)
+
+  def putBuf(self, b):
+    with self._cnd:
+      self._bufs.append(b)
+      self._cnd.notify()
+
+  def setParms(self, npts = -1, scal = -1.0):
+    with self._lck:
+      if ( npts >= 0 ):
+        self._npts = npts
+      if ( scal >  0.0 ):
+        self._scal = scal
+    
 if __name__ == "__main__":
   app = QtWidgets.QApplication( sys.argv )
   scp = scope("/dev/ttyUSB0")

@@ -525,6 +525,23 @@ int     rv;
 	return rv;
 }
 
+int
+buf_read_flt(FWInfo *fw, uint16_t *hdr, float *buf, size_t nelms)
+{
+int      rv;
+ssize_t  i;
+int8_t  *i_p = (int8_t*)buf;
+
+
+	rv = buf_read( fw, hdr, (uint8_t*)buf, nelms );
+	if ( rv > 0 ) {
+		for ( i = nelms - 1; i >= 0; i-- ) {
+			buf[i] = (float)(i_p[i]);
+		}
+	}
+	return rv;	
+}
+
 int64_t
 fw_get_version(FWInfo *fw)
 {

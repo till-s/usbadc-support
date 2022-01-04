@@ -12,6 +12,7 @@ cdef extern from "fwComm.h":
   unsigned long  buf_get_size(FWInfo *) nogil
   int            buf_flush(FWInfo *) nogil
   int            buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len) nogil
+  int            buf_read_flt(FWInfo *, uint16_t *hdr, float *buf, size_t len) nogil
   int            acq_set_level(FWInfo *, int16_t level) nogil
   int            acq_set_npts(FWInfo *, int32_t npts) nogil
   int            acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation) nogil
