@@ -107,10 +107,9 @@ class scope(QtCore.QObject):
       def activated(mb, act):
         super().activated(act)
         txt     = act.text()
-        with self._reader._lck:
-          src,edg = self._fw.getAcqTriggerSource()
-          edg     = (txt == "Rising")
-          self._fw.setAcqTriggerSource( src, edg )
+        src,edg = self._fw.getAcqTriggerSource()
+        edg     = (txt == "Rising")
+        self._fw.setAcqTriggerSource( src, edg )
  
     frm.addRow( QtWidgets.QLabel("Trigger Edge"), TrgEdgMenu() )
 
@@ -124,8 +123,7 @@ class scope(QtCore.QObject):
         super().activated(act)
         txt     = act.text()
         val     = 100 if txt == "On" else -1
-        with self._reader._lck:
-          self._fw.setAcqAutoTimeoutMs( val )
+        self._fw.setAcqAutoTimeoutMs( val )
  
     frm.addRow( QtWidgets.QLabel("Trigger Auto"), TrgAutMenu() )
 

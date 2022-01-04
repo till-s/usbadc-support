@@ -38,7 +38,8 @@ cdef class Mtx:
 
   cdef __enter__(self):
     cdef int st
-    st = pthread_mutex_lock( &self._mtx )
+    with nogil:
+      st = pthread_mutex_lock( &self._mtx )
     if ( st != 0 ):
       raise OSError("pthread_mutex_lock failed with status {:d}".format(st))
 
@@ -127,14 +128,14 @@ cdef class VersaClk:
 
   def setFBDiv(self, float div):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = versaClkSetFBDivFlt( fw, div )
     if ( st < 0 ):
       raise IOError("VersaClk.setFBDiv()")
 
   def setOutDiv(self, int out, float div):
     cdef int rv
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = versaClkSetOutDivFlt( fw, out, div )
     if ( rv < 0 ):
       if ( -3 == rv ):
@@ -145,7 +146,7 @@ cdef class VersaClk:
   def setOutEna(self, int out, bool en):
     cdef int rv, ien
     ien = en
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = versaClkSetOutEna( fw, out, ien )
     if ( rv < 0 ):
       if ( -3 == rv ):
@@ -157,7 +158,7 @@ cdef class VersaClk:
     cdef int rv
     cdef VersaClkOutMode cmode
     cmode = mode
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = versaClkSetOutCfg( fw, out, cmode, slew, level )
     if ( rv < 0 ):
       if ( -3 == rv ):
@@ -173,14 +174,14 @@ cdef class Max195xxADC:
 
   def reset(self):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = max195xxReset( fw )
     if ( st < 0 ):
       raise IOError("Max195xxADC.reset()")
 
   def init(self):
     cdef int rv
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = max195xxInit( fw )
     if ( rv < 0 ):
       if ( -3 == rv ):
@@ -190,21 +191,21 @@ cdef class Max195xxADC:
 
   def setTestMode(self, Max195xxTestMode m):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = max195xxSetTestMode( fw, m )
     if ( st < 0 ):
       raise IOError("Max195xxADC.setTestMode()")
 
   def setCMVolt(self, Max195xxCMVolt cmA, Max195xxCMVolt cmB):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = max195xxSetCMVolt( fw, cmA, cmB )
     if ( st < 0 ):
       raise IOError("Max195xxADC.setCMVolt()")
 
   def dllLocked(self):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = max195xxDLLLocked( fw )
     return st == 0
 
@@ -216,27 +217,27 @@ cdef class DAC47CX:
 
   def reset(self):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = dac47cxReset( fw )
     if ( st < 0 ):
       raise IOError("DAC47CX.reset()")
 
   def init(self):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = dac47cxInit( fw )
     if ( st < 0 ):
       raise IOError("DAC47CX.init()")
  
   def getRange(self):
     cdef float vmin, vmax
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       dac47cxGetRange( NULL, NULL, &vmin, &vmax )
     return (vmin, vmax)
 
   def setTicks(self, int channel, int ticks):
     cdef int rv
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = dac47cxSet( fw, channel, ticks )
     if ( rv < 0 ):
       if ( -2 == rv ):
@@ -247,7 +248,7 @@ cdef class DAC47CX:
   def getTicks(self, int channel):
     cdef int      rv
     cdef uint16_t ticks
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = dac47cxGet( fw, channel, &ticks )
     if ( rv < 0 ):
       if ( -1 > rv ):
@@ -259,7 +260,7 @@ cdef class DAC47CX:
 
   def setVolt(self, int channel, float volt):
     cdef int rv
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = dac47cxSetVolt( fw, channel, volt )
     if ( rv < 0 ):
       if ( -2 == rv ):
@@ -270,7 +271,7 @@ cdef class DAC47CX:
   def getVolt(self, int channel):
     cdef int    rv
     cdef float  volt
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = dac47cxGetVolt( fw, channel, &volt )
     if ( rv < 0 ):
       if ( -1 > rv ):
@@ -330,14 +331,14 @@ cdef class FwComm:
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
     self._mgr   = FwMgr( name, speed, args, kwargs )
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_params( fw, NULL, &self._parmCache )
     if ( st < 0 ):
       raise IOError("FwComm.__init__(): acq_set_params failed")
     self._clk   = VersaClk( self._mgr )
     self._dac   = DAC47CX( self._mgr )
     self._adc   = Max195xxADC( self._mgr )
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
 
@@ -387,7 +388,7 @@ cdef class FwComm:
 
   def getS2Att(self, int channel):
     cdef float rv
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = lmh6882GetAtt( fw, channel )
     if ( rv < 0 ):
       if ( rv < -1.0 ):
@@ -398,7 +399,7 @@ cdef class FwComm:
 
   def setS2Att(self, int channel, float att):
     cdef float rv
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       rv = lmh6882SetAtt( fw, channel, att )
     if ( rv < 0 ):
       if ( rv < -1 ):
@@ -408,7 +409,7 @@ cdef class FwComm:
 
   def version(self):
     cdef int64_t ver
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       ver = fw_get_version( fw )
     return ver
 
@@ -417,7 +418,7 @@ cdef class FwComm:
 
   def flush(self):
     cdef int st
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = buf_flush( fw )
     return st
 
@@ -428,10 +429,10 @@ cdef class FwComm:
     if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
       raise ValueError("FwComm.read arg must support buffer protocol")
     if   ( b.itemsize == 1 ):
-      with self._mgr as fw:
+      with self._mgr as fw, nogil:
         rv = buf_read( fw, &hdr, <uint8_t*>b.buf, b.len )
     elif ( b.itemsize == sizeof(float) ):
-      with self._mgr as fw:
+      with self._mgr as fw, nogil:
         rv = buf_read_flt( fw, &hdr, <float*>b.buf, b.len )
     else:
       PyBuffer_Release( &b )
@@ -455,7 +456,7 @@ cdef class FwComm:
     l = round( 32767.0 * lvl/100.0 )
     if ( self._parmCache.level == l ):
       return
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_level( fw, l )
     if ( st < 0 ):
       raise IOError("setAcqTriggerLevelPercent()")
@@ -470,7 +471,7 @@ cdef class FwComm:
       raise ValueError("setAcqNPreTriggerSamples(): # pre-trigger samples out of range")
     if ( self._parmCache.npts == n ):
       return
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_npts( fw, n )
     if ( st < 0 ):
       raise IOError("setAcqNPreTriggerSamples()")
@@ -505,7 +506,7 @@ cdef class FwComm:
           raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
     if ( self._parmCache.cic0Decimation == cic0Dec and self._parmCache.cic1Decimation == cic1Dec ):
       return
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_decimation( fw, cic0Dec, cic1Dec )
     if ( st < 0 ):
       raise IOError("setAcqDecimation()")
@@ -521,7 +522,7 @@ cdef class FwComm:
     if ( TriggerSource(self._parmCache.src) == src and bool(self._parmCache.rising) == rising ):
       return
     irising = rising
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_source( fw, src, irising )
     if ( st < 0 ):
       raise IOError("setAcqTriggerSource()")
@@ -540,7 +541,7 @@ cdef class FwComm:
       timeout = ACQ_PARAM_TIMEOUT_INF
     if ( self._parmCache.autoTimeoutMS == timeout ):
       return
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_autoTimeoutMs( fw, timeout )
     if ( st < 0 ):
       raise IOError("setAcqAutoTimeoutMs()")
@@ -555,7 +556,7 @@ cdef class FwComm:
     iscale = round( scale * 2.0**30 )
     if ( self._parmCache.scale == iscale ):
       return
-    with self._mgr as fw:
+    with self._mgr as fw, nogil:
       st = acq_set_scale( fw, 0, 0, iscale )
     if ( st < 0 ):
       raise IOError("setAcqScale()")
