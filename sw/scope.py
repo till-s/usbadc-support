@@ -6,6 +6,7 @@ from   Utils     import createValidator, MenuButton
 import numpy     as np
 from   threading import Thread, RLock, Lock, Condition, Semaphore
 import time
+import getopt
 
 class Buf(object):
   def __init__(self, sz, npts = -1, scal = 1.0, *args, **kwargs):
@@ -321,9 +322,23 @@ class ScopeThread(QtCore.QThread):
   def run(self):
     self.exec()
 
+def usage(nm):
+  print("usage: {} [-d <usb_device_name] [-h]".format(nm))
+
 if __name__ == "__main__":
-  app = QtWidgets.QApplication( sys.argv )
-  scp = Scope( "/dev/ttyUSB0" )
+
+  devn = '/dev/ttyUSB0'
+
+  ( opts, args ) = getopt.getopt( sys.argv[1:], "hd:", [] )
+  for opt in opts:
+    if   ( opt[0] == '-d' ):
+      devn = opt[1]
+    elif ( opt[0] == '-h' ):
+      usage( sys.argv[0] )
+      sys.exit(0)
+
+  app = QtWidgets.QApplication( args )
+  scp = Scope( devn )
   scp.show()
   if ( sys.flags.interactive ):
     scpThread = ScopeThread()
