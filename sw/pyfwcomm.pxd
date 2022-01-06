@@ -74,13 +74,19 @@ cpdef enum Max195xxTestMode:
   RAMP_TEST
   AA55_TEST
 
+cpdef enum VersaClkFODRoute:
+  NORMAL   = 0
+  CASC_FOD = 1
+  CASC_OUT = 2
+  OFF      = 3
+
 cdef extern from "versaClkSup.h":
   int            versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv) nogil
   int            versaClkSetFBDivFlt(FWInfo *fw, double div) nogil
   int            versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv) nogil
   int            versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div) nogil
-  int            versaClkSetOutEna(FWInfo *fw, unsigned outp, int ena) nogil
   int            versaClkSetOutCfg(FWInfo *fw, unsigned outp, VersaClkOutMode mode, VersaClkOutSlew slew, VersaClkOutLevel level) nogil
+  int            versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte) nogil
 
 cpdef enum CLOCK_OUT:
   SEL_EXT  = 1

@@ -21,8 +21,15 @@ versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv);
 int
 versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div);
 
+typedef enum {
+  NORMAL   = 0, /* PLL          -> FOD -> OUT */
+  CASC_FOD = 1, /* PREVIOUS_OUT -> FOD -> OUT */
+  CASC_OUT = 2, /* PREVIOUS_OUT --------> OUT */
+  OFF      = 3  /* FOD and OUT disabled       */
+} VersaClkFODRoute;
+
 int
-versaClkSetOutEna(FWInfo *fw, unsigned outp, int ena);
+versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 
 typedef enum {
 	OUT_CMOS = 1

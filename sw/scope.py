@@ -4,11 +4,12 @@ import pyfwcomm  as fw
 from   PyQt5     import QtCore, QtGui, QtWidgets, Qwt
 from   Utils     import createValidator, MenuButton
 import numpy     as np
-from   threading import Thread, RLock, Lock, Condition
+from   threading import Thread, RLock, Lock, Condition, Semaphore
 import time
 
 class Buf(object):
   def __init__(self, sz, npts = -1, scal = 1.0, *args, **kwargs):
+    # Using polygons apparently lets us avoid yet another copy...
     super().__init__(*args, **kwargs)
     self._curv = [ QtGui.QPolygonF(sz), QtGui.QPolygonF(sz) ]
     # no way to find out if Qt was configured for single-
@@ -58,6 +59,7 @@ class scope(QtCore.QObject):
     self._plot.setAutoReplot( True )
     self.updateYAxis()
     self.updateXAxis()
+    self._zoom     = Qwt.QwtPlotZoomer( self._plot.canvas() )
     hlay.addWidget( self._plot )
     vlay           = QtWidgets.QVBoxLayout()
     hlay.addLayout( vlay )
@@ -132,8 +134,11 @@ class scope(QtCore.QObject):
     def g():
       return str( self._fw.getAcqNPreTriggerSamples() )
     def s(s):
-      self._fw.setAcqNPreTriggerSamples( int(s) )
+      npts = int(s)
+      self._fw.setAcqNPreTriggerSamples( npts )
       self.updateXAxis()
+      self._reader.setParms( npts=npts )
+      self._zoom.setZoomBase()
     createValidator( edt, g, s, QtGui.QIntValidator, 0, self._fw.getBufSize() - 1  )
     frm.addRow( QtWidgets.QLabel("Trigger Sample #"), edt )
 
@@ -215,13 +220,15 @@ class Reader(QtCore.QThread):
 
   def __init__(self, scope, *args, **kwargs):
     super().__init__(*args, **kwargs)
-    self._lck            = RLock()
-    self._cnd            = Condition( self._lck )
+    self._lck            = Lock()
+    self._bufAvail       = Condition( self._lck )
+    self._readDone       = Semaphore( 0 )
     self._scope          = scope
     self._fw             = self._scope.getFw() 
     sz                   = self._fw.getBufSize()
     self._bufs           = [ Buf(sz) for i in range(3) ] 
-    self._rbuf           = self._fw.mkBuf()
+    self._rbuf           = [ self._fw.mkBuf(), self._fw.mkBuf() ]
+    self._ridx           = 0
     # read time for 2x16k = 32k samples is ~50ms
     self._pollInterval   = 0.10
     self._npts           = self._fw.getAcqNPreTriggerSamples()
@@ -229,21 +236,38 @@ class Reader(QtCore.QThread):
     self._processedBuf   = None
 
   def read(self):
-    rm = 0
+   if True:
+    self._fw.readAsync( self._rbuf, self )
+    self._readDone.acquire()
+   else:
     while True:
-      with self._lck:
-        rv, hdr = self._fw.read( self._rbuf )
+      rv, hdr = self._fw.read( self._rbuf )
       if ( rv > 0 ):
         return
       time.sleep( self._pollInterval )
 
+  def __call__(self, rv, hdr, buf):
+    if ( rv <= 0):
+      raise RuntimeError("indefinited async read returned ", rv)
+    self._readDone.release()
+
+  def readAsync(self):
+    rv          = self._ridx
+    self._ridx ^= 1
+    if not self._fw.readAsync( self._rbuf[ self._ridx ], self ):
+      raise RuntimeError("Unable to schedule async read")
+    return rv
+
   def run(self):
     then = time.monotonic()
     lp   = 0
+    self.readAsync()
     while True:
       b    = self.getBuf()
-      self.read()
-      b.updateY( self._rbuf )
+      self._readDone.acquire()
+      # flip buffer
+      ridx        = self.readAsync()
+      b.updateY( self._rbuf[ ridx ] )
       with self._lck:
         npts = self._npts
         scal = self._scal
@@ -263,8 +287,7 @@ class Reader(QtCore.QThread):
           print(".")
           lp = 0
       else:
-        print("Nosleep {:f}".format(delta))
-        time.sleep(.1)
+        print("Nosleep ", delta)
 
   def getData(self):
     with self._lck:
@@ -273,15 +296,15 @@ class Reader(QtCore.QThread):
     return rv
 
   def getBuf(self):
-    with self._cnd:
+    with self._bufAvail:
       while ( len(self._bufs) == 0 ):
-        self._cnd.wait()
+        self._bufAvail.wait()
       return self._bufs.pop(0)
 
   def putBuf(self, b):
-    with self._cnd:
+    with self._bufAvail:
       self._bufs.append(b)
-      self._cnd.notify()
+      self._bufAvail.notify()
 
   def setParms(self, npts = -1, scal = -1.0):
     with self._lck:
@@ -294,4 +317,6 @@ if __name__ == "__main__":
   app = QtWidgets.QApplication( sys.argv )
   scp = scope("/dev/ttyUSB0")
   scp.show()
+  def f(rv, hdr, b):
+    print("Callback ", rv)
   app.exec()

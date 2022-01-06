@@ -25,7 +25,6 @@ static void usage(const char *nm)
 	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
 	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
 	printf("   -d usb-device      : usb-device [/dev/ttyUSB0].\n");
-	printf("   -I                 : test I2C (47CVB02 DAC).\n");
 	printf("   -h                 : this message.\n");
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");

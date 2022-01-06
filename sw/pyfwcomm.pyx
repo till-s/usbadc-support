@@ -81,6 +81,8 @@ cdef class Cond:
           st = pthread_cond_wait( &self._cnd, m )
         if ( st != 0 ):
           raise OSError("pthread_cond_wait failed with status {:d}".format(st))
+      def signal(cself):
+        self.signal()
     self._mtx.__enter__()
     return LockedCond()
 
@@ -118,7 +120,6 @@ cdef class FwMgr:
 
   def __dealloc__(self):
     fw_close( self._fw )
-    Mtx.__dealloc__(self)
 
 cdef class VersaClk:
   cdef FwMgr _mgr
@@ -143,16 +144,15 @@ cdef class VersaClk:
       else:
         raise IOError("VersaClk.setOutDiv()")
 
-  def setOutEna(self, int out, bool en):
-    cdef int rv, ien
-    ien = en
+  def setFODRoute(self, int out, VersaClkFODRoute rte):
+    cdef int rv
     with self._mgr as fw, nogil:
-      rv = versaClkSetOutEna( fw, out, ien )
+      rv = versaClkSetFODRoute(fw, out, rte)
     if ( rv < 0 ):
       if ( -3 == rv ):
-        raise ValueError("VersaClk.setOutEna() -- invalid output")
+        raise ValueError("VersaClk.setFODRoute() -- invalid output")
       else:
-        raise IOError("VersaClk.setOutEna()")
+        raise IOError("VersaClk.setFODRoute()")
 
   def setOutCfg(self, int out, VersaClkOutMode mode, VersaClkOutSlew slew, VersaClkOutLevel level):
     cdef int rv
@@ -293,13 +293,17 @@ cdef class FwComm:
   cdef pthread_t       _reader
   cdef object          _callable
   cdef object          _buf
+  cdef float           _timo
 
-  def asyncRead(self, pyb, callback):
+  def readAsync(self, pyb, callback, float timeout = -1.0):
+    if (not callable( callback ) ):
+      raise ValueError( "FwComm.readAsync: callback not callable" )
     with self._asyncEvt as c:
-      if ( not self._pyb is None ):
+      if ( not self._buf is None ):
         return False
       self._callable = callback
       self._buf      = pyb
+      self._timo     = timeout
       c.signal()
       return True
 
@@ -309,24 +313,34 @@ cdef class FwComm:
       return (<FwComm>arg).pyThreadFunc()
 
   cdef void * pyThreadFunc(self):
-    cdef object callback
-    cdef object pyb
     while True:
       with self._asyncEvt as c:
-        while self._callable is None:
+        while self._buf is None:
           c.wait()
-        callback = self._callable
-        pyb      = self._buf
-      rv, hdr = self.read( pyb )
-      callback( pyb, rv, hdr )
+        callback  = self._callable
+        pyb       = self._buf
+        self._buf = None
+        timeout   = self._timo
+      if ( timeout < 0 ):
+        numIter = -1
+      else:
+        numIter = int( timeout / 0.05 )
+        if ( 0 == numIter ):
+          numIter = 1
+      rv = 0
+      while ( 0 != numIter and 0 == rv ):
+        rv, hdr = self.read( pyb )
+        if ( numIter > 0 ):
+          numIter -= 1
+      callback( rv, hdr, pyb )
     return NULL
-
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
     self._syncMtx   = Mtx()
     self._asyncEvt  = Cond( self._syncMtx )
     self._callable  = None
     self._buf       = None
+    self._timo      = -1.0
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
@@ -341,6 +355,8 @@ cdef class FwComm:
     with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
+    if ( st != 0 ):
+      raise OSError("pthread_create failed with status {:d}".format(st))
 
   def init( self ):
     for o in [SEL_EXT, SEL_ADC, SEL_FPGA]:
@@ -352,7 +368,9 @@ cdef class FwComm:
     else:
       # 100MHz clock
       self.setClkOutDiv( SEL_ADC, 14.0 )
-    self.setClkOutEna( SEL_ADC, True )
+    self.setClkOutDiv( SEL_EXT, 4095.0 )
+    self.setFODRoute( SEL_EXT, CASC_FOD )
+    self.setFODRoute( SEL_ADC, NORMAL   )
     self._dac.init()
     self._adc.init()
 
@@ -383,8 +401,8 @@ cdef class FwComm:
   def setClkOutDiv(self, int out, float div):
     self._clk.setOutDiv( out, div )
 
-  def setClkOutEna(self, int out, bool en):
-    self._clk.setOutEna( out, en )
+  def setFODRoute(self, int out, VersaClkFODRoute rte):
+    self._clk.setFODRoute( out, rte )
 
   def getS2Att(self, int channel):
     cdef float rv
