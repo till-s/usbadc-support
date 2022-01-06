@@ -42,7 +42,7 @@ class Buf(object):
   def getCurv(self, idx):
     return self._curv[idx]
 
-class scope(QtCore.QObject):
+class Scope(QtCore.QObject):
 
   haveData = QtCore.pyqtSignal()
 
@@ -51,6 +51,7 @@ class scope(QtCore.QObject):
     self._fw       = fw.FwComm( devnam )
     if ( not self._fw.isADCDLLLocked() ):
       self._fw.init()
+    self._fw.setClkFODRoute( fw.SEL_EXT, fw.CASC_OUT )
     self._main     = QtWidgets.QMainWindow()
     self._cent     = QtWidgets.QWidget()
     self._main.setCentralWidget( self._cent )
@@ -282,12 +283,14 @@ class Reader(QtCore.QThread):
       then  = now
       if ( delta > 0.0 ):
         time.sleep( delta )
-        lp += 1
-        if lp == 10:
-          print(".")
-          lp = 0
+        if ( not sys.flags.interactive ):
+          lp += 1
+          if lp == 10:
+            print(".")
+            lp = 0
       else:
-        print("Nosleep ", delta)
+        if ( not sys.flags.interactive ):
+          print("Nosleep ", delta)
 
   def getData(self):
     with self._lck:
@@ -312,11 +315,20 @@ class Reader(QtCore.QThread):
         self._npts = npts
       if ( scal >  0.0 ):
         self._scal = scal
-    
+
+class ScopeThread(QtCore.QThread):
+
+  def run(self):
+    self.exec()
+
 if __name__ == "__main__":
   app = QtWidgets.QApplication( sys.argv )
-  scp = scope("/dev/ttyUSB0")
+  scp = Scope( "/dev/ttyUSB0" )
   scp.show()
-  def f(rv, hdr, b):
-    print("Callback ", rv)
-  app.exec()
+  if ( sys.flags.interactive ):
+    scpThread = ScopeThread()
+    scpThread.start()
+    com       = scp.getFw()
+    print("Interactive mode; Firmware handle is 'com', Scope handle is 'scp'")
+  else:
+    app.exec()

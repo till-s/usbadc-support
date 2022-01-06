@@ -11,6 +11,10 @@
  * It is possible that the bit could be swapped with with selb_norm
  * (in the documentation) because when I set the control bits to 0x9
  * then the clock ticks...
+ * -> New tests: doesn't seem to be the case. It's not entirely clear
+ *    what the individual bits do (except for en_fod) but integer
+ *    mode does not seem to work in 'normal' mode but *required* otoh
+ *    in cascaded mode.
  */
 #undef  USE_INT_MODE
 
@@ -25,6 +29,22 @@ writeReg(FWInfo *fw, unsigned reg, uint8_t val)
 {
 	return bb_i2c_write_reg(fw, CLK_I2C_SLA, reg, val);
 }
+
+int
+versaClkReadReg(FWInfo *fw, unsigned reg)
+{
+	return readReg( fw, reg );
+}
+
+int
+versaClkWriteReg(FWInfo *fw, unsigned reg, uint8_t val)
+{
+	return writeReg( fw, reg, val );
+}
+
+int
+versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
+
 
 int
 versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)

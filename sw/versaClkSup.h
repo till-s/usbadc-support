@@ -29,6 +29,12 @@ typedef enum {
 } VersaClkFODRoute;
 
 int
+versaClkReadReg(FWInfo *fw, unsigned reg);
+
+int
+versaClkWriteReg(FWInfo *fw, unsigned reg, uint8_t val);
+
+int
 versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 
 typedef enum {

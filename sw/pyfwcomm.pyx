@@ -166,6 +166,18 @@ cdef class VersaClk:
       else:
         raise IOError("VersaClk.setOutCfg()")
 
+  def readReg(self, int reg):
+    cdef int      rv
+    with self._mgr as fw, nogil:
+      rv = versaClkReadReg(fw, reg)
+    return rv
+
+  def writeReg(self, int reg, int val):
+    cdef int      rv
+    with self._mgr as fw, nogil:
+      rv = versaClkWriteReg(fw, reg, val)
+    return rv
+
 cdef class Max195xxADC:
   cdef FwMgr _mgr
 
@@ -369,8 +381,8 @@ cdef class FwComm:
       # 100MHz clock
       self.setClkOutDiv( SEL_ADC, 14.0 )
     self.setClkOutDiv( SEL_EXT, 4095.0 )
-    self.setFODRoute( SEL_EXT, CASC_FOD )
-    self.setFODRoute( SEL_ADC, NORMAL   )
+    self.setClkFODRoute( SEL_EXT, CASC_FOD )
+    self.setClkFODRoute( SEL_ADC, NORMAL   )
     self._dac.init()
     self._adc.init()
 
@@ -401,8 +413,14 @@ cdef class FwComm:
   def setClkOutDiv(self, int out, float div):
     self._clk.setOutDiv( out, div )
 
-  def setFODRoute(self, int out, VersaClkFODRoute rte):
+  def setClkFODRoute(self, int out, VersaClkFODRoute rte):
     self._clk.setFODRoute( out, rte )
+
+  def readClkReg(self, int reg):
+    return self._clk.readReg(reg)
+
+  def writeClkReg(self, int reg, int val):
+    return self._clk.writeReg(reg, val)
 
   def getS2Att(self, int channel):
     cdef float rv
