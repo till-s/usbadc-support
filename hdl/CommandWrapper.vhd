@@ -147,7 +147,6 @@ begin
          rdyMuxedOb   => readysOb
       );
 
-   -- Version not implemented yet; just echo
    P_VERSION_COMB : process ( bussesIb(CMD_VER_IDX_C), readysOb(CMD_VER_IDX_C), verAddr ) is
       variable v : SimpleBusMstType;
    begin
