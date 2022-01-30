@@ -70,6 +70,10 @@ int     rv;
 	rv = max195xxWriteReg( fw, 0x1, 0x6 );
 	if ( rv < 0 ) return rv;
 
+	/* Empirically found setting for the prototype board */
+	rv = max195xxSetTiming( fw, -1, 3 );
+	if ( rv < 0 ) return rv;
+
 	/* set common-mode voltage (also important for PGA output)
 	 *
 	 * ADC: common mode input voltage range 0.4..1.4V
@@ -94,6 +98,31 @@ int     rv;
 	 */
 
 	return max195xxSetCMVolt( fw, CM_1050mV, CM_1050mV );
+}
+
+#define TIMING_REG 3
+
+#define DA_BYPASS   (1<<7)
+#define DLY_HALF_T  (1<<6)
+#define DCLK_TIME_SHIFT 3
+#define DATA_TIME_SHIFT 0
+
+static int delay2bits(int delay)
+{
+	if ( delay > 3 || delay < -3 ) {
+		return -1;
+	}
+	return delay >= 0 ? delay : (4 - delay);
+}
+
+int
+max195xxSetTiming( FWInfo *fw, int dclkDelay, int dataDelay)
+{
+uint8_t val;
+	if ( ( dclkDelay = delay2bits( dclkDelay )) < 0 ) return -2;
+	if ( ( dataDelay = delay2bits( dataDelay )) < 0 ) return -2;
+	val = (dclkDelay << DCLK_TIME_SHIFT) | (dataDelay << DATA_TIME_SHIFT);
+	return max195xxWriteReg( fw, TIMING_REG, val );
 }
 
 int

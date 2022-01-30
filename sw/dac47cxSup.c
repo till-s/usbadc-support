@@ -69,8 +69,12 @@ uint8_t     buf[2];
 
 /* ugly but we don't have context implemented for now and there
  * is only a single device..
+ *
+ * Initialize for 8-bit device; unfortunately we can't detect
+ * the device type w/o resetting it which we want to avoid
+ * in order to not cause glitches.
  */
-static int dacMax = 0;
+static int dacMax = 0xff;
 
 int
 dac47cxInit(FWInfo *fw)

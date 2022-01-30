@@ -191,6 +191,22 @@ cdef class Max195xxADC:
     if ( st < 0 ):
       raise IOError("Max195xxADC.reset()")
 
+  def readReg(self, unsigned reg):
+    cdef uint8_t val
+    cdef int     rv
+    with self._mgr as fw, nogil:
+      rv = max195xxReadReg( fw, reg, &val )
+    if ( rv < 0 ):
+      raise IOError("Max195xxADC.readReg()")
+    return val
+
+  def writeReg(self, unsigned reg, uint8_t val):
+    cdef int     rv
+    with self._mgr as fw, nogil:
+      rv = max195xxWriteReg( fw, reg, val )
+    if ( rv < 0 ):
+      raise IOError("Max195xxADC.readReg()")
+
   def init(self):
     cdef int rv
     with self._mgr as fw, nogil:
@@ -220,6 +236,15 @@ cdef class Max195xxADC:
     with self._mgr as fw, nogil:
       st = max195xxDLLLocked( fw )
     return st == 0
+
+  def setTiming(self, int dclkDelay, int dataDelay):
+    cdef int st
+    with self._mgr as fw, nogil:
+      st = max195xxSetTiming( fw, dclkDelay, dataDelay )
+    if   ( -2 == st ):
+      raise ValueError("Max195xxADC.setTiming(): delay values must be in -3..+3")
+    elif ( st < 0 ):
+      raise IOError("Max195xxADC.setTiming()")
 
 cdef class DAC47CX:
   cdef FwMgr _mgr
@@ -373,56 +398,68 @@ cdef class FwComm:
   def init( self ):
     for o in [SEL_EXT, SEL_ADC, SEL_FPGA]:
       self._clk.setOutCfg( o, OUT_CMOS, SLEW_100, LEVEL_18 )
-    if False:
+    if True:
       # 130MHz clock
-      self.setClkFBDiv( 104.0 )
-      self.setClkOutDiv( SEL_ADC, 10.0 )
+      self.clkSetFBDiv( 104.0 )
+      self.clkSetOutDiv( SEL_ADC, 10.0 )
     else:
       # 100MHz clock
-      self.setClkOutDiv( SEL_ADC, 14.0 )
-    self.setClkOutDiv( SEL_EXT, 4095.0 )
-    self.setClkFODRoute( SEL_EXT, CASC_FOD )
-    self.setClkFODRoute( SEL_ADC, NORMAL   )
+      self.clkSetOutDiv( SEL_ADC, 14.0 )
+    self.clkSetOutDiv( SEL_EXT, 4095.0 )
+    self.clkSetFODRoute( SEL_EXT, CASC_FOD )
+    self.clkSetFODRoute( SEL_ADC, NORMAL   )
     self._dac.init()
     self._adc.init()
 
-  def setDACVolt( self, ch, v):
+  def dacSetVolt( self, ch, v):
     self._dac.setVolt( ch, v )
 
-  def getDACVolt( self, ch ):
+  def dacGetVolt( self, ch ):
     return self._dac.getVolt( ch )
 
-  def setDACTicks( self, ch, v):
+  def dacSetTicks( self, ch, v):
     self._dac.setTicks( ch, v )
 
-  def getDACTicks( self, ch ):
+  def dacGetTicks( self, ch ):
     return self._dac.getTicks( ch )
 
-  def getDACRange( self ):
+  def dacGetRange( self ):
     return self._dac.getRange()
 
-  def setTestMode(self, Max195xxTestMode m):
+  def datSetTestMode(self, Max195xxTestMode m):
     self._adc.setTestMode( m )
 
-  def setCMVolt(self, Max195xxCMVolt cmA, Max195xxCMVolt cmB):
+  def adcReadReg(self, reg):
+    return self._adc.readReg( reg )
+
+  def adcWriteReg(self, reg, val):
+    self._adc.writeReg( reg, val )
+
+  def adcSetCMVolt(self, Max195xxCMVolt cmA, Max195xxCMVolt cmB):
     self._adc.setCMVolt( cmA, cmB )
 
-  def setClkFBDiv(self, float div):
+  def adcIsDLLLocked(self):
+    return self._adc.dllLocked()
+
+  def adcSetTiming(self, dclkDelay, dataDelay):
+    self._adc.setTiming( dclkDelay, dataDelay )
+
+  def clkSetFBDiv(self, float div):
     self._clk.setFBDiv( div )
 
-  def setClkOutDiv(self, int out, float div):
+  def clkSetOutDiv(self, int out, float div):
     self._clk.setOutDiv( out, div )
 
-  def setClkFODRoute(self, int out, VersaClkFODRoute rte):
+  def clkSetFODRoute(self, int out, VersaClkFODRoute rte):
     self._clk.setFODRoute( out, rte )
 
-  def readClkReg(self, int reg):
+  def clkReadReg(self, int reg):
     return self._clk.readReg(reg)
 
-  def writeClkReg(self, int reg, int val):
+  def clkWriteReg(self, int reg, int val):
     return self._clk.writeReg(reg, val)
 
-  def getS2Att(self, int channel):
+  def ampGetS2Att(self, int channel):
     cdef float rv
     with self._mgr as fw, nogil:
       rv = lmh6882GetAtt( fw, channel )
@@ -433,7 +470,7 @@ cdef class FwComm:
         raise IOError("getS2Att()")
     return rv
 
-  def setS2Att(self, int channel, float att):
+  def ampSetS2Att(self, int channel, float att):
     cdef float rv
     with self._mgr as fw, nogil:
       rv = lmh6882SetAtt( fw, channel, att )
@@ -478,58 +515,55 @@ cdef class FwComm:
       PyErr_SetFromErrnoWithFilenameObject(OSError, self._nm)
     return rv, hdr
 
-  def isADCDLLLocked(self):
-    return self._adc.dllLocked()
-
-  def getAcqTriggerLevelPercent(self):
+  def acqGetTriggerLevelPercent(self):
     return 100.0 * float(self._parmCache.level) / 32767.0
 
-  def setAcqTriggerLevelPercent(self, float lvl):
+  def acqSetTriggerLevelPercent(self, float lvl):
     cdef int16_t l
     cdef int     st
     if ( lvl > 100.0 or lvl < -100.0 ):
-      raise ValueError("setAcqTriggerLevelPercent(): trigger (percentage) level must be -100 <= level <= +100")
+      raise ValueError("acqSetTriggerLevelPercent(): trigger (percentage) level must be -100 <= level <= +100")
     l = round( 32767.0 * lvl/100.0 )
     if ( self._parmCache.level == l ):
       return
     with self._mgr as fw, nogil:
       st = acq_set_level( fw, l )
     if ( st < 0 ):
-      raise IOError("setAcqTriggerLevelPercent()")
+      raise IOError("acqSetTriggerLevelPercent()")
     self._parmCache.level = l
 
-  def getAcqNPreTriggerSamples(self):
+  def acqGetNPreTriggerSamples(self):
     return self._parmCache.npts
 
-  def setAcqNPreTriggerSamples(self, int n):
+  def acqSetNPreTriggerSamples(self, int n):
     cdef int st
     if ( n < 0 or n > self._bufsz - 1 ):
-      raise ValueError("setAcqNPreTriggerSamples(): # pre-trigger samples out of range")
+      raise ValueError("acqSetNPreTriggerSamples(): # pre-trigger samples out of range")
     if ( self._parmCache.npts == n ):
       return
     with self._mgr as fw, nogil:
       st = acq_set_npts( fw, n )
     if ( st < 0 ):
-      raise IOError("setAcqNPreTriggerSamples()")
+      raise IOError("acqSetNPreTriggerSamples()")
     self._parmCache.npts = n
 
-  def getAcqDecimation(self):
+  def acqGetDecimation(self):
     return self._parmCache.cic0Decimation, self._parmCache.cic1Decimation
 
-  def setAcqDecimation(self, n0, n1 = None):
+  def acqSetDecimation(self, n0, n1 = None):
     cdef uint8_t  cic0Dec
     cdef uint32_t cic1Dec
     cdef int      st
     if ( not n1 is None ):
       if ( n0 < 1 or n0 > 16 or  n1 < 1 or n1 > 2**12 ):
-        raise ValueError("setAcqDecimation(): decimation out of range")
+        raise ValueError("acqSetDecimation(): decimation out of range")
       if ( n1 != 1 and 1 == n0 ):
-        raise ValueError("setAcqDecimation(): if CIC1 decimation > 1 then CIC0 must be > 1, too")
+        raise ValueError("acqSetDecimation(): if CIC1 decimation > 1 then CIC0 must be > 1, too")
       cic0Dec = n0
       cic1Dec = n1
     else:
       if ( n0 < 1 or n0 > 16 * 2**12):
-        raise ValueError("setAcqDecimation(): decimation out of range")
+        raise ValueError("acqSetDecimation(): decimation out of range")
       if ( 1 == n0 ):
         cic0Dec = 1
         cic1Dec = 1
@@ -539,20 +573,20 @@ cdef class FwComm:
             cic1Dec = int(n0 / cic0Dec)
             break
         if 1 == cic0Dec:
-          raise ValueError("setAcqDecimation(): decimation must have a factor in 2..16")
+          raise ValueError("acqSetDecimation(): decimation must have a factor in 2..16")
     if ( self._parmCache.cic0Decimation == cic0Dec and self._parmCache.cic1Decimation == cic1Dec ):
       return
     with self._mgr as fw, nogil:
       st = acq_set_decimation( fw, cic0Dec, cic1Dec )
     if ( st < 0 ):
-      raise IOError("setAcqDecimation()")
+      raise IOError("acqSetDecimation()")
     self._parmCache.cic0Decimation = cic0Dec
     self._parmCache.cic1Decimation = cic1Dec
 
-  def getAcqTriggerSource(self):
+  def acqGetTriggerSource(self):
     return self._parmCache.src, bool(self._parmCache.rising)
 
-  def setAcqTriggerSource(self, TriggerSource src, bool rising = True):
+  def acqSetTriggerSource(self, TriggerSource src, bool rising = True):
     cdef int st
     cdef int irising
     if ( TriggerSource(self._parmCache.src) == src and bool(self._parmCache.rising) == rising ):
@@ -561,17 +595,17 @@ cdef class FwComm:
     with self._mgr as fw, nogil:
       st = acq_set_source( fw, src, irising )
     if ( st < 0 ):
-      raise IOError("setAcqTriggerSource()")
+      raise IOError("acqSetTriggerSource()")
     self._parmCache.src    = src
     self._parmCache.rising = rising
 
-  def getAcqAutoTimeoutMs(self):
+  def acqGetAutoTimeoutMs(self):
     timeout = self._parmCache.autoTimeoutMS
     if ( timeout == ACQ_PARAM_TIMEOUT_INF ):
       timeout = -1
     return timeout
 
-  def setAcqAutoTimeoutMs(self, int timeout):
+  def acqSetAutoTimeoutMs(self, int timeout):
     cdef int st
     if ( timeout < 0 ):
       timeout = ACQ_PARAM_TIMEOUT_INF
@@ -580,13 +614,13 @@ cdef class FwComm:
     with self._mgr as fw, nogil:
       st = acq_set_autoTimeoutMs( fw, timeout )
     if ( st < 0 ):
-      raise IOError("setAcqAutoTimeoutMs()")
+      raise IOError("acqSetAutoTimeoutMs()")
     self._parmCache.autoTimeoutMS = timeout
 
-  def getAcqScale(self):
+  def acqGetScale(self):
     return float(self._parmCache.scale) / 2.0**30
 
-  def setAcqScale(self, float scale):
+  def acqSetScale(self, float scale):
     cdef int     st
     cdef int32_t iscale
     iscale = round( scale * 2.0**30 )
@@ -595,7 +629,7 @@ cdef class FwComm:
     with self._mgr as fw, nogil:
       st = acq_set_scale( fw, 0, 0, iscale )
     if ( st < 0 ):
-      raise IOError("setAcqScale()")
+      raise IOError("acqSetScale()")
     self._parmCache.scale = iscale
 
   def mkBuf(self):
@@ -603,5 +637,3 @@ cdef class FwComm:
 
   def mkFltBuf(self):
     return numpy.zeros( (self._bufsz, 2), dtype = "float32" )
-
-

@@ -18,7 +18,7 @@ entity MaxADC is
       -- depending on which port the muxed signal is shipped either A or B samples are
       -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
       DDR_A_FIRST_G        : boolean := false;
-      ONE_MEM_G            : boolean := false;
+      ONE_MEM_G            : boolean := true;
       USE_DCM_G            : boolean := false;
       TEST_NO_DDR_G        : boolean := false;
       TEST_NO_BUF_G        : boolean := false;

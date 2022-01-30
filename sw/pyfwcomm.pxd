@@ -54,11 +54,14 @@ cdef extern from "dac47cxSup.h":
   int            dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val) nogil
 
 cdef extern from "max195xxSup.h":
+  int            max195xxReadReg( FWInfo *fw, unsigned reg, uint8_t *val ) nogil
+  int            max195xxWriteReg( FWInfo *fw, unsigned reg, uint8_t val ) nogil
   int            max195xxReset( FWInfo *fw ) nogil
   int            max195xxInit( FWInfo *fw ) nogil
   int            max195xxDLLLocked( FWInfo *fw ) nogil
   int            max195xxSetTestMode(FWInfo *fw, Max195xxTestMode m) nogil
   int            max195xxSetCMVolt( FWInfo *fw, Max195xxCMVolt cmA, Max195xxCMVolt cmB ) nogil
+  int            max195xxSetTiming( FWInfo *fw, int dclkDelay, int dataDelay ) nogil
   
 cpdef enum Max195xxCMVolt:
   CM_0900mV = 0
