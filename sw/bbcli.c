@@ -14,6 +14,11 @@
 #include "lmh6882Sup.h"
 #include "max195xxSup.h"
 
+/* covers image size of xc3s200a for multiboot */
+#ifndef  FLASHADDR_DFLT
+#define  FLASHADDR_DFLT 0x30000
+#endif
+
 static void usage(const char *nm)
 {
 	printf("usage: %s [-hvDI!?] [-d usb-dev] [-S SPI_flashCmd] [-a flash_addr] [-f flash_file] [register] [values...]\n", nm);
@@ -21,7 +26,7 @@ static void usage(const char *nm)
 	printf("   -f flash-file      : file to write/verify when operating on SPI flash.\n");
     printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
     printf("   -?                 : instead of programming the flash verify its contents against a file (-f also required).\n");
-	printf("   -a address         : start-address for SPI flash opertions [0].\n");
+	printf("   -a address         : start-address for SPI flash opertions [0x%x].\n", FLASHADDR_DFLT);
 	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
 	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
 	printf("   -d usb-device      : usb-device [/dev/ttyUSB0].\n");
@@ -47,9 +52,9 @@ static void usage(const char *nm)
     printf("                        size and <size> is up-aligned to block size: 4k, 32k, 64k or entire chip.\n");
     printf("                        <size> may be omitted if '-f' is given. The file size will be used...\n");
 	printf("\n");
-    printf("Example: erase and write 'foo.bit' starting at address 0x10000:\n");
+    printf("Example: erase and write 'foo.bin' starting at address 0x00000:\n");
 	printf("\n");
-    printf("   %s -a 0x10000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
+    printf("   %s -a 0x00000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
 }
     
 static int sz2bsz(int sz)
@@ -233,7 +238,7 @@ int                dac       = 0;
 int                opt;
 int                test_reg  = 0;
 char              *test_spi  = 0;
-unsigned           flashAddr = 0;
+unsigned           flashAddr = FLASHADDR_DFLT;
 unsigned          *u_p;
 char              *progFile  = 0;
 uint8_t           *progMap   = (uint8_t*)MAP_FAILED;
