@@ -28,6 +28,7 @@
 #define BITS_FW_CMD_BB_ADC      (2<<4)
 #define BITS_FW_CMD_BB_PGA      (3<<4)
 #define BITS_FW_CMD_BB_I2C      (4<<4)
+#define BITS_FW_CMD_BB_FEG      (5<<4)
 #define BITS_FW_CMD_ADCBUF      0x02
 #define BITS_FW_CMD_ADCFLUSH    (1<<4)
 #define BITS_FW_CMD_MEMSIZE     (2<<4)
@@ -81,6 +82,7 @@ spi_get_subcmd(SPIDev type)
 		case SPI_FLASH : return BITS_FW_CMD_BB_FLASH;
 		case SPI_ADC   : return BITS_FW_CMD_BB_ADC;
 		case SPI_PGA   : return BITS_FW_CMD_BB_PGA;
+		case SPI_FEG   : return BITS_FW_CMD_BB_FEG;
 		default:
 			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
 			abort();

@@ -12,7 +12,7 @@ typedef struct FWInfo FWInfo;
 
 typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS } FWCmd;
 
-typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA } SPIDev;
+typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG } SPIDev;
 
 #ifdef __cplusplus
 extern "C" {
