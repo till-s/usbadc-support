@@ -34,7 +34,7 @@ versaClkSup.o: fwComm.h versaClkSup.h
 .PHONY: clean
 
 clean:
-	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C)
+	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o
 
 pyfwcomm.so: pyfwcomm.o $(LOBJS)
 	$(CC) $^ -shared -o $@
