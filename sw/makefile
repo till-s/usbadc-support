@@ -35,6 +35,7 @@ versaClkSup.o: fwComm.h versaClkSup.h
 
 clean:
 	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o
+	$(RM) -rf __pycache__
 
 pyfwcomm.so: pyfwcomm.o $(LOBJS)
 	$(CC) $^ -shared -o $@
