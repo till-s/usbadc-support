@@ -37,7 +37,7 @@ architecture rtl of SpiReg is
       if ( INIT_VAL_G'length = 0 ) then
          v := (others => '0');
       else
-         v := INIT_VAL_G;
+         v := INIT_VAL_G(INIT_VAL_G'left) & INIT_VAL_G;
       end if;
       return v;
    end function INIT_VAL_F;
@@ -45,13 +45,13 @@ architecture rtl of SpiReg is
    type RegType is record
       lsclk      : std_logic;
       lscsb      : std_logic;
-      sr         : std_logic_vector(NUM_BITS_G - 1 downto 0);
+      sr         : std_logic_vector(NUM_BITS_G downto 0);
    end record RegType;
 
    constant REG_INIT_C : RegType := (
       lsclk      => '0',
       lscsb      => '1',
-      sr         => INIT_VAL_F
+      sr         =>  INIT_VAL_F
    );
 
    signal r      : RegType := REG_INIT_C;
@@ -74,11 +74,20 @@ begin
       v.lsclk := sclk;
 
       if     ( rsLoc = '1' ) then
-         v.sr := data_inp;
+         v.sr(r.sr'left - 1 downto 0) := data_inp;
+         v.sr(r.sr'left)              := data_inp(data_inp'left);
       end if;
 
-      if ( (not sclk and r.lsclk) = '1' ) then
-         v.sr := r.sr(r.sr'left - 1 downto 0) & mosi;
+      if ( scsb = '0' ) then
+         if ( (sclk and not r.lsclk) = '1' ) then
+            -- rising sclk
+            v.sr(v.sr'left - 1 downto 0) := r.sr(r.sr'left - 2 downto 0) & mosi;
+         elsif ( (not sclk and r.lsclk) = '1' ) then
+            -- falling sclk
+            v.sr(v.sr'left) := r.sr(r.sr'left - 1);
+         end if;
+      else
+         v.lsclk := '0';
       end if;
 
       rin <= v;
@@ -98,6 +107,6 @@ begin
    miso     <= r.sr(r.sr'left);
    rs       <= rsLoc;
    ws       <= wsLoc;
-   data_out <= r.sr;
+   data_out <= r.sr(r.sr'left - 1 downto 0);
 
 end architecture rtl;
