@@ -13,6 +13,7 @@
 #include "dac47cxSup.h"
 #include "lmh6882Sup.h"
 #include "max195xxSup.h"
+#include "fegRegSup.h"
 
 /* covers image size of xc3s200a for multiboot */
 #ifndef  FLASHADDR_DFLT
@@ -72,6 +73,7 @@ static int sz2bsz(int sz)
 #define TEST_I2C 1
 #define TEST_PGA 2
 #define TEST_ADC 3
+#define TEST_FEG 4
 
 static int
 scanl(const char *tok, const char *eq, long *vp)
@@ -250,7 +252,7 @@ int                dumpAdc   = 0;
 int                dumpPrms  = 0;
 const char        *trgOp     = 0;
 
-	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:hIPpS:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIPpS:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -259,6 +261,7 @@ const char        *trgOp     = 0;
 			case 'D': dac  = 1; test_reg = TEST_I2C;                                  break;
 			case 'P': dac  = 0; test_reg = TEST_PGA;                                  break;
 			case 'A': dac  = 0; test_reg = TEST_ADC;                                  break;
+			case 'G': dac  = 0; test_reg = TEST_FEG;                                  break;
 			case 'B': dumpAdc = 1;                                                    break;
 			case 'F': dumpAdc = -1;                                                    break;
 			case 'p': dumpPrms= 1;                                                    break;
@@ -578,6 +581,17 @@ const char        *trgOp     = 0;
 				}
 				rdl = (val < 0 ? 1 : 0);
 				break;
+
+			case TEST_FEG:
+				if ( val < 0 ) {
+					buf[0] = fegRegRead( fw );
+				} else {
+					buf[0] = val;
+					fegRegWrite( fw, buf[0] );
+				}
+				rdl = (val < 0 ? 1 : 0);
+				break;
+
 
 			default:
 				break;

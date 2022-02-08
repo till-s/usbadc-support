@@ -3,7 +3,7 @@ all: bbcli
 CFLAGS=-O2 -Wall -g -fpic
 
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
-LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o
+LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o
 
 PYINC=/usr/include/python3.8
 
@@ -24,7 +24,7 @@ $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-bbcli.o $(PYFWCOMM_C): fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h dac47cxSup.h max195xxSup.h versaClkSup.h
+bbcli.o $(PYFWCOMM_C): fwComm.h fwUtil.h at25Sup.h lmh6882Sup.h dac47cxSup.h max195xxSup.h versaClkSup.h fegRegSup.h
 fwComm.o: fwComm.h cmdXfer.h
 cmdXfer.o: cmdXfer.h
 at25Sup.o: fwComm.h cmdXfer.h
