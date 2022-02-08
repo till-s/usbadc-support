@@ -33,9 +33,30 @@ end entity BitBangIF;
 
 architecture rtl of BitBangIF is
 
-   constant I2C_HPER_C    : integer := integer( ceil ( 0.5*CLOCK_FREQ_G/I2C_FREQ_G ) ) - 1;
-   constant I2C_TIMO_C    : integer := integer( ceil ( 0.2*CLOCK_FREQ_G ) ) - 1;
-   constant I2C_LD_TIMO_C : integer := numBits( I2C_TIMO_C );
+   -- need some clock cycles (well, the internal SpiReg does)
+   constant HPER_MIN_C    : integer := 1;
+
+   function I2C_HPER_F return integer is
+      variable v : integer;
+   begin
+      v := integer( ceil ( 0.5*CLOCK_FREQ_G/I2C_FREQ_G ) ) - 1;
+      if ( v < HPER_MIN_C ) then
+        v := HPER_MIN_C;
+      end if;
+      return v;
+   end function I2C_HPER_F;
+
+   function I2C_TIMO_F return integer is
+      variable v : integer;
+   begin
+      v := integer( ceil ( 0.2*CLOCK_FREQ_G ) ) - 1;
+      if ( v < I2C_HPER_F ) then
+         v := I2C_HPER_F;
+      end if;
+      return v;
+   end function I2C_TIMO_F;
+
+   constant I2C_LD_TIMO_C : integer := numBits( I2C_TIMO_F );
 
 
    type RegType is record
@@ -61,8 +82,8 @@ architecture rtl of BitBangIF is
 
 begin
 
-   assert false report "HPER " & integer'image(I2C_HPER_C) severity warning;
-   assert false report "TIMO " & integer'image(I2C_TIMO_C) severity warning;
+   assert false report "HPER " & integer'image(I2C_HPER_F) severity warning;
+   assert false report "TIMO " & integer'image(I2C_TIMO_F) severity warning;
    assert false report "LDTM " & integer'image(I2C_LD_TIMO_C) severity warning;
 
    GEN_SYNC : if ( I2C_SCL_G >= 0 and I2C_SCL_G < 8 ) generate
@@ -93,7 +114,7 @@ begin
       -- condition to check for clock stretching
       -- readback of SCL must match what we set
       -- on the i2c bus.
-      sclInEqualsOut <= (sclSync = r.bbo(I2C_SCL_G));
+      sclInEqualsOut <= (sclSync = r.bbo(I2C_SCL_G)) or (i2cDis = '1') ;
          
    end generate GEN_SYNC;
 
@@ -123,7 +144,7 @@ begin
       rrdyLoc := '0';
 
       -- if i2c_timeo is already 0 then this logic reverts the decrement
-      if ( r.i2c_timo < (I2C_TIMO_C - I2C_HPER_C) ) then
+      if ( r.i2c_timo < (I2C_TIMO_F - I2C_HPER_F) ) then
          if ( sclInEqualsOut or (r.i2c_timo = 0) ) then
             v.i2c_timo := (others => '0');
             -- OK to receive new data (if register is currently emptied or already empty)
@@ -138,7 +159,9 @@ begin
          v.wdat := bbiSync;
          v.wvld := '1';
          if ( i2cDis = '0' ) then
-            v.i2c_timo := to_unsigned(I2C_TIMO_C, v.i2c_timo'length);
+            v.i2c_timo := to_unsigned(I2C_TIMO_F, v.i2c_timo'length);
+         else
+            v.i2c_timo := to_unsigned(I2C_TIMO_F - I2C_HPER_F + HPER_MIN_C - 1, v.i2c_timo'length);
          end if;
       end if;
 
