@@ -57,17 +57,34 @@ static void usage(const char *nm)
 	printf("\n");
     printf("   %s -a 0x00000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
 }
-    
+
+static const int blocks [] = {
+	4*1024,
+	32*1024,
+	64*1024,
+	512*1024,
+};
+
 static int sz2bsz(int sz)
 {
-	if ( sz <= 4*1024 ) {
-		return 4*1024;
-	} else if ( sz <= 32*1024 ) {
-		return 32*1024;
-	} else if ( sz <= 64*1024 ) {
-		return 64*1024;
+int i;
+	for ( i = 0; i < sizeof(blocks)/sizeof(blocks[0]); i++ ) {
+		if ( sz <= blocks[i] ) {
+			return blocks[i];
+		}
 	}
-	return 512*1024;
+	return blocks[i];
+}
+
+static int algnblk(unsigned addr)
+{
+int i;
+	for ( i = sizeof(blocks)/sizeof(blocks[0]) - 1; i >= 0; i-- ) {
+		if ( (addr & (blocks[i] - 1)) == 0 ) {
+			return blocks[i];
+		}
+	}
+	return blocks[0];
 }
 
 #define TEST_I2C 1
@@ -123,7 +140,7 @@ char *val;
 int   rval = -1;
 long  v[4];
 
-	if ( ! str ) {	
+	if ( ! str ) {
 		fprintf(stderr, "Error -- parseAcqParams: no memory\n");
 		return -1;
 	}
@@ -371,7 +388,7 @@ const char        *trgOp     = 0;
 				printf("\n");
 			}
 		}
-		
+
 	}
 
 	if ( test_spi ) {
@@ -483,6 +500,7 @@ const char        *trgOp     = 0;
 			} else if ( strstr(op, "Erase") ) {
 
 				unsigned aligned;
+                unsigned bsz;
 
 				if ( doit < 0 ) {
 					printf("Erase: skipping during verify (-?)\n");
@@ -500,22 +518,34 @@ const char        *trgOp     = 0;
 					continue;
 				}
 
-                i       = sz2bsz( i );
-                aligned = flashAddr & ~ (i-1);
-				printf("Erasing 0x%x/%d bytes from address 0x%x\n", i, i, aligned);
+				/* biggest block that aligns to flashAddr */
+                bsz     = algnblk( flashAddr );
+                if ( i < bsz ) {
+					/* if we need to erase less try to find a smaller block */
+					bsz = sz2bsz( i );
+				}
+				/* up-align end */
+                i = ( flashAddr + i + bsz - 1) & ~ (bsz - 1);
+				/* down-align start */
+                aligned = flashAddr & ~ (bsz - 1);
+
+				printf("Erasing 0x%x/%d bytes from address 0x%x\n", i - aligned, i - aligned, aligned);
 
 				if ( doit <= 0 ) {
 					printf("... bailing out -- please use -! to proceed or -? to just verify the flash\n");
 					continue;
 				}
 
-				if ( at25_block_erase( fw, aligned, i) < 0 ) {
-					fprintf(stderr, "at25_block_erase(%d) failed\n", i);
-					goto bail;
-				}
-			}
+				while ( aligned < i ) {
 
-			 else {
+					if ( at25_block_erase( fw, aligned, bsz ) < 0 ) {
+						fprintf(stderr, "at25_block_erase(%d) failed\n", i);
+						goto bail;
+					}
+
+					aligned += bsz;
+				}
+			} else {
 				fprintf(stderr, "Skipping unrecognized SPI command '%s'\n", op);
 			}
 
