@@ -13,7 +13,7 @@ all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb
 
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
-OBJS+=MaxAdc.o CommandWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
+OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
 OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o PipelinedRShifter.o
 OBJS+=MulShifter.o SpiReg.o
 
@@ -129,4 +129,5 @@ git: GitVersionPkg.vhd
 clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb
 	$(RM) dump.ghw work-obj*.cf e~*.o GitVersionPkg.vhd cicfiltertb CicFilterTb.o GitVersionPkg.o
-	$(RM) spiregtb
+	$(RM) spiregtb SpiRegTb.o
+	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o
