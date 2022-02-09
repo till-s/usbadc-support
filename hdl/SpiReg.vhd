@@ -30,7 +30,7 @@ end entity SpiReg;
 architecture rtl of SpiReg is
 
    function INIT_VAL_F return std_logic_vector is
-      variable v : std_logic_vector(NUM_BITS_G - 1 downto 0);
+      variable v : std_logic_vector(NUM_BITS_G downto 0);
    begin
       assert INIT_VAL_G'length = 0 or INIT_VAL_G'length = NUM_BITS_G
          report "Invalid length of INIT_VAL_G" severity failure;
