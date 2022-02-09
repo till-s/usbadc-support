@@ -65,15 +65,16 @@ static const int blocks [] = {
 	512*1024,
 };
 
+/* largest block smaller than 'sz' */
 static int sz2bsz(int sz)
 {
 int i;
-	for ( i = 0; i < sizeof(blocks)/sizeof(blocks[0]); i++ ) {
-		if ( sz <= blocks[i] ) {
+	for ( i = sizeof(blocks)/sizeof(blocks[0]) - 1; i >= 0; i-- ) {
+		if ( blocks[i] <= sz ) {
 			return blocks[i];
 		}
 	}
-	return blocks[i];
+	return blocks[0];
 }
 
 static int algnblk(unsigned addr)
@@ -501,6 +502,7 @@ const char        *trgOp     = 0;
 
 				unsigned aligned;
                 unsigned bsz;
+				int      st;
 
 				if ( doit < 0 ) {
 					printf("Erase: skipping during verify (-?)\n");
@@ -536,15 +538,33 @@ const char        *trgOp     = 0;
 					continue;
 				}
 
+				if ( (st = at25_status( fw )) < 0 ) {
+					fprintf(stderr, "at25_status() failed\n");
+					goto bail;
+				}
+
+				if ( 0 == ( st & AT25_ST_WEL ) ) {
+					fprintf(stderr, "Unable to erase; write-protection still engaged (use Wena?)\n");
+					goto bail;
+				}
+
 				while ( aligned < i ) {
+
+					if ( at25_global_unlock( fw ) ) {
+						fprintf(stderr, "at25_global_unlock() failed\n");
+						goto bail;
+					}
 
 					if ( at25_block_erase( fw, aligned, bsz ) < 0 ) {
 						fprintf(stderr, "at25_block_erase(%d) failed\n", i);
 						goto bail;
 					}
+					printf("."); fflush(stdout);
 
 					aligned += bsz;
+
 				}
+				printf("\n");
 			} else {
 				fprintf(stderr, "Skipping unrecognized SPI command '%s'\n", op);
 			}

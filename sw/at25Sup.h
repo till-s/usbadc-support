@@ -18,6 +18,10 @@ at25_spi_read(FWInfo *fw, unsigned addr, uint8_t *rbuf, size_t len);
 int
 at25_id(FWInfo *fw);
 
+#define AT25_ST_BUSY       0x01
+#define AT25_ST_WEL        0x02
+#define AT25_ST_EPE        0x20
+
 int
 at25_status(FWInfo *fw);
 
