@@ -15,7 +15,7 @@ entity MaxADC is
    generic (
       ADC_CLOCK_FREQ_G     : real    := 130.0E6;
       MEM_DEPTH_G          : natural := 1024;
-      ADC_BITS_G           : natural := 9;
+      ADC_BITS_G           : natural := 8;
       -- depending on which port the muxed signal is shipped either A or B samples are
       -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
       DDR_A_FIRST_G        : boolean := false;
