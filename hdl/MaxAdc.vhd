@@ -19,7 +19,7 @@ entity MaxADC is
       -- depending on which port the muxed signal is shipped either A or B samples are
       -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
       DDR_A_FIRST_G        : boolean := false;
-      ONE_MEM_G            : boolean := true;
+      ONE_MEM_G            : boolean := false;
       USE_DCM_G            : boolean := false;
       TEST_NO_DDR_G        : boolean := false;
       TEST_NO_BUF_G        : boolean := false;
@@ -61,7 +61,17 @@ architecture rtl of MaxADC is
 
    constant MS_TICK_PERIOD_C: natural := natural( round( ADC_CLOCK_FREQ_G / 1000.0 ) );
 
-   constant RAM_BITS_C      : natural := 9;
+   -- I learned the following: when inferring RAM, XST always organizes into a parallel
+   -- array of (depth x w), maximising 'depth'. This is 'normally' fine since
+   -- it avoids using multiplexers (until depth 16k). I.e., using all 16 BRAMs of
+   -- a 200 device results in 16 parallel 16k x 1 memories!
+   -- However, this means that parity bits cannot be used.
+   -- If RAM_BITS_C = 9 is to be used then some manual reconfiguration of the blocks
+   -- including multiplexers must be implemented either completely manually (instantiating
+   -- device macros) or by 'guiding' the inferal. In this case using ONE_MEM_G = false
+   -- is preferable since the basic block is then 2kx9 instead of 1kx18, saving a little
+   -- bit on the muxes.
+   constant RAM_BITS_C      : natural := 8;
 
    subtype  RamAddr         is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
