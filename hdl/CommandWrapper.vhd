@@ -13,6 +13,7 @@ entity CommandWrapper is
       I2C_FREQ_G               : real    := 100.0E3;
       FIFO_FREQ_G              : real;
       ADC_FREQ_G               : real    := 130.0E6;
+      ADC_BITS_G               : natural := 8;
       MEM_DEPTH_G              : natural := 1024;
       COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
       ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
@@ -38,7 +39,7 @@ entity CommandWrapper is
       adcRst       : in  std_logic := '0';
 
       -- bit 0 is the DOR (overrange) bit
-      adcDataDDR   : in  std_logic_vector(8 downto 0);
+      adcDataDDR   : in  std_logic_vector(ADC_BITS_G downto 0);
 
       smplClk      : out std_logic;
 
@@ -222,6 +223,7 @@ begin
           generic map (
              ADC_CLOCK_FREQ_G     => ADC_FREQ_G,
              MEM_DEPTH_G          => MEM_DEPTH_G,
+             ADC_BITS_G           => ADC_BITS_G,
              DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
           )
           port map (

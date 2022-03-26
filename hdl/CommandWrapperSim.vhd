@@ -10,8 +10,11 @@ end entity CommandWrapperSim;
 
 architecture sim of CommandWrapperSim is
 
+   constant ADC_W_C       : natural := 10;
+
+
    constant MEM_DEPTH_C : natural := 1024;
-   constant ADC_FIRST_C : unsigned(7 downto 0)   := x"A0";
+   constant ADC_FIRST_C : unsigned(ADC_W_C - 1 downto 0)  := (others => '1');
 
    constant BB_SPI_CSb_C  : natural := 0;
    constant BB_SPI_SCK_C  : natural := 1;
@@ -36,9 +39,9 @@ architecture sim of CommandWrapperSim is
    signal bbi     : std_logic_vector(7 downto 0) := x"FF";
    signal bbo     : std_logic_vector(7 downto 0) := x"FF";
 
-   signal adcDDR  : unsigned(7 downto 0)         := ADC_FIRST_C;
-   signal adcA    : unsigned(7 downto 0)         := ADC_FIRST_C;
-   signal adcB    : unsigned(7 downto 0)         := ADC_FIRST_C;
+   signal adcDDR  : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
+   signal adcA    : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
+   signal adcB    : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
    signal dorA    : std_logic                    := '0';
    signal dorB    : std_logic                    := '0';
    signal dorDDR  : std_logic                    := '0';
@@ -87,6 +90,7 @@ begin
    U_DUT : entity work.CommandWrapper
       generic map (
          FIFO_FREQ_G  => 4.0E5,
+         ADC_BITS_G   => ADC_W_C,
          MEM_DEPTH_G  => MEM_DEPTH_C
       )
       port map (
@@ -108,8 +112,8 @@ begin
          adcClk       => clk,
          adcRst       => rst(rst'left),
 
-         adcDataDDR(8 downto 1)  => std_logic_vector(adcDDR),
-         adcDataDDR(         0)  => dorDDR,
+         adcDataDDR(ADC_W_C downto 1)  => std_logic_vector(adcDDR),
+         adcDataDDR(               0)  => dorDDR,
 
          smplClk      => open
       );
@@ -124,16 +128,17 @@ begin
    P_FILL_A : process ( clk ) is
    begin
       if ( rising_edge( clk ) ) then
-         adcA <= adcA + 1;
+         adcA <= to_unsigned(113, adcA'length); --adcA + 1;
       end if;
    end process P_FILL_A;
 
    P_FILL_B : process ( clk ) is
       variable i   : natural := 0;
       constant P_C : natural := 1000;
+      constant A   : real    := 2.0**real(ADC_W_C - 1) - 1.0;
    begin
       if ( falling_edge( clk ) ) then
-         adcB <= unsigned( to_signed( integer( round( 127.0 * sin(MATH_2_PI*real(i)/real(P_C)) ) ), adcB'length ) );
+         adcB <= unsigned( to_signed( integer( round( A * sin(MATH_2_PI*real(i)/real(P_C)) ) ), adcB'length ) );
          i := i + 1;
          dorB <= '0';
          if ( i = P_C ) then

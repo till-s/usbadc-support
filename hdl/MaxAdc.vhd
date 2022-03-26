@@ -15,6 +15,7 @@ entity MaxADC is
    generic (
       ADC_CLOCK_FREQ_G     : real    := 130.0E6;
       MEM_DEPTH_G          : natural := 1024;
+      ADC_BITS_G           : natural := 9;
       -- depending on which port the muxed signal is shipped either A or B samples are
       -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
       DDR_A_FIRST_G        : boolean := false;
@@ -29,7 +30,7 @@ entity MaxADC is
       adcRst      : in  std_logic;
 
       -- bit 0 is the DOR (overrange) bit
-      adcDataDDR  : in  std_logic_vector(8 downto 0);
+      adcDataDDR  : in  std_logic_vector(ADC_BITS_G downto 0);
 
       smplClk     : out std_logic;
 
@@ -60,10 +61,14 @@ architecture rtl of MaxADC is
 
    constant MS_TICK_PERIOD_C: natural := natural( round( ADC_CLOCK_FREQ_G / 1000.0 ) );
 
+   constant RAM_BITS_C      : natural := 9;
+
    subtype  RamAddr         is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
-   subtype  RamWord         is std_logic_vector(7 downto 0);
-   subtype  RamDWord        is std_logic_vector(15 downto 0);
+   subtype  RamWord         is std_logic_vector(RAM_BITS_C - 1 downto 0);
+   subtype  RamDWord        is std_logic_vector(2*RAM_BITS_C - 1 downto 0);
+
+   subtype  ADCWord         is std_logic_vector(ADC_BITS_G - 1 downto 0);
 
    constant END_ADDR_C      : RamAddr := to_unsigned( MEM_DEPTH_G - 1 , RamAddr'length);
 
@@ -150,8 +155,8 @@ architecture rtl of MaxADC is
    signal rWr       : WrRegType    := WR_REG_INIT_C;
    signal rinWr     : WrRegType;
 
-   signal chnl0Data : std_logic_vector(8 downto 0);
-   signal chnl1Data : std_logic_vector(8 downto 0);
+   signal chnl0Data : std_logic_vector(ADC_BITS_G downto 0);
+   signal chnl1Data : std_logic_vector(ADC_BITS_G downto 0);
 
    signal chnl0ClkL : std_logic;
    signal chnl1ClkL : std_logic;
@@ -170,8 +175,8 @@ architecture rtl of MaxADC is
    signal rdat1     : RamWord;
 
    -- raw ADC Data
-   signal fdatA     : RamWord;
-   signal fdatB     : RamWord;
+   signal fdatA     : ADCWord;
+   signal fdatB     : ADCWord;
    signal fdorA     : std_logic;
    signal fdorB     : std_logic;
 
@@ -188,7 +193,7 @@ architecture rtl of MaxADC is
    signal wdorBin   : std_logic;
    signal trgin     : std_logic;
 
-   signal chnl0DataResynced : std_logic_vector(8 downto 0) := (others => '0');
+   signal chnl0DataResynced : std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
 
    signal wrDon             : std_logic;
    signal memFull           : std_logic;
@@ -410,16 +415,16 @@ begin
    end generate GEN_ONEMEM_G;
 
    GEN_DDR_A_FIRST : if ( DDR_A_FIRST_G ) generate
-      fdatA    <= chnl0DataResynced(8 downto 1);
+      fdatA    <= chnl0DataResynced(ADC_BITS_G downto 1);
       fdorA    <= chnl0DataResynced(         0);
-      fdatB    <= chnl1Data        (8 downto 1);
+      fdatB    <= chnl1Data        (ADC_BITS_G downto 1);
       fdorB    <= chnl1Data        (         0);
    end generate GEN_DDR_A_FIRST;
 
    GEN_DDR_B_FIRST : if ( not DDR_A_FIRST_G ) generate
-      fdatA    <= chnl1Data        (8 downto 1);
+      fdatA    <= chnl1Data        (ADC_BITS_G downto 1);
       fdorA    <= chnl1Data        (         0);
-      fdatB    <= chnl0DataResynced(8 downto 1);
+      fdatB    <= chnl0DataResynced(ADC_BITS_G downto 1);
       fdorB    <= chnl0DataResynced(         0);
    end generate GEN_DDR_B_FIRST;
 
@@ -564,8 +569,8 @@ begin
       U_ILA_MEM : component ILAWrapper
          port map (
             clk  => memClk,
-            trg0 => chnl0DataResynced(8 downto 1),
-            trg1 => chnl1Data(8 downto 1),
+            trg0 => chnl0DataResynced(ADC_BITS_G downto ADC_BITS_G - 8 + 1),
+            trg1 => chnl1Data(ADC_BITS_G downto ADC_BITS_G - 8 + 1),
             trg2 => x"00",
             trg3 => x"00"
          );
@@ -765,7 +770,7 @@ begin
 
       -- at least one extra bit; because we cannot scale
       -- precisely with just a right-shift.
-      constant STG0_OBITS_C         : natural := fdatA'length + 1;
+      constant STG0_OBITS_C         : natural := RAM_BITS_C + 1;
 
       constant STG0_STGS_C          : natural := 4;
       constant STG0_LD_MAX_DCM_C    : natural := 4;
@@ -958,9 +963,6 @@ begin
             strbOut        => open
          );
 
-      -- might work up to a few more bits but requires rework
-      assert STG0_W_C <= 24 report "Need a pre-shifter if stage 0 width is > 24" severity failure;
-
       -- use multipliers for scaling
       -- max. range for data: +/- 2**17
       --  -> if data  < 2**17 :    p = (data            * scale) / NORM
@@ -975,6 +977,17 @@ begin
       -- This is also the regime where we have to use the pre-scaler; we can therefore
       -- normalize the scale to (NORM * PRE_SCALE) and use more bits of the scale.
       -- We simply omit the post-left shift in the MulShifter (NO_POSTSHF_G => true).
+
+      -- STG0_W_C : ADC_BITS_G + ld(max_gain)
+      -- LD_PRE_SCALE = STG0_W_C - FACT_WIDTH = ADC_BITS_G + ld(max_gain) - FACT_WIDTH
+      -- in order to avoid (significant) truncation: ld_breakpoint_gain > LD_PRE_SCALE
+      -- ld_brkpt_gain + adc_bits_g = FACT_WIDTH
+      -- FACT_WIDTH - ADC_BITS_G > ADC_BITS_G + ld_max_gain - FACT_WIDTH
+      -- 2*FACT_WIDTH > 2*ADC_BITS_G + ld_max_gain
+      -- If FACT_WIDTH = 18 , ld_max_gain = 16 => ADC_BITS_G < 10
+
+      assert 2*MUL_FACT_W_C >= 2*ADC_BITS_G + STG0_STGS_C*STG0_LD_MAX_DCM_C
+         report "Need a pre-shifter if stage 0 required width is > 18" severity failure;
 
       stg0ShfCtl <= (to_integer( lparms.decm0 ) <= DCM0_BRK_C - 1);
       stg0Scl    <= STG0_SHF_TBL_C( to_integer( lparms.decm0 ) );
@@ -1025,8 +1038,8 @@ begin
             auxvOut(0)     => stg0ShfDorB
          );
 
-      stg0DatA <= resize( shift_right( stg0ShfDatA, STG0_SCL_LD_ONE_C ), stg0DatA'length );
-      stg0DatB <= resize( shift_right( stg0ShfDatB, STG0_SCL_LD_ONE_C ), stg0DatB'length );
+      stg0DatA <= resize( shift_right( stg0ShfDatA, STG0_SCL_LD_ONE_C + ADC_BITS_G - RAM_BITS_C ), stg0DatA'length );
+      stg0DatB <= resize( shift_right( stg0ShfDatB, STG0_SCL_LD_ONE_C + ADC_BITS_G - RAM_BITS_C ), stg0DatB'length );
 
       U_CIC1_A : entity work.CicFilter
          generic map (
@@ -1189,9 +1202,22 @@ begin
    G_NO_DECIMATORS : if ( DISABLE_DECIMATORS_G ) generate
      signal cenCic1 : std_logic := '1';
      attribute KEEP of cenCic1: signal is "TRUE";
+
+     function ladj(constant x :ADCWord) return RamWord is
+        variable v : RamWord;
+     begin
+        if ( x'length > v'length ) then
+           v := RamWord(resize(shift_right(signed(x), x'length - v'length), v'length));
+        elsif ( x'length < v'length ) then
+           v := RamWord(resize(shift_left(signed(x), v'length - x'length), v'length));
+        else
+           v := RamWord(x);
+        end if;
+        return v;
+     end function ladj;
    begin
-         wdatAin <= fdatA;
-         wdatBin <= fdatB;
+         wdatAin <= ladj(fdatA);
+         wdatBin <= ladj(fdatB);
          wdorAin <= fdorA;
          wdorBin <= fdorB;
 
