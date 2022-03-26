@@ -20,7 +20,8 @@ entity MulShifter is
       SCAL_WIDTH_G : natural range 0 to 18 := 18;
       PROD_WIDTH_G : natural range 0 to 36 := 36;
       FBIG_WIDTH_G : natural;
-      AUXV_WIDTH_G : natural := 0
+      AUXV_WIDTH_G : natural := 0;
+      NO_POSTSHF_G : boolean := false
    );
    port (
       clk          : in  std_logic;
@@ -54,7 +55,7 @@ architecture rtl of MulShifter is
 
 begin
 
-   assert LD_PRE_DIV_C >= 0 report "invalid factor dimensiont" severity failure;
+   assert LD_PRE_DIV_C >= 0 report "invalid factor dimension" severity failure;
 
    P_MUL : process ( clk ) is
    begin
@@ -79,9 +80,19 @@ begin
       end if;
    end process P_MUL;
 
+   GEN_POSTSHIFT : if ( not NO_POSTSHF_G ) generate
+
    prodOut <= resize( p, prodOut'length)
                  when ctl else
               shift_left( resize( p, prodOut'length ), LD_PRE_DIV_C );
+
+   end generate GEN_POSTSHIFT;
+
+   GEN_NO_POSTSHIFT : if ( NO_POSTSHF_G ) generate
+
+   prodOut <= resize( p, prodOut'length);
+
+   end generate GEN_NO_POSTSHIFT;
 
    auxvOut <= aux( aux'left );
 

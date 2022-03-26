@@ -870,6 +870,8 @@ begin
    --  ->  decim <= 2**( (FACT_WIDTH - 1 - (fdat'length - 1) ) / STG0_STGS )
       constant DCM0_BRK_C           : natural := natural( floor( 2.0**(real(18 - fdatA'length)/real(STG0_STGS_C)) ) );
 
+      constant LD_PRE_SCALE_C       : natural := stg0CicDatA'length - MUL_FACT_W_C;
+
       function CIC_SCL_F(
          constant decm : in natural;
          constant stgs : in natural;
@@ -877,10 +879,16 @@ begin
       ) return signed is
          variable vr : real;
          variable vi : natural;
+         variable one: natural;
       begin
-          vr := round( 2.0**real(ld_1) / real(decm)**stgs );
+          if ( decm <= DCM0_BRK_C ) then
+            one := 2**ld_1;
+          else
+            one := 2**(ld_1 + LD_PRE_SCALE_C);
+          end if;
+          vr := round( real(one) / real(decm)**stgs );
           vi := natural( vr );
-          if ( vi * decm**stgs > 2**ld_1 ) then
+          if ( vi * decm**stgs > one ) then
              vi := vi - 1;
           end if;
          return to_signed( vi, ld_1 + 2 );
@@ -962,6 +970,11 @@ begin
       -- Condition for data < 2**17:  decm**STG0_STGS * data_max <= 2**17
       --  STG0_STGS * log2(decm) <= 17 - log2(|data_max|)
       --  -> decm <= floor( 2**( (17 - log2(|data_max|)) / STG0_STGS ) )
+      --
+      -- For larger decimation the scale becomes small (1/gain) introducing more error.
+      -- This is also the regime where we have to use the pre-scaler; we can therefore
+      -- normalize the scale to (NORM * PRE_SCALE) and use more bits of the scale.
+      -- We simply omit the post-left shift in the MulShifter (NO_POSTSHF_G => true).
 
       stg0ShfCtl <= (to_integer( lparms.decm0 ) <= DCM0_BRK_C - 1);
       stg0Scl    <= STG0_SHF_TBL_C( to_integer( lparms.decm0 ) );
@@ -969,8 +982,10 @@ begin
       U_SHF0_A : entity work.MulShifter
          generic map (
             FBIG_WIDTH_G   => stg0CicDatA'length,
+            FACT_WIDTH_G   => MUL_FACT_W_C,
             SCAL_WIDTH_G   => stg0Scl'length,
-            AUXV_WIDTH_G   => 1
+            AUXV_WIDTH_G   => 1,
+            NO_POSTSHF_G   => true
          )
          port map (
             clk            => adcClk,
@@ -990,8 +1005,10 @@ begin
       U_SHF0_B : entity work.MulShifter
          generic map (
             FBIG_WIDTH_G   => stg0CicDatB'length,
+            FACT_WIDTH_G   => MUL_FACT_W_C,
             SCAL_WIDTH_G   => stg0Scl'length,
-            AUXV_WIDTH_G   => 1
+            AUXV_WIDTH_G   => 1,
+            NO_POSTSHF_G   => true
          )
          port map (
             clk            => adcClk,
