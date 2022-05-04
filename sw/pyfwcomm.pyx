@@ -134,6 +134,15 @@ cdef class VersaClk:
     if ( st < 0 ):
       raise IOError("VersaClk.setFBDiv()")
 
+  def getFBDiv(self):
+    cdef int st
+    cdef double div
+    with self._mgr as fw, nogil:
+      st = versaClkGetFBDivFlt( fw, &div )
+    if ( st < 0 ):
+      raise IOError("VersaClk.setFBDiv()")
+    return div
+
   def setOutDiv(self, int out, float div):
     cdef int rv
     with self._mgr as fw, nogil:
@@ -143,6 +152,18 @@ cdef class VersaClk:
         raise ValueError("VersaClk.setOutDiv() -- invalid output")
       else:
         raise IOError("VersaClk.setOutDiv()")
+
+  def getOutDiv(self, int out):
+    cdef int rv
+    cdef double div
+    with self._mgr as fw, nogil:
+      rv = versaClkGetOutDivFlt( fw, out, &div )
+    if ( rv < 0 ):
+      if ( -3 == rv ):
+        raise ValueError("VersaClk.getOutDiv() -- invalid output")
+      else:
+        raise IOError("VersaClk.getOutDiv()")
+    return div
 
   def setFODRoute(self, int out, VersaClkFODRoute rte):
     cdef int rv
@@ -331,6 +352,7 @@ cdef class FwComm:
   cdef object          _callable
   cdef object          _buf
   cdef float           _timo
+  cdef float           _clkFRef
 
   def readAsync(self, pyb, callback, float timeout = -1.0):
     if (not callable( callback ) ):
@@ -378,6 +400,7 @@ cdef class FwComm:
     self._callable  = None
     self._buf       = None
     self._timo      = -1.0
+    self._clkFRef   = 25.0E6
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
@@ -386,9 +409,9 @@ cdef class FwComm:
       st = acq_set_params( fw, NULL, &self._parmCache )
     if ( st < 0 ):
       raise IOError("FwComm.__init__(): acq_set_params failed")
-    self._clk   = VersaClk( self._mgr )
-    self._dac   = DAC47CX( self._mgr )
-    self._adc   = Max195xxADC( self._mgr )
+    self._clk    = VersaClk( self._mgr )
+    self._dac    = DAC47CX( self._mgr )
+    self._adc    = Max195xxADC( self._mgr )
     with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
@@ -400,16 +423,22 @@ cdef class FwComm:
       self._clk.setOutCfg( o, OUT_CMOS, SLEW_100, LEVEL_18 )
     if True:
       # 130MHz clock
-      self.clkSetFBDiv( 104.0 )
-      self.clkSetOutDiv( SEL_ADC, 10.0 )
+      fbkDiv = 104.0
+      outDiv = 10.0
     else:
       # 100MHz clock
-      self.clkSetOutDiv( SEL_ADC, 14.0 )
+      fbkDiv = 112.0
+      outDiv = 14.0
+    self.clkSetFBDiv( fbkDiv )
+    self.clkSetOutDiv( SEL_ADC, outDiv )
     self.clkSetOutDiv( SEL_EXT, 4095.0 )
     self.clkSetFODRoute( SEL_EXT, CASC_FOD )
     self.clkSetFODRoute( SEL_ADC, NORMAL   )
     self._dac.init()
     self._adc.init()
+
+  def getAdcClkFreq(self):
+    return self._clkFRef * self.clkGetFBDiv() / self.clkGetOutDiv(SEL_ADC) / 2.0
 
   def dacSetVolt( self, ch, v):
     self._dac.setVolt( ch, v )
@@ -447,8 +476,15 @@ cdef class FwComm:
   def clkSetFBDiv(self, float div):
     self._clk.setFBDiv( div )
 
+  def clkGetFBDiv(self):
+    return self._clk.getFBDiv()
+
   def clkSetOutDiv(self, int out, float div):
     self._clk.setOutDiv( out, div )
+
+  def clkGetOutDiv(self, int out):
+    return self._clk.getOutDiv( out )
+
 
   def clkSetFODRoute(self, int out, VersaClkFODRoute rte):
     self._clk.setFODRoute( out, rte )

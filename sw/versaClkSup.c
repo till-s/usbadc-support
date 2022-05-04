@@ -57,6 +57,38 @@ versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)
 	return 0;
 }
 
+static int
+getFltDiv(FWInfo *fw, unsigned idivReg, unsigned fdivReg, int lstShft, double *div)
+{
+int           val;
+unsigned      idiv = 0;
+unsigned long fdiv = 0;
+
+	if ( (val = readReg( fw, idivReg + 0 )) < 0 ) return -1;
+	idiv = ((uint8_t) val) & 0xf;
+	if ( (val = readReg( fw, idivReg + 1 )) < 0 ) return -1;
+	idiv = (idiv << 4) | ((((uint8_t)val) & 0xf0) >> 4);
+	if ( (val = readReg( fw, fdivReg + 0 )) < 0 ) return -1;
+	fdiv = (uint8_t) val;
+	if ( (val = readReg( fw, fdivReg + 1 )) < 0 ) return -1;
+	fdiv = (fdiv << 8) | (uint8_t)val;
+	if ( (val = readReg( fw, fdivReg + 2 )) < 0 ) return -1;
+	fdiv = (fdiv << 8) | (uint8_t)val;
+	if ( (val = readReg( fw, fdivReg + 3 )) < 0 ) return -1;
+	fdiv = (fdiv << lstShft) | ((uint8_t)val >> (8 - lstShft));
+
+	*div = (double)idiv + (double)fdiv / exp2(24.0);
+
+	return 0;
+}
+
+
+int
+versaClkGetFBDivFlt(FWInfo *fw, double *div)
+{
+	return getFltDiv( fw, 0x17, 0x19, 8, div );
+}
+
 int
 versaClkSetFBDivFlt(FWInfo *fw, double div)
 {
@@ -281,6 +313,19 @@ uint8_t  divCVal;
 	return 0;
 }
 
+int
+versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div)
+{
+unsigned divCReg = ODIV1_CR + ((outp - 1) * 0x10);
+unsigned fdivReg = divCReg  + 1;
+unsigned idivReg = fdivReg  + 0xb;
+
+	if ( checkOut( "versaClkGetOutDiv()", outp ) ) return -3;
+
+	/* FIXME - deal with routing ? */
+
+	return getFltDiv( fw, idivReg, fdivReg, 6, div );
+}
 
 int
 versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div)

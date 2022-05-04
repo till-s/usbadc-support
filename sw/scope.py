@@ -157,6 +157,8 @@ class Scope(QtCore.QObject):
       self._fw.acqSetDecimation( int(s) )
     createValidator( edt, g, s, QtGui.QIntValidator, 1, 16*2**12 )
     frm.addRow( QtWidgets.QLabel("Decimation"), edt )
+
+    frm.addRow( QtWidgets.QLabel("ADC Clock Freq."), QtWidgets.QLabel("{:g}".format( self._fw.getAdcClkFreq() )) )
  
     vlay.addLayout( frm )
 

@@ -16,10 +16,16 @@ int
 versaClkSetFBDivFlt(FWInfo *fw, double div);
 
 int
+versaClkGetFBDivFlt(FWInfo *fw, double *div);
+
+int
 versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv);
 
 int
 versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div);
+
+int
+versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div);
 
 typedef enum {
   NORMAL   = 0, /* PLL          -> FOD -> OUT */

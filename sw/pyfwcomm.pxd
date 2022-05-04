@@ -85,9 +85,11 @@ cpdef enum VersaClkFODRoute:
 
 cdef extern from "versaClkSup.h":
   int            versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv) nogil
-  int            versaClkSetFBDivFlt(FWInfo *fw, double div) nogil
+  int            versaClkSetFBDivFlt(FWInfo *fw, double  div) nogil
+  int            versaClkGetFBDivFlt(FWInfo *fw, double *div) nogil
   int            versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv) nogil
   int            versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div) nogil
+  int            versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div) nogil
   int            versaClkSetOutCfg(FWInfo *fw, unsigned outp, VersaClkOutMode mode, VersaClkOutSlew slew, VersaClkOutLevel level) nogil
   int            versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte) nogil
   int            versaClkReadReg(FWInfo *fw, unsigned reg) nogil
