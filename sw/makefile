@@ -5,7 +5,7 @@ CFLAGS=-O2 -Wall -g -fpic
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o
 
-PYINC=/usr/include/python3.8
+PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
 PYFWCOMM_C=pyfwcomm.c
 
