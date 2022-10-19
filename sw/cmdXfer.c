@@ -174,7 +174,7 @@ int
 fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen)
 {
 tbufvec tvec[1];
-rbufvec rvec[0];
+rbufvec rvec[1];
 	tvec[0].buf = tbuf;
 	tvec[0].len = tlen;
 
