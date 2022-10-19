@@ -23,6 +23,8 @@ class Buf(object):
     self._mem  = [ np.frombuffer( p.data().asarray( 2 * dt.itemsize * sz ), dtype=dt ) for p in self._curv ]
     self._hdr  = 0
     self.updateX( npts )
+    self._mean = [0. for i in range(len(self._mem))]
+    self._std  = [0. for i in range(len(self._mem))]
 
   def updateX(self, npts, scal = 1.0):
     if ( (self._scal != scal or self._npts != npts) and (self._npts >= 0 or npts >= 0) ):
@@ -40,6 +42,8 @@ class Buf(object):
     stride = len(self._mem)
     for idx in range(stride):
       self._mem[idx][1::2] = buf[:,idx]
+      self._mean[idx] = np.mean(buf[:,idx])
+      self._std[idx]  = np.std(buf[:,idx])
     self._hdr = hdr
 
   def getCurv(self, idx):
@@ -72,6 +76,9 @@ class Scope(QtCore.QObject):
     hlay.addLayout( vlay )
     frm            = QtWidgets.QFormLayout()
     edt            = QtWidgets.QLineEdit()
+    self._numCh    = 2
+    self._channelColors = [ QtGui.QColor( QtCore.Qt.blue ), QtGui.QColor( QtCore.Qt.black ) ]
+    self._channelNames  = [ "A", "B" ]
     def g():
       rv = self._fw.acqGetTriggerLevelPercent()
       return "{:.0f}".format(rv)
@@ -160,21 +167,34 @@ class Scope(QtCore.QObject):
 
     frm.addRow( QtWidgets.QLabel("ADC Clock Freq."), QtWidgets.QLabel("{:g}".format( self._fw.getAdcClkFreq() )) )
  
+    self._cent.setLayout( hlay )
+    self._ov       = []
+    self._ch       = []
+    frm.addRow( QtWidgets.QLabel("Attenuator:") )
+    for i in range(self._numCh):
+      sl,  ov        = self.mksl( i, self._channelColors[i] )
+      self._ov.append( ov )
+      frm.addRow( sl )
+      ch = Qwt.QwtPlotCurve()
+      ch.attach( self._plot )
+      ch.setPen( self._channelColors[i] )
+      self._ch.append( ch )
+
+    frm.addRow( QtWidgets.QLabel("Measurements:") )
+    self._meanLbls = []
+    self._stdLbls  = []
+    for i in range(self._numCh):
+       valLbl = QtWidgets.QLabel("")
+       valLbl.setStyleSheet("color: {:s}; qproperty-alignment: AlignRight".format( self._channelColors[i].name() ) )
+       self._meanLbls.append( valLbl )
+       frm.addRow( QtWidgets.QLabel("Mean {:s}".format( self._channelNames[i] )), valLbl )
+       valLbl = QtWidgets.QLabel("")
+       valLbl.setStyleSheet("color: {:s}; qproperty-alignment: AlignRight".format( self._channelColors[i].name() ) )
+       self._stdLbls.append( valLbl )
+       frm.addRow( QtWidgets.QLabel("Sdev {:s}".format( self._channelNames[i] )), valLbl )
+
     vlay.addLayout( frm )
 
-    self._cent.setLayout( hlay )
-    sl,  ov        = self.mksl(0)
-    self._o1       = ov
-    vlay.addLayout( sl )
-    sl, ov         = self.mksl(1)
-    self._o2       = ov
-    vlay.addLayout( sl )
-
-    self._c1 = Qwt.QwtPlotCurve()
-    self._c1.attach( self._plot )
-    self._c1.setPen( QtGui.QColor( QtCore.Qt.blue ) )
-    self._c2 = Qwt.QwtPlotCurve()
-    self._c2.attach( self._plot )
     self._reader = Reader( self )
 
     self.haveData.connect( self.updateData, QtCore.Qt.QueuedConnection )
@@ -199,12 +219,13 @@ class Scope(QtCore.QObject):
       self._reader.putBuf( self._data )
     self._data = d
     hdr        = d.getHdr()
-    self._c1.setSamples( d.getCurv( 0 ) )
-    self._o1.setVisible( (hdr & 1) != 0 )
-    self._c2.setSamples( d.getCurv( 1 ) )
-    self._o2.setVisible( (hdr & 2) != 0 )
+    for i in range( self._numCh ):
+      self._ch[i].setSamples( d.getCurv( i ) )
+      self._ov[i].setVisible( (hdr & (1<<i)) != 0 )
+      self._meanLbls[i].setText("{:>7.2f}".format( d._mean[i] ))
+      self._stdLbls[i].setText ("{:>7.2f}".format( d._std[i]  ))
 
-  def mksl(self, ch):
+  def mksl(self, ch, color):
     hb             = QtWidgets.QHBoxLayout()
     sl             = QtWidgets.QSlider( QtCore.Qt.Horizontal )
     sl.setMinimum(0)
@@ -214,6 +235,7 @@ class Scope(QtCore.QObject):
     self._fw.ampSetS2Att( ch, a )
     sl.setValue( a )
     lb             = QtWidgets.QLabel( str(a) +"dB" )
+    lb.setStyleSheet("color: {:s}".format( color.name() ))
     def cb(val):
       self._fw.ampSetS2Att(ch, val )
       lb.setText( str(val) + "dB" )
