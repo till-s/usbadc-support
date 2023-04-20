@@ -54,8 +54,26 @@ versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)
 	if ( writeReg( fw, 0x19, (fdiv >> 16)        ) < 0 ) return -1;
 	if ( writeReg( fw, 0x1A, (fdiv >>  8)        ) < 0 ) return -1;
 	if ( writeReg( fw, 0x1B, (fdiv >>  0)        ) < 0 ) return -1;
+	return versaClkVCOCal( fw );
+}
+
+/* recalibrate the VCO; seems necessary when loop parameters
+ * are changed. We do this internally from versaClkSetFBDiv() & friends.
+ */
+int
+versaClkVCOCal(FWInfo *fw)
+{
+int           val;
+unsigned      calRegRsvd = 0x1c;
+	if ( (val = readReg( fw, calRegRsvd )) < 0 ) return -1;
+    val &= 0x7f;
+	if ( writeReg( fw, calRegRsvd , val )  < 0 ) return -1;
+    /* raising bit 7 triggers calibration */
+    val |= 0x80;
+	if ( writeReg( fw, calRegRsvd , val )  < 0 ) return -1;
 	return 0;
 }
+
 
 static int
 getFltDiv(FWInfo *fw, unsigned idivReg, unsigned fdivReg, int lstShft, double *div)

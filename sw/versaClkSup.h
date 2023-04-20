@@ -27,6 +27,12 @@ versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div);
 int
 versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div);
 
+/* recalibrate the VCO; seems necessary when loop parameters
+ * are changed. We do this internally from versaClkSetFBDiv() & friends.
+ */
+int
+versaClkVCOCal(FWInfo *fw);
+
 typedef enum {
   NORMAL   = 0, /* PLL          -> FOD -> OUT */
   CASC_FOD = 1, /* PREVIOUS_OUT -> FOD -> OUT */
