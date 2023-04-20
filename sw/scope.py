@@ -320,11 +320,12 @@ class Reader(QtCore.QThread):
         if ( not sys.flags.interactive ):
           lp += 1
           if lp == 10:
-            print(".")
+            #print(".")
             lp = 0
       else:
-        if ( not sys.flags.interactive ):
-          print("Nosleep ", delta)
+        #if ( not sys.flags.interactive ):
+        #  print("Nosleep ", delta)
+        pass
 
   def getData(self):
     with self._lck:
