@@ -79,6 +79,7 @@ class Scope(QtCore.QObject):
     self._numCh    = 2
     self._channelColors = [ QtGui.QColor( QtCore.Qt.blue ), QtGui.QColor( QtCore.Qt.black ) ]
     self._channelNames  = [ "A", "B" ]
+    self._trgArm        = "Continuous"
     def g():
       rv = self._fw.acqGetTriggerLevelPercent()
       return "{:.0f}".format(rv)
@@ -143,7 +144,19 @@ class Scope(QtCore.QObject):
  
     frm.addRow( QtWidgets.QLabel("Trigger Auto"), TrgAutMenu() )
 
+    class TrgArmMenu(MenuButton):
+      def __init__(mb, parent = None):
+        val = self._trgArm
+        MenuButton.__init__(mb, [val, "Off", "Single", "Continuous"], parent )
 
+      def activated(mb, act):
+        super().activated(act)
+        txt     = act.text()
+        self._trgArm = txt
+
+    self._trgArmMenu = TrgArmMenu()
+    frm.addRow( QtWidgets.QLabel("Arm Trigger"), self._trgArmMenu )
+ 
     edt = QtWidgets.QLineEdit()
     def g():
       return str( self._fw.acqGetNPreTriggerSamples() )
@@ -215,6 +228,9 @@ class Scope(QtCore.QObject):
     d = self._reader.getData()
     if d is None:
       return
+    if ( self._trgArm == "Off" ):
+      self._reader.putBuf( d )
+      return
     if not self._data is None:
       self._reader.putBuf( self._data )
     self._data = d
@@ -224,6 +240,9 @@ class Scope(QtCore.QObject):
       self._ov[i].setVisible( (hdr & (1<<i)) != 0 )
       self._meanLbls[i].setText("{:>7.2f}".format( d._mean[i] ))
       self._stdLbls[i].setText ("{:>7.2f}".format( d._std[i]  ))
+    if ( self._trgArm == "Single" ):
+      self._trgArm = "Off"
+      self._trgArmMenu.setText("Off")
 
   def mksl(self, ch, color):
     hb             = QtWidgets.QHBoxLayout()
