@@ -3,6 +3,7 @@ from pyfwcomm cimport *
 
 from cpython.exc cimport *
 from cpython     cimport *
+from time        import sleep
 
 cdef extern from "pthread.h":
   ctypedef struct pthread_mutexattr_t
@@ -389,6 +390,9 @@ cdef class FwComm:
       rv = 0
       while ( 0 != numIter and 0 == rv ):
         rv, hdr = self.read( pyb )
+        if ( rv == 0 ):
+          # avoid busy polling if there is no data
+          sleep(0.01)
         if ( numIter > 0 ):
           numIter -= 1
       callback( rv, hdr, pyb )
