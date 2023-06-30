@@ -71,7 +71,7 @@ class Scope(QtCore.QObject):
     self.updateYAxis()
     self.updateXAxis()
     self._zoom     = Qwt.QwtPlotZoomer( self._plot.canvas() )
-    hlay.addWidget( self._plot )
+    hlay.addWidget( self._plot, stretch = 2 )
     vlay           = QtWidgets.QVBoxLayout()
     hlay.addLayout( vlay )
     frm            = QtWidgets.QFormLayout()
@@ -381,16 +381,22 @@ def usage(nm):
 if __name__ == "__main__":
 
   devn = '/dev/ttyUSB0'
+  styl = None
 
-  ( opts, args ) = getopt.getopt( sys.argv[1:], "hd:", [] )
+  ( opts, args ) = getopt.getopt( sys.argv[1:], "hd:S:", [] )
   for opt in opts:
     if   ( opt[0] == '-d' ):
       devn = opt[1]
     elif ( opt[0] == '-h' ):
       usage( sys.argv[0] )
       sys.exit(0)
+    elif ( opt[0] == '-S' ):
+      styl = opt[1]
 
   app = QtWidgets.QApplication( args )
+  if ( not styl is None ):
+    with open(styl, "r") as f:
+      app.setStyleSheet( f.read() )
   scp = Scope( devn )
   scp.show()
   if ( sys.flags.interactive ):
