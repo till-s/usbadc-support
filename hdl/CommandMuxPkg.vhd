@@ -22,8 +22,13 @@ package CommandMuxPkg is
    type SimpleBusMstArray is array (natural range <>) of SimpleBusMstType;
 
    constant NUM_CMD_BITS_C : natural := 4;
+
    -- command 0xF is reserved
    constant NUM_CMD_MAX_C  : natural := 2**NUM_CMD_BITS_C - 1;
+
+   subtype  CmdIdxRangeType  is natural range 0 to NUM_CMD_MAX_C;
+
+   type     CmdsSupportedType is array(CmdIdxRangeType range <>) of boolean;
 
    subtype  SubCommandBBType  is std_logic_vector(2 downto 0);
 
@@ -33,6 +38,8 @@ package CommandMuxPkg is
    constant CMD_BB_SPI_PGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 3, SubCommandBBType'length ) );
    constant CMD_BB_I2C_C      : SubCommandBBType := SubCommandBBType( to_unsigned( 4, SubCommandBBType'length ) );
    constant CMD_BB_SPI_FEG_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 5, SubCommandBBType'length ) );
+   constant CMD_BB_SPI_VGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 6, SubCommandBBType'length ) );
+   constant CMD_BB_SPI_VGB_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 7, SubCommandBBType'length ) );
 
    function subCommandBBGet(constant cmd : std_logic_vector(7 downto 0))
       return SubCommandBBType;

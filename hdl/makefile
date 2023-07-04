@@ -4,7 +4,8 @@
 # ghdl --gen-makefile CommandWrapperTb
 
 GHDL=ghdl
-GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
+#GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
+GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie
 
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
@@ -19,6 +20,9 @@ OBJS+=MulShifter.o SpiReg.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
+	$(GHDL) -e $(GHDLFLAGS) $@
+
+commandwrapperalt1tb: CommandWrapperAlt1Tb.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS) $@
 
 commandwrappersim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)

@@ -7,7 +7,7 @@ use work.ILAWrapperPkg.all;
 
 entity CommandMux is
    generic (
-      NUM_CMDS_G   : natural range 0 to NUM_CMD_MAX_C - 1
+      CMDS_SUPPORTED_G : CmdsSupportedType
    );
    port (
       clk          : in  std_logic;
@@ -18,17 +18,19 @@ entity CommandMux is
       busOb        : out SimpleBusMstType;
       rdyOb        : in  std_logic;
 
-      busMuxedIb   : out SimpleBusMstArray(NUM_CMDS_G - 1 downto 0);
-      rdyMuxedIb   : in  std_logic_vector (NUM_CMDS_G - 1 downto 0);
+      busMuxedIb   : out SimpleBusMstArray(CMDS_SUPPORTED_G'length - 1 downto 0);
+      rdyMuxedIb   : in  std_logic_vector (CMDS_SUPPORTED_G'length - 1 downto 0);
 
-      busMuxedOb   : in  SimpleBusMstArray(NUM_CMDS_G - 1 downto 0);
-      rdyMuxedOb   : out std_logic_vector (NUM_CMDS_G - 1 downto 0)
+      busMuxedOb   : in  SimpleBusMstArray(CMDS_SUPPORTED_G'length - 1 downto 0);
+      rdyMuxedOb   : out std_logic_vector (CMDS_SUPPORTED_G'length - 1 downto 0)
    );
 end entity CommandMux;
 
 architecture rtl of CommandMux is
 
-   subtype SelType   is natural range 0 to NUM_CMDS_G - 1;
+   constant NUM_CMDS_C : natural := CMDS_SUPPORTED_G'length;
+
+   subtype SelType   is natural range 0 to NUM_CMDS_C - 1;
    type    StateType is (IDLE, CMD, FWD, WAI);
 
    type RegType      is record
@@ -109,8 +111,8 @@ begin
 
       rdy   := '0';
 
-      selOK := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0))) < NUM_CMDS_G;
       sel   := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0)));
+      selOK := ( sel < NUM_CMDS_C ) and CMDS_SUPPORTED_G( sel ) ;
       
 
       -- drain unselected channels
@@ -188,7 +190,7 @@ begin
             end if;
 
          when WAI => -- wait for outgoing frame to pass
-            -- WAI can only be entered if sel < NUM_CMDS_G aka selOK
+            -- WAI can only be entered if sel < NUM_CMDS_C aka selOK
             rdyMuxedOb(sel) <= rdyOb;
             busObLoc        <= busMuxedOb(sel);
             if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then

@@ -14,16 +14,19 @@ use     unisim.vcomponents.all;
 entity MaxADC is
    generic (
       ADC_CLOCK_FREQ_G     : real    := 130.0E6;
+      DLY_REF_MHZ_G        : real    := 0.0E6;
       MEM_DEPTH_G          : natural := 1024;
       ADC_BITS_G           : natural := 8;
       -- depending on which port the muxed signal is shipped either A or B samples are
       -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
       DDR_A_FIRST_G        : boolean := false;
       ONE_MEM_G            : boolean := false;
-      USE_DCM_G            : boolean := false;
-      TEST_NO_DDR_G        : boolean := false;
+      USE_PLL_G            : string  := "NONE"; -- NONE, DCM
+      DDR_TYPE_G           : string  := "IDDR"; -- NONE, IDDR2 or IDDR
       TEST_NO_BUF_G        : boolean := false;
-      DISABLE_DECIMATORS_G : boolean := false
+      DISABLE_DECIMATORS_G : boolean := false;
+      IODELAY_GROUP_G      : string  := "ADCDDR";
+      IDELAY_TAPS_G        : natural := 0
    );
    port (
       adcClk      : in  std_logic;
@@ -50,12 +53,16 @@ entity MaxADC is
 
       pllLocked   : out std_logic := '1';
 
-      pllRst      : in  std_logic := '0'
+      pllRst      : in  std_logic := '0';
+
+      dlyRefClk   : in  std_logic := '0'
    );
 end entity MaxADC;
 
 architecture rtl of MaxADC is
    attribute KEEP           : string;
+   attribute DONT_TOUCH     : string;
+   attribute IODELAY_GROUP  : string;
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G - 1);
 
@@ -165,17 +172,24 @@ architecture rtl of MaxADC is
    signal rWr       : WrRegType    := WR_REG_INIT_C;
    signal rinWr     : WrRegType;
 
+   signal rWrCC     : WrRegType;
+   -- helps writing constraints
+   attribute KEEP of rWrCC : signal is "TRUE";
+
    signal chnl0Data : std_logic_vector(ADC_BITS_G downto 0);
    signal chnl1Data : std_logic_vector(ADC_BITS_G downto 0);
 
    signal chnl0ClkL : std_logic;
    signal chnl1ClkL : std_logic;
 
+   signal iDDRClk   : std_logic;
+
    signal dcmPSDone : std_logic;
    signal dcmStatus : std_logic_vector(7 downto 0);
    signal dcmPSClk  : std_logic := '0';
 
    signal memClk    : std_logic;
+   signal filClk    : std_logic;
 
    signal waddr     : RamAddr      := (others => '0');
 
@@ -229,7 +243,7 @@ begin
 
    lparms <= rWr.parms;
 
-   GEN_DCM : if ( USE_DCM_G ) generate
+   GEN_DCM : if ( USE_PLL_G = "DCM" ) generate
       signal dcmOutClk0   : std_logic;
       signal dcmOutClk180 : std_logic;
    begin
@@ -272,10 +286,22 @@ begin
 
    end generate GEN_DCM;
 
-   GEN_NO_DCM : if ( not USE_DCM_G ) generate
+   GEN_IDDR_BUFS  : if ( DDR_TYPE_G = "IDDR" ) generate
+      U_BUFIO : BUFIO port map ( I => adcClk, O => iDDRClk );
+      U_BUFG  : BUFG  port map ( I => adcClk, O => memClk  );
+   end generate GEN_IDDR_BUFS;
+
+   GEN_IDDR2_BUFS  : if ( DDR_TYPE_G /= "IDDR" ) generate
+      memClk    <= chnl0ClkL;
+   end generate GEN_IDDR2_BUFS;
+
+   GEN_NO_DCM : if ( USE_PLL_G /= "DCM" ) generate
+
       chnl0ClkL <= adcClk;
       chnl1ClkL <= '0';
+
       pllLocked <= '1';
+
    end generate GEN_NO_DCM;
 
       -- The manual doesn't precisely explain timing of the multiplexed mode.
@@ -298,7 +324,18 @@ begin
       -- edge, then on the positive edge.
       --
 
-      memClk <= chnl0ClkL;
+      filClk <= memClk;
+
+      GEN_DLY_REF : if ( DDR_TYPE_G = "IDDR" ) generate
+         attribute IODELAY_GROUP of U_DLYREF : label is IODELAY_GROUP_G;
+      begin
+         U_DLYREF : IDELAYCTRL
+            port map (
+               REFCLK => dlyRefClk,
+               RST    => '0',
+               RDY    => open
+            );
+      end generate GEN_DLY_REF;
 
       -- IDDR2 only supports synchronizing into a single output
       -- clock domain from differential inputs. Since we are
@@ -308,6 +345,7 @@ begin
          signal adcDataBuffered : std_logic;
       begin
          GEN_IBUF : if ( not TEST_NO_BUF_G ) generate
+         begin
             U_IBUF : component IBUF
                generic map (
                   IBUF_DELAY_VALUE => "0",
@@ -323,8 +361,9 @@ begin
             adcDataBuffered <= adcDataDDR(i);
          end generate GEN_NO_IBUF;
 
-         GEN_IDDR : if ( not TEST_NO_DDR_G ) generate
+         GEN_IDDR2 : if ( DDR_TYPE_G = "IDDR2" ) generate
             signal chnl0ClkB : std_logic;
+            attribute DONT_TOUCH of U_IDDR : label is "TRUE";
          begin
 
             chnl0ClkB <= not chnl0ClkL;
@@ -340,9 +379,61 @@ begin
                   S             => '0',
                   R             => '0'
                );
+         end generate GEN_IDDR2;
+
+         GEN_IDDR : if ( DDR_TYPE_G = "IDDR" ) generate
+            attribute DONT_TOUCH     of U_IDDR : label is "TRUE";
+			signal    adcDataDelayed : std_logic;
+            attribute IODELAY_GROUP  of U_IDLY : label is IODELAY_GROUP_G;
+         begin
+
+            U_IDLY : component IDELAYE2
+               generic map (
+                  IDELAY_TYPE   => "FIXED",
+                  DELAY_SRC     => "IDATAIN",
+-- test with IDDR only (Most other logic but USB removed)
+-- 19; ref 200, speed-1, ADC clock 125MHz    : hold: .05    setup: -0.124
+-- 18; ref 200, speed-1, ADC clock 120MHz    : hold: 0.000  setup:  0.092 => PASSED
+-- 17; ref 200, speed-1, ADC clock 120MHz    : hold: -.035  setup:  0.184
+-- 16; ref 200, speed-1, ADC clock 120MHz    : hold: -.098  setup: -0.124
+-- 18; ref 200, speed-2, ADC clock 130MHz    : hold: .248   setup: -0.118
+-- 17; ref 200, speed-2, ADC clock 130MHz    : hold: .186   setup: -0.056
+-- 16; ref 200, speed-2, ADC clock 130MHz    : hold:+.123   setup: +0.036 => PASSED
+                  IDELAY_VALUE  => IDELAY_TAPS_G,
+                  REFCLK_FREQUENCY => DLY_REF_MHZ_G
+               )
+               port map (
+                  C             => '0',
+                  REGRST        => '0',
+                  LD            => '0',
+                  CE            => '0',
+                  INC           => '0',
+                  CINVCTRL      => '0',
+                  CNTVALUEIN    => (others => '0'),
+                  IDATAIN       => adcDataBuffered,
+                  DATAIN        => '0',
+                  LDPIPEEN      => '0',
+                  DATAOUT       => adcDataDelayed,
+                  CNTVALUEOUT   => open
+               );
+
+            -- mimick IDDR2 plus resync register; chnl0Data is latched on the negedge
+            U_IDDR : component IDDR
+               generic map (
+                  DDR_CLK_EDGE  => "SAME_EDGE"
+               )
+               port map (
+                  C             => iDDRClk,
+                  CE            => '1',
+                  Q1            => chnl1Data(i),
+                  Q2            => chnl0Data(i),
+                  D             => adcDataDelayed,
+                  S             => '0',
+                  R             => '0'
+               );
          end generate GEN_IDDR;
 
-         GEN_NO_IDDR : if ( TEST_NO_DDR_G ) generate
+         GEN_NO_IDDR : if ( DDR_TYPE_G /= "IDDR" and DDR_TYPE_G /= "IDDR2" ) generate
             chnl0Data(i) <= adcDataBuffered;
             chnl1Data(i) <= adcDataBuffered;
          end generate GEN_NO_IDDR;
@@ -369,12 +460,20 @@ begin
 
    wrEna <= ( ( (not memFull) and wrDecm ) = '1' );
 
-   P_RESYNC_CH0 : process ( memClk ) is
-   begin
-      if ( rising_edge( memClk ) ) then
-         chnl0DataResynced <= chnl0Data;
-      end if;
-   end process P_RESYNC_CH0;
+   GEN_RESYNC : if ( DDR_TYPE_G /= "IDDR" ) generate
+
+      P_RESYNC_CH0 : process ( memClk ) is
+      begin
+         if ( rising_edge( memClk ) ) then
+            chnl0DataResynced <= chnl0Data;
+         end if;
+      end process P_RESYNC_CH0;
+
+   end generate GEN_RESYNC;
+
+   GEN_NO_RESYNC : if ( DDR_TYPE_G = "IDDR" ) generate
+      chnl0DataResynced <= chnl0Data;
+   end generate GEN_NO_RESYNC;
 
    GEN_TWOMEM_G : if ( not ONE_MEM_G ) generate
       signal DPRAMA    : RamArray;
@@ -438,9 +537,11 @@ begin
       fdorB    <= chnl0DataResynced(         0);
    end generate GEN_DDR_B_FIRST;
 
+   rWrCC <= rWr;
+
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, lparms, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWr) is
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWrCC) is
       variable v      : RdRegType;
    begin
       v     := rRd;
@@ -455,7 +556,7 @@ begin
 
       -- increment read address; this covers all relevant states
       if ( (rdyOb = '1') and rRd.anb ) then
-         if ( rRd.raddr = MEM_DEPTH_G - 1 ) then
+         if ( rRd.raddr = END_ADDR_C ) then
             v.raddr := to_unsigned( 0, v.raddr'length );
          else
             v.raddr := rRd.raddr + 1;
@@ -479,23 +580,23 @@ begin
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   -- seed the start address for reading
-                  if ( rWr.taddr >= lparms.nprets ) then
-                     v.raddr     := rWr.taddr - resize(lparms.nprets, v.raddr'length);
+                  if ( rWrCC.taddr >= rWrCC.parms.nprets ) then
+                     v.raddr     := rWrCC.taddr - resize(rWrCC.parms.nprets, v.raddr'length);
                   else
-                     v.raddr     := rWr.taddr - resize(lparms.nprets, v.raddr'length) + MEM_DEPTH_G;
+                     v.raddr     := rWrCC.taddr - resize(rWrCC.parms.nprets, v.raddr'length) + MEM_DEPTH_G;
                   end if;
                   v.saddr     := v.raddr;
                   -- transmit start address -- not really necessary; we keep it for
                   -- debugging purposes and maybe to convey additional info in the
                   -- future... 
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat                  := std_logic_vector(rWr.taddr(7 downto 0));
+                     v.busOb.dat                  := std_logic_vector(rWrCC.taddr(7 downto 0));
                   else
                      v.busOb.dat                  := (others => '0');
-                     v.busOb.dat(rRd.saddr'range) := std_logic_vector(rWr.taddr);
+                     v.busOb.dat(rRd.saddr'range) := std_logic_vector(rWrCC.taddr);
                   end if;
-                  v.busOb.dat(0) := toSl(rWr.ovrA /= 0);
-                  v.busOb.dat(1) := toSl(rWr.ovrB /= 0);
+                  v.busOb.dat(0) := toSl(rWrCC.ovrA /= 0);
+                  v.busOb.dat(1) := toSl(rWrCC.ovrB /= 0);
                   v.busOb.vld := '1';
                   v.busOb.lst := '0';
                else
@@ -616,9 +717,9 @@ begin
    end process P_TRG;
 
    -- register trigger and delay data to remain in-sync
-   P_TRG_SEQ : process ( adcClk ) is
+   P_TRG_SEQ : process ( filClk ) is
    begin
-      if ( rising_edge( adcClk ) ) then
+      if ( rising_edge( filClk ) ) then
          if ( wrDecm = '1' ) then
             trg   <= trgin;
             wdatA <= wdatAin;
@@ -673,7 +774,6 @@ begin
       elsif ( rWr.ovrB /= 0 ) then
          v.ovrB := rWr.ovrB - 1;
       end if;
-
 
       case ( rWr.state ) is
 
@@ -931,7 +1031,7 @@ begin
             DCM_MASTER_G   => true
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
 
             decmInp        => lparms.decm0,
@@ -956,7 +1056,7 @@ begin
             DCM_MASTER_G   => false
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
 
             decmInp        => lparms.decm0,
@@ -1011,7 +1111,7 @@ begin
             NO_POSTSHF_G   => true
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
             cen            => cenOut0,
 
@@ -1034,7 +1134,7 @@ begin
             NO_POSTSHF_G   => true
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
             cen            => cenOut0,
 
@@ -1059,7 +1159,7 @@ begin
             DCM_MASTER_G   => true
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
 
             cen            => cenCic1,
@@ -1108,7 +1208,7 @@ begin
             STRIDE_G       => STG1_STRIDE_C
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
             cen            => cenOut1,
 
@@ -1129,7 +1229,7 @@ begin
             DCM_MASTER_G   => false
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
 
             cen            => cenCic1,
@@ -1157,7 +1257,7 @@ begin
             STRIDE_G       => STG1_STRIDE_C
          )
          port map (
-            clk            => adcClk,
+            clk            => filClk,
             rst            => adcRst,
             cen            => cenOut1,
 
@@ -1170,9 +1270,9 @@ begin
             auxOut(0)      => stg1ShfDorB
          );
 
-      P_MULT : process ( adcClk ) is
+      P_MULT : process ( filClk ) is
       begin
-         if ( rising_edge( adcClk ) ) then
+         if ( rising_edge( filClk ) ) then
             mulbA <= lparms.scale( lparms.scale'left downto lparms.scale'left - mulbA'length + 1 );
             mulbB <= lparms.scale( lparms.scale'left downto lparms.scale'left - mulbB'length + 1 );
             if ( wrDecm = '1' ) then
