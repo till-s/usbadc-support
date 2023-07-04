@@ -187,14 +187,15 @@ rbufvec rvec[1];
 int
 fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
 {
-uint8_t tbufs[MAXLEN];
-uint8_t rbufs[MAXLEN];
-size_t  i, j, tlens, rlens, puts, put, got, tot, tidx, ridx, tlen, rlen;
-fd_set  rfds, tfds;
-RxState state       = RX;
-int     warned;
-int     eofSent     = 0;
-int     cmdReadback = 0;
+uint8_t         tbufs[MAXLEN];
+uint8_t         rbufs[MAXLEN];
+size_t          i, j, tlens, rlens, puts, put, got, tot, tidx, ridx, tlen, rlen;
+fd_set          rfds, tfds;
+RxState         state       = RX;
+int             warned;
+int             eofSent     = 0;
+int             cmdReadback = 0;
+struct timespec timeout;
 
 	tlens = 0;
 	rlens = sizeof(rbufs); 
@@ -245,13 +246,14 @@ int     cmdReadback = 0;
 			FD_SET( fd, &rfds );
 		}
 
-		i = pselect( fd + 1, &rfds, &tfds, 0, 0, 0 );
+		timeout.tv_sec  = 1;
+		timeout.tv_nsec = 0;
+		i = pselect( fd + 1, &rfds, &tfds, 0, &timeout, 0 );
 
 		if ( i <= 0 ) {
 			if ( 0 == i ) {
-				fprintf(stderr, "Hmm - select returned 0\n");
-				sleep(1);
-				continue;
+				/* Timeout */
+				return -2;
 			}
 			perror("select failure");
 			goto bail;

@@ -479,7 +479,11 @@ uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
 	rval = fifoXferFrame( fw->fd, &cmd, 0, 0, buf, sizeof(buf) );
 
 	if ( 2 != rval ) {
-		fprintf(stderr, "Error: buf_get_size() -- unexpected frame size %ld\n", rval);
+		if ( -2 == rval ) {
+			fprintf(stderr, "Error: buf_get_size() -- timeout; command unsupported?\n");
+		} else {
+			fprintf(stderr, "Error: buf_get_size() -- unexpected frame size %ld\n", rval);
+		}
 		return BUF_SIZE_FAILED;
 	}
 	rval = 512L * ((long)((buf[1]<<8) | buf[0]) + 1);
