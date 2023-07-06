@@ -15,7 +15,7 @@ entity CommandBitBang is
    port (
       clk          : in  std_logic;
       rst          : in  std_logic;
-      
+
       mIb          : in  SimpleBusMstType;
       rIb          : out std_logic;
 
@@ -57,7 +57,39 @@ architecture rtl of CommandBitBang is
 
    signal i2cDis          : std_logic;
 
+   signal bboLoc          : std_logic_vector(7 downto 0);
+
 begin
+
+   G_ILA : if ( false ) generate
+      function toSl(constant x : boolean) return std_logic is
+      begin
+         if ( x ) then return '1'; else return '0'; end if;
+      end function toSl;
+   begin
+      U_BB_ILA : entity work.ILAWrapper
+         port map (
+            clk              => clk,
+            trg0(0)          => bboLoc(4),
+            trg0(1)          => bbi(4),
+            trg0(2)          => bboLoc(5),
+            trg0(3)          => bbi(5),
+            trg0(4)          => rvld,
+            trg0(5)          => rrdy,
+            trg0(6)          => wvld,
+            trg0(7)          => wrdy,
+
+            trg1(0)          => toSl( r.state = FWD ),
+            trg1(1)          => rOb,
+            trg1(2)          => mIb.vld,
+            trg1(3)          => mIb.lst,
+            trg1(4)          => r.lstSeen,
+            trg1(7 downto 5) => r.cmd,
+
+            trg2             => (others => '0'),
+            trg3             => (others => '0')
+         );
+   end generate G_ILA;
 
    subCmd <= r.cmd;
 
@@ -136,7 +168,7 @@ begin
       port map (
          clk          => clk,
          rst          => rst,
-         
+
          i2cDis       => i2cDis,
 
          rdat         => mIb.dat,
@@ -147,8 +179,10 @@ begin
          wvld         => wvld,
          wrdy         => wrdy,
 
-         bbo          => bbo,
+         bbo          => bboLoc,
          bbi          => bbi
       );
+
+   bbo <= bboLoc;
 
 end architecture rtl;
