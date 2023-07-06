@@ -33,8 +33,14 @@ fw_open_fd(int fd);
 void
 fw_close(FWInfo *fw);
 
-int64_t
+uint32_t
 fw_get_version(FWInfo *fw);
+
+uint8_t
+fw_get_board_version(FWInfo *fw);
+
+uint8_t
+fw_get_api_version(FWInfo *fw);
 
 int
 bb_i2c_start(FWInfo *fw, int restart);

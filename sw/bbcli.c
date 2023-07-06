@@ -321,12 +321,14 @@ const char        *trgOp     = 0;
 	}
 
 	if ( fwVersion ) {
-		int64_t v = fw_get_version( fw );
-		if ( (int64_t)-1 == v ) {
-			fprintf(stderr, "Error: fw_get_version() failed\n");
-		} else {
-			printf("Firmware version: %08" PRIX64 "\n", v);
-		}
+		uint8_t  v_api = fw_get_api_version( fw );
+		uint8_t  v_brd = fw_get_board_version( fw );
+		uint32_t v_git = fw_get_version( fw );
+
+		printf("Firmware version:\n");
+		printf("  Git Hash: %08" PRIX32 "\n", v_git);
+		printf("  API     : %8"  PRIu8  "\n", v_api);
+		printf("  Board HW: %8"  PRIu8  "\n", v_brd);
 	}
 
 
@@ -365,6 +367,7 @@ const char        *trgOp     = 0;
         printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
         printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
         printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/exp2(ACQ_LD_SCALE_ONE));
+		printf("ADC Buffer size: %ld\n", buf_get_size( fw ));
 	}
 
 
@@ -641,7 +644,6 @@ const char        *trgOp     = 0;
 				}
 				rdl = (val < 0 ? 1 : 0);
 				break;
-
 
 			default:
 				break;

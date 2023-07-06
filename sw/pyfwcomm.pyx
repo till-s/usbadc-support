@@ -128,10 +128,11 @@ cdef class VersaClk:
   def __cinit__(self, FwMgr mgr):
     self._mgr = mgr
 
-  def setFBDiv(self, float div):
-    cdef int st
+  def setFBDiv(self, float div, bool noCal = False):
+    cdef int  st
+    cdef int  nc = noCal
     with self._mgr as fw, nogil:
-      st = versaClkSetFBDivFlt( fw, div )
+      st = versaClkSetFBDivFlt( fw, div, nc )
     if ( st < 0 ):
       raise IOError("VersaClk.setFBDiv()")
 
@@ -354,6 +355,7 @@ cdef class FwComm:
   cdef object          _buf
   cdef float           _timo
   cdef float           _clkFRef
+  cdef dict            _clkOut
 
   def readAsync(self, pyb, callback, float timeout = -1.0):
     if (not callable( callback ) ):
@@ -408,6 +410,7 @@ cdef class FwComm:
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
+    cdef int64_t ver
     self._mgr   = FwMgr( name, speed, args, kwargs )
     with self._mgr as fw, nogil:
       st = acq_set_params( fw, NULL, &self._parmCache )
@@ -418,31 +421,64 @@ cdef class FwComm:
     self._adc    = Max195xxADC( self._mgr )
     with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
+    self.setBoardInfo()
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
     if ( st != 0 ):
       raise OSError("pthread_create failed with status {:d}".format(st))
 
-  def init( self ):
-    for o in [SEL_EXT, SEL_ADC, SEL_FPGA]:
-      self._clk.setOutCfg( o, OUT_CMOS, SLEW_100, LEVEL_18 )
-    if True:
-      # 130MHz clock
-      fbkDiv = 104.0
-      outDiv = 10.0
+  # parameters that must be set by the constructor
+  def setBoardInfo( self ):
+    brdVrs      = self.boardVersion()
+    self._clkOut = dict()
+    if   ( 0 == brdVrs ):
+       self._clkOut["EXT" ] = 1
+       self._clkOut["ADC" ] = 2
+       self._clkOut["FPGA"] = 4
+    elif ( 1 == brdVrs ):
+       self._clkOut["EXT" ] = 2
+       self._clkOut["ADC" ] = 3
+       self._clkOut["FPGA"] = 1
+       self._clkFRef = 26.0E6
     else:
-      # 100MHz clock
-      fbkDiv = 112.0
-      outDiv = 14.0
-    self.clkSetFBDiv( fbkDiv )
-    self.clkSetOutDiv( SEL_ADC, outDiv )
-    self.clkSetOutDiv( SEL_EXT, 4095.0 )
-    self.clkSetFODRoute( SEL_EXT, CASC_FOD )
-    self.clkSetFODRoute( SEL_ADC, NORMAL   )
+      raise RuntimeError("Unsupported board version")
+
+  def init( self, force = False ):
+    if self._adc.dllLocked() and not force:
+      # assume init has been done already
+      return
+    outs   = dict()
+    noCal  = False
+    dflt   = {"IOSTD": OUT_CMOS}
+    brdVrs = self.boardVersion()
+    if   ( 0 == brdVrs ):
+       fADC        = 130.0E6
+    elif ( 1 == brdVrs ):
+       outs["ADC"] = {"IOSTD": OUT_LVDS}
+       fADC        = 120.0E6
+       noCal       = True
+    else:
+      raise RuntimeError("Unsupported board version")
+    for k,v in self._clkOut.items():
+      try:
+        std = outs[k]["IOSTD"]
+      except KeyError:
+        std = dflt["IOSTD"]
+      print("Setting output {:d} to {:d}".format(v, std))
+      self._clk.setOutCfg( v, std, SLEW_100, LEVEL_18 )
+    fVCO   = 2600.0E6
+    fbkDiv = fVCO / self._clkFRef
+    outDiv = fVCO / fADC
+
+    self.clkSetFBDiv( fbkDiv, noCal )
+    self.clkSetOutDiv( self._clkOut["ADC"], outDiv )
+    self.clkSetOutDiv( self._clkOut["EXT"], 4095.0 )
+    self.clkSetFODRoute( self._clkOut["EXT"], CASC_FOD )
+    self.clkSetFODRoute( self._clkOut["ADC"], NORMAL   )
     self._dac.init()
     self._adc.init()
 
   def getAdcClkFreq(self):
-    return self._clkFRef * self.clkGetFBDiv() / self.clkGetOutDiv(SEL_ADC) / 2.0
+    return self._clkFRef * self._clk.getFBDiv() / self._clk.getOutDiv(self._clkOut["ADC"]) / 2.0
 
   def dacSetVolt( self, ch, v):
     self._dac.setVolt( ch, v )
@@ -462,44 +498,8 @@ cdef class FwComm:
   def datSetTestMode(self, Max195xxTestMode m):
     self._adc.setTestMode( m )
 
-  def adcReadReg(self, reg):
-    return self._adc.readReg( reg )
-
-  def adcWriteReg(self, reg, val):
-    self._adc.writeReg( reg, val )
-
-  def adcSetCMVolt(self, Max195xxCMVolt cmA, Max195xxCMVolt cmB):
-    self._adc.setCMVolt( cmA, cmB )
-
-  def adcIsDLLLocked(self):
-    return self._adc.dllLocked()
-
-  def adcSetTiming(self, dclkDelay, dataDelay):
-    self._adc.setTiming( dclkDelay, dataDelay )
-
-  def clkSetFBDiv(self, float div):
-    self._clk.setFBDiv( div )
-
-  def clkGetFBDiv(self):
-    return self._clk.getFBDiv()
-
-  def clkSetOutDiv(self, int out, float div):
-    self._clk.setOutDiv( out, div )
-
-  def clkGetOutDiv(self, int out):
-    return self._clk.getOutDiv( out )
-
-
-  def clkSetFODRoute(self, int out, VersaClkFODRoute rte):
-    self._clk.setFODRoute( out, rte )
-
-  def clkReadReg(self, int reg):
-    return self._clk.readReg(reg)
-
-  def clkWriteReg(self, int reg, int val):
-    return self._clk.writeReg(reg, val)
-
   def ampGetS2Att(self, int channel):
+    return 0
     cdef float rv
     with self._mgr as fw, nogil:
       rv = lmh6882GetAtt( fw, channel )
@@ -511,6 +511,7 @@ cdef class FwComm:
     return rv
 
   def ampSetS2Att(self, int channel, float att):
+    return
     cdef float rv
     with self._mgr as fw, nogil:
       rv = lmh6882SetAtt( fw, channel, att )
@@ -521,10 +522,23 @@ cdef class FwComm:
         raise IOError("setS2Att()")
 
   def version(self):
-    cdef int64_t ver
+    cdef uint32_t ver
     with self._mgr as fw, nogil:
       ver = fw_get_version( fw )
     return ver
+
+  def apiVersion(self):
+    cdef uint8_t ver
+    with self._mgr as fw, nogil:
+      ver = fw_get_api_version( fw )
+    return ver
+
+  def boardVersion(self):
+    cdef uint8_t ver
+    with self._mgr as fw, nogil:
+      ver = fw_get_board_version( fw )
+    return ver
+
 
   def getBufSize(self):
     return self._bufsz
@@ -677,3 +691,48 @@ cdef class FwComm:
 
   def mkFltBuf(self):
     return numpy.zeros( (self._bufsz, 2), dtype = "float32" )
+
+# 'expert' class that gives access to low-level
+# details that may not be portable across boards
+cdef class FwCommExprt(FwComm):
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+
+  def adcReadReg(self, reg):
+    return self._adc.readReg( reg )
+
+  def adcWriteReg(self, reg, val):
+    self._adc.writeReg( reg, val )
+
+  def adcSetCMVolt(self, Max195xxCMVolt cmA, Max195xxCMVolt cmB):
+    self._adc.setCMVolt( cmA, cmB )
+
+  def adcIsDLLLocked(self):
+    return self._adc.dllLocked()
+
+  def adcSetTiming(self, dclkDelay, dataDelay):
+    self._adc.setTiming( dclkDelay, dataDelay )
+
+  def clkSetFBDiv(self, float div, bool noCal=False):
+    self._clk.setFBDiv( div, noCal )
+
+  def clkGetFBDiv(self):
+    return self._clk.getFBDiv()
+
+  def clkSetOutDiv(self, int out, float div):
+    self._clk.setOutDiv( out, div )
+
+  def clkGetOutDiv(self, int out):
+    return self._clk.getOutDiv( out )
+
+  def clkSetFODRoute(self, int out, VersaClkFODRoute rte):
+    self._clk.setFODRoute( out, rte )
+
+  def clkReadReg(self, int reg):
+    return self._clk.readReg(reg)
+
+  def clkWriteReg(self, int reg, int val):
+    return self._clk.writeReg(reg, val)
+
+

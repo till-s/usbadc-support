@@ -59,9 +59,6 @@ class Scope(QtCore.QObject):
   def __init__(self, devnam, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self._fw       = fw.FwComm( devnam )
-    if ( not self._fw.adcIsDLLLocked() ):
-      self._fw.init()
-    self._fw.clkSetFODRoute( fw.SEL_EXT, fw.CASC_FOD )
     self._main     = QtWidgets.QMainWindow()
     self._cent     = QtWidgets.QWidget()
     self._main.setCentralWidget( self._cent )

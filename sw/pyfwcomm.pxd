@@ -8,7 +8,9 @@ cdef extern from "fwComm.h":
   
   FWInfo        *fw_open(const char *devn, unsigned speed) nogil
   void           fw_close(FWInfo *) nogil
-  int64_t        fw_get_version(FWInfo *) nogil
+  uint32_t       fw_get_version(FWInfo *) nogil
+  uint8_t        fw_get_api_version(FWInfo *) nogil
+  uint8_t        fw_get_board_version(FWInfo *) nogil
   unsigned long  buf_get_size(FWInfo *) nogil
   int            buf_flush(FWInfo *) nogil
   int            buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len) nogil
@@ -84,8 +86,8 @@ cpdef enum VersaClkFODRoute:
   OFF      = 3
 
 cdef extern from "versaClkSup.h":
-  int            versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv) nogil
-  int            versaClkSetFBDivFlt(FWInfo *fw, double  div) nogil
+  int            versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv, int noCal) nogil
+  int            versaClkSetFBDivFlt(FWInfo *fw, double  div, int noCal) nogil
   int            versaClkGetFBDivFlt(FWInfo *fw, double *div) nogil
   int            versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv) nogil
   int            versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div) nogil
@@ -95,13 +97,9 @@ cdef extern from "versaClkSup.h":
   int            versaClkReadReg(FWInfo *fw, unsigned reg) nogil
   int            versaClkWriteReg(FWInfo *fw, unsigned reg, uint8_t val) nogil
 
-cpdef enum CLOCK_OUT:
-  SEL_EXT  = 1
-  SEL_ADC  = 2
-  SEL_FPGA = 4
-
 cpdef enum VersaClkOutMode:
   OUT_CMOS = 1
+  OUT_LVDS = 3
 
 cpdef enum VersaClkOutSlew:
   SLEW_080 = 0

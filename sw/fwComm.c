@@ -56,6 +56,9 @@ struct FWInfo {
 	int             debug;
 	int             ownFd;
 	unsigned long   memSize;
+	uint32_t        gitHash;
+	uint8_t         brdVers;
+	uint8_t         apiVers;
 };
 
 static int
@@ -104,6 +107,25 @@ fw_get_cmd(FWCmd aCmd)
 	}
 }
 
+static int64_t
+__fw_get_version(int fd)
+{
+uint8_t buf[sizeof(int64_t)];
+int     got, i;
+uint8_t cmd = fw_get_cmd( FW_CMD_VERSION );
+int64_t rval;
+
+	got = fifoXferFrame( fd, &cmd, 0, 0, buf, sizeof(buf) );
+	if ( got < 0 ) {
+		return (int64_t)-1;
+	}
+	rval = 0;
+	for ( i = 0; i < got; i++ ) {
+		rval = (rval << 8) | buf[i];
+	}
+	return rval;	
+}
+
 FWInfo *
 fw_open(const char *devn, unsigned speed)
 {
@@ -117,6 +139,8 @@ FWInfo *rv;
 	rv = fw_open_fd( fd );
 	if ( rv ) {
 		rv->ownFd = 1;
+	} else {
+		close( fd );
 	}
 	return rv;
 }
@@ -126,6 +150,7 @@ fw_open_fd(int fd)
 {
 FWInfo *rv;
 long    sz;
+int64_t vers;
 
 	if ( ! (rv = malloc(sizeof(*rv))) ) {
 		perror("fw_open(): no memory");
@@ -143,6 +168,17 @@ long    sz;
 	} else {
 		rv->memSize = (unsigned long)sz;
 	}
+
+	if ( ( vers = __fw_get_version( fd ) ) == (int64_t) -1 ) {
+		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
+		free( rv );
+		return 0;
+	}
+
+	rv->gitHash = ( vers & 0xffffffff );
+	rv->apiVers = ( (vers >> 32) & 0xff );
+    rv->brdVers = ( (vers >> 40) & 0xff );
+
 	return rv;
 }
 
@@ -548,23 +584,23 @@ int8_t  *i_p = (int8_t*)buf;
 	return rv;	
 }
 
-int64_t
+uint8_t
+fw_get_board_version(FWInfo *fw)
+{
+	return fw->brdVers;
+}
+
+uint8_t
+fw_get_api_version(FWInfo *fw)
+{
+	return fw->apiVers;
+}
+
+
+uint32_t
 fw_get_version(FWInfo *fw)
 {
-uint8_t buf[sizeof(int64_t)];
-int     got, i;
-uint8_t cmd = fw_get_cmd( FW_CMD_VERSION );
-int64_t rval;
-
-	got = fifoXferFrame( fw->fd, &cmd, 0, 0, buf, sizeof(buf) );
-	if ( got < 0 ) {
-		return (int64_t)-1;
-	}
-	rval = 0;
-	for ( i = 0; i < got; i++ ) {
-		rval = (rval << 8) | buf[i];
-	}
-	return rval;	
+	return fw->gitHash;
 }
 
 /* Set new parameters and obtain previous parameters.
