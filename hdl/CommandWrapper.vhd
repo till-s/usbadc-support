@@ -86,10 +86,12 @@ architecture rtl of CommandWrapper is
    signal   acqParmsAck       : std_logic;
 
    constant VERSION_C : Slv8Array := (
-      0 => GIT_VERSION_C(31 downto 24),
-      1 => GIT_VERSION_C(23 downto 16),
-      2 => GIT_VERSION_C(15 downto  8),
-      3 => GIT_VERSION_C( 7 downto  0)
+      0 => BOARD_VERSION_C,
+      1 => CMD_API_VERSION_C,
+      2 => GIT_VERSION_C(31 downto 24),
+      3 => GIT_VERSION_C(23 downto 16),
+      4 => GIT_VERSION_C(15 downto  8),
+      5 => GIT_VERSION_C( 7 downto  0)
    );
 
    signal verAddr     : integer range -1 to VERSION_C'high := -1;

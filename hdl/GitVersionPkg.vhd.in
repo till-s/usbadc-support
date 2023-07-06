@@ -2,5 +2,6 @@ library ieee;
 use     ieee.std_logic_1164.all;
 
 package GitVersionPkg is
-   constant GIT_VERSION_C : std_logic_vector(31 downto 0) := x"#SUBST#";
+   constant GIT_VERSION_C   : std_logic_vector(31 downto 0) := x"#SUBST#";
+   constant BOARD_VERSION_C : std_logic_vector( 7 downto 0) := x"#BOARD#";
 end package GitVersionPkg;
