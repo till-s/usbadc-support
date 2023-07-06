@@ -352,7 +352,7 @@ unsigned      idiv;
 unsigned long fdiv;
 double        intg;
 
-	fdiv = (unsigned long) round( exp2(30.0) * modf( fabs( div ), & intg ) );
+	fdiv = (unsigned long) round( exp2(24.0) * modf( fabs( div ), & intg ) );
     idiv = (unsigned)      intg;
 	return versaClkSetOutDiv( fw, outp, idiv, fdiv );
 }
