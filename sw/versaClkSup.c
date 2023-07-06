@@ -47,14 +47,14 @@ versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 
 
 int
-versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)
+versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv, int noCal)
 {
 	if ( writeReg( fw, 0x17, (idiv >> 4 )        ) < 0 ) return -1;
 	if ( writeReg( fw, 0x18, (idiv << 4 ) & 0xf0 ) < 0 ) return -1;
 	if ( writeReg( fw, 0x19, (fdiv >> 16)        ) < 0 ) return -1;
 	if ( writeReg( fw, 0x1A, (fdiv >>  8)        ) < 0 ) return -1;
 	if ( writeReg( fw, 0x1B, (fdiv >>  0)        ) < 0 ) return -1;
-	return versaClkVCOCal( fw );
+	return ( noCal ? 0 : versaClkVCOCal( fw ) );
 }
 
 /* recalibrate the VCO; seems necessary when loop parameters
@@ -108,7 +108,7 @@ versaClkGetFBDivFlt(FWInfo *fw, double *div)
 }
 
 int
-versaClkSetFBDivFlt(FWInfo *fw, double div)
+versaClkSetFBDivFlt(FWInfo *fw, double div, int noCal)
 {
 unsigned idiv;
 unsigned fdiv;
@@ -117,7 +117,7 @@ double   intg;
 	fdiv = (unsigned) round( exp2(24.0) * modf( fabs( div ), &intg ) );
     idiv = (unsigned) intg;
 
-	return versaClkSetFBDiv( fw, idiv, fdiv );
+	return versaClkSetFBDiv( fw, idiv, fdiv, noCal );
 }
 
 #define ODIV1_CR 0x21
@@ -354,5 +354,6 @@ double        intg;
 
 	fdiv = (unsigned long) round( exp2(24.0) * modf( fabs( div ), & intg ) );
     idiv = (unsigned)      intg;
+printf("int part %d, flt part %ld\n", idiv, fdiv);
 	return versaClkSetOutDiv( fw, outp, idiv, fdiv );
 }

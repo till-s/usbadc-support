@@ -10,10 +10,10 @@ extern "C" {
 typedef struct FWInfo FWInfo;
 
 int
-versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv);
+versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv, int noCal);
 
 int
-versaClkSetFBDivFlt(FWInfo *fw, double div);
+versaClkSetFBDivFlt(FWInfo *fw, double div, int noCal);
 
 int
 versaClkGetFBDivFlt(FWInfo *fw, double *div);
@@ -29,6 +29,8 @@ versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div);
 
 /* recalibrate the VCO; seems necessary when loop parameters
  * are changed. We do this internally from versaClkSetFBDiv() & friends.
+ * NOTE: The refclock output is apparently halted during VCO
+ *       calibration!
  */
 int
 versaClkVCOCal(FWInfo *fw);
@@ -50,7 +52,8 @@ int
 versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 
 typedef enum {
-	OUT_CMOS = 1
+	OUT_CMOS = 1,
+	OUT_LVDS = 3
 } VersaClkOutMode;
 
 typedef enum {
