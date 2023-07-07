@@ -20,7 +20,9 @@ entity CommandWrapper is
       DISABLE_DECIMATORS_G     : boolean := false;
       DLY_REF_MHZ_G            : real    := 0.0;
       DDR_TYPE_G               : string  := "IDDR2";
-      IDELAY_TAPS_G            : natural := 0
+      IDELAY_TAPS_G            : natural := 0;
+      INVERT_POL_CHA_G         : boolean := false;
+      INVERT_POL_CHB_G         : boolean := false
    );
    port (
       clk          : in  std_logic;
@@ -241,7 +243,9 @@ begin
             DDR_TYPE_G           => DDR_TYPE_G,
             MEM_DEPTH_G          => MEM_DEPTH_G,
             ADC_BITS_G           => ADC_BITS_G,
-            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
+            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G,
+            INVERT_POL_CHA_G     => INVERT_POL_CHA_G,
+            INVERT_POL_CHB_G     => INVERT_POL_CHB_G
          )
          port map (
             adcClk       => adcClk,

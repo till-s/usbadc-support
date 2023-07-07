@@ -26,7 +26,9 @@ entity MaxADC is
       TEST_NO_BUF_G        : boolean := false;
       DISABLE_DECIMATORS_G : boolean := false;
       IODELAY_GROUP_G      : string  := "ADCDDR";
-      IDELAY_TAPS_G        : natural := 0
+      IDELAY_TAPS_G        : natural := 0;
+      INVERT_POL_CHA_G     : boolean := false;
+      INVERT_POL_CHB_G     : boolean := false
    );
    port (
       adcClk      : in  std_logic;
@@ -523,19 +525,37 @@ begin
 
    end generate GEN_ONEMEM_G;
 
-   GEN_DDR_A_FIRST : if ( DDR_A_FIRST_G ) generate
-      fdatA    <= chnl0DataResynced(ADC_BITS_G downto 1);
-      fdorA    <= chnl0DataResynced(         0);
-      fdatB    <= chnl1Data        (ADC_BITS_G downto 1);
-      fdorB    <= chnl1Data        (         0);
-   end generate GEN_DDR_A_FIRST;
+   P_MAP : process ( chnl0DataResynced, chnl1Data ) is
+      variable datA : ADCWord;
+      variable datB : ADCWord;
+      variable dorA : std_logic;
+      variable dorB : std_logic;
+   begin
+      if ( DDR_A_FIRST_G ) then
+         datA    := chnl0DataResynced(ADC_BITS_G downto 1);
+         dorA    := chnl0DataResynced(         0);
+         datB    := chnl1Data        (ADC_BITS_G downto 1);
+         dorB    := chnl1Data        (         0);
+      else
+         datA    := chnl1Data        (ADC_BITS_G downto 1);
+         dorA    := chnl1Data        (         0);
+         datB    := chnl0DataResynced(ADC_BITS_G downto 1);
+         dorB    := chnl0DataResynced(         0);
+      end if;
 
-   GEN_DDR_B_FIRST : if ( not DDR_A_FIRST_G ) generate
-      fdatA    <= chnl1Data        (ADC_BITS_G downto 1);
-      fdorA    <= chnl1Data        (         0);
-      fdatB    <= chnl0DataResynced(ADC_BITS_G downto 1);
-      fdorB    <= chnl0DataResynced(         0);
-   end generate GEN_DDR_B_FIRST;
+      if ( INVERT_POL_CHA_G ) then
+         datA    := ADCWord( - signed( datA ) );
+      end if;
+
+      if ( INVERT_POL_CHB_G ) then
+         datB    := ADCWord( - signed( datB ) );
+      end if;
+
+      fdatA      <= datA;
+      fdatB      <= datB;
+      fdorA      <= dorA;
+      fdorB      <= dorB;
+   end process P_MAP;
 
    rWrCC <= rWr;
 
