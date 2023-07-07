@@ -35,6 +35,20 @@ cdef extern from "fwComm.h":
     int32_t       scale
   int            ACQ_PARAM_TIMEOUT_INF
   int            acq_set_params(FWInfo *, AcqParams *set, AcqParams *get) nogil
+  int            bb_spi_raw(FWInfo *, SPIDev, int clk, int mosi, int cs, int hiz) nogil
+  int            bb_spi_raw(FWInfo *, SPIDev, int clk, int mosi, int cs, int hiz) nogil
+  int            bb_spi_done(FWInfo *) nogil
+  int            bb_i2c_read_reg(FWInfo *, uint8_t sla, uint8_t reg) nogil
+  int            bb_i2c_write_reg(FWInfo *, uint8_t sla, uint8_t reg, uint8_t val) nogil
+
+cpdef enum SPIDev:
+  NONE
+  FLASH
+  ADC
+  PGA
+  FEG
+  VGA
+  VGB
 
 
 cpdef enum TriggerSource:
@@ -46,10 +60,14 @@ cdef extern from "lmh6882Sup.h":
   float          lmh6882GetAtt(FWInfo *fw, unsigned channel) nogil
   int            lmh6882SetAtt(FWInfo *fw, unsigned channel, float att) nogil
 
+cdef extern from "ad8370Sup.h":
+  int            ad8370Write(FWInfo *fw, unsigned channel, float att) nogil
+  int            ad8370SetAtt(FWInfo *fw, unsigned channel, float att) nogil
+
 cdef extern from "dac47cxSup.h":
   int            dac47cxReset(FWInfo *) nogil
   int            dac47cxInit(FWInfo *) nogil
-  void           dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax) nogil
+  void           dac47cxGetRange(FWInfo *, int *tickMin, int *tickMax, float *voltMin, float *voltMax) nogil
   int            dac47cxSetVolt(FWInfo *fw, unsigned channel, float val) nogil
   int            dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val) nogil
   int            dac47cxSet(FWInfo *fw, unsigned channel, int val) nogil
@@ -86,9 +104,9 @@ cpdef enum VersaClkFODRoute:
   OFF      = 3
 
 cdef extern from "versaClkSup.h":
-  int            versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv, int noCal) nogil
-  int            versaClkSetFBDivFlt(FWInfo *fw, double  div, int noCal) nogil
-  int            versaClkGetFBDivFlt(FWInfo *fw, double *div) nogil
+  int            versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv) nogil
+  int            versaClkSetFBDivFlt(FWInfo *fw, double  div) nogil
+  int            versaClkGetFBDivFlt(FWInfo *fw, double  *div) nogil
   int            versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv) nogil
   int            versaClkSetOutDivFlt(FWInfo *fw, unsigned outp, double div) nogil
   int            versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div) nogil

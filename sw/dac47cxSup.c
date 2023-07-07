@@ -70,11 +70,28 @@ uint8_t     buf[2];
 /* ugly but we don't have context implemented for now and there
  * is only a single device..
  *
- * Initialize for 8-bit device; unfortunately we can't detect
+ * Initialize from board/hw version :-( unfortunately we can't detect
  * the device type w/o resetting it which we want to avoid
  * in order to not cause glitches.
  */
-static int dacMax = 0xff;
+static int _dacMax = 0x00;
+
+static int dacMax(FWInfo *fw)
+{
+	if ( 0 == _dacMax ) {
+		/* horrible hack for now... */
+		switch ( fw_get_board_version( fw ) ) {
+			case 0:
+				_dacMax = 0xff;  break;
+			case 1:
+				_dacMax = 0xfff; break;
+			default:
+				fprintf(stderr, "Error -- dac47cxGetRange(): unknown -- DAC not initialized?\n");
+				return 0;
+		}
+	}
+	return _dacMax;
+}
 
 int
 dac47cxInit(FWInfo *fw)
@@ -83,8 +100,8 @@ uint16_t val;
 
 	if ( dac47cxReset( fw )                   < 0 ) return -1;
 	if ( dac47cxReadReg( fw, REG_VAL0, &val ) < 0 ) return -1;
-	dacMax = val;
-	dacMax = ((dacMax + 1) << 1) - 1;
+	_dacMax = val;
+	_dacMax = ((_dacMax + 1) << 1) - 1;
 	/* select internal bandgap (leave at gain 1)
 	 * according to datasheet, if we use the internal
 	 * bandgap then
@@ -100,32 +117,36 @@ uint16_t val;
 
 #define VOLT_REF   1.214
 #define VOLT_MIN   (-VOLT_REF/2.0)
-#define VOLT(tick) (VOLT_MIN + VOLT_REF * ((float)(tick)) / (float)(dacMax + 1))
-#define VOLT_MAX   VOLT(dacMax)
-#define TICK(volt) round( (volt - VOLT_MIN)/(VOLT_MAX - VOLT_MIN) * (float)dacMax )
+#define VOLT(tick) (VOLT_MIN + VOLT_REF * ((float)(tick)) / (float)(maxDac + 1))
+#define VOLT_MAX   VOLT(maxDac)
+#define TICK(volt) round( (volt - VOLT_MIN)/(VOLT_MAX - VOLT_MIN) * (float)maxDac )
 
 void
-dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax)
+dac47cxGetRange(FWInfo *fw, int *tickMin, int *tickMax, float *voltMin, float *voltMax)
 {
-	if ( 0 == dacMax ) {
-		fprintf(stderr, "Error -- dac47cxGetRange(): unknown -- DAC not initialized?\n");
-	}
+int maxDac = dacMax(fw);
+
 	if ( tickMin ) *tickMin = 0;
-	if ( tickMax ) *tickMax = dacMax;
+	if ( tickMax ) *tickMax = maxDac;
 	if ( voltMin ) *voltMin = VOLT( 0      );
-	if ( voltMax ) *voltMax = VOLT( dacMax );
+	if ( voltMax ) *voltMax = VOLT( maxDac );
 }
 
 int
 dac47cxSet(FWInfo *fw, unsigned channel, int val)
 {
+int maxDac = 0;
+
 	if ( channel > 1 ) {
 		fprintf(stderr, "Error -- dac47cxSet(): invalid channel\n");
 		return -2;
 	}
-	if ( val > dacMax ) {
-		fprintf(stderr,"Warning -- dac47cxSet(): big value clipped to %d\n", dacMax);
-		val = dacMax;
+
+	maxDac = dacMax(fw);
+
+	if ( val > maxDac ) {
+		fprintf(stderr,"Warning -- dac47cxSet(): big value clipped to %d\n", maxDac);
+		val = maxDac;
 	}
 	if ( val < 0      ) {
 		fprintf(stderr,"Warning -- dac47cxSet(): small value clipped to %d\n", 0);
@@ -148,7 +169,8 @@ dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val)
 int
 dac47cxSetVolt(FWInfo *fw, unsigned channel, float val)
 {
-int ival;
+int ival, maxDac = dacMax(fw);
+
 	if ( val < VOLT_MIN ) {
 		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", VOLT_MIN);
 		val = VOLT_MIN;
@@ -162,7 +184,7 @@ int ival;
 	ival = TICK( val );
 
 	if ( -1         == ival ) ival = 0;
-	if ( dacMax + 1 == ival ) ival = dacMax;
+	if ( maxDac + 1 == ival ) ival = maxDac;
 	return dac47cxSet( fw, channel, ival );
 }
 
@@ -170,6 +192,7 @@ int
 dac47cxGetVolt(FWInfo *fw, unsigned channel, float *valp)
 {
 uint16_t val;
+int      maxDac = dacMax(fw);
 
 	if ( channel > 1 ) {
 		fprintf(stderr, "dac47xxGetVolt(): invalid channel\n");

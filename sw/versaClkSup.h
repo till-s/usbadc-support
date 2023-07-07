@@ -10,10 +10,10 @@ extern "C" {
 typedef struct FWInfo FWInfo;
 
 int
-versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv, int noCal);
+versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv);
 
 int
-versaClkSetFBDivFlt(FWInfo *fw, double div, int noCal);
+versaClkSetFBDivFlt(FWInfo *fw, double div);
 
 int
 versaClkGetFBDivFlt(FWInfo *fw, double *div);

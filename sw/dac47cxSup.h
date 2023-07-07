@@ -24,7 +24,7 @@ int
 dac47cxInit(FWInfo *fw);
 
 void
-dac47cxGetRange(int *tickMin, int *tickMax, float *voltMin, float *voltMax);
+dac47cxGetRange(FWInfo *fw, int *tickMin, int *tickMax, float *voltMin, float *voltMax);
 
 int
 dac47cxSet(FWInfo *fw, unsigned channel, int val);

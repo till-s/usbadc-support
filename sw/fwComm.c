@@ -29,6 +29,8 @@
 #define BITS_FW_CMD_BB_PGA      (3<<4)
 #define BITS_FW_CMD_BB_I2C      (4<<4)
 #define BITS_FW_CMD_BB_FEG      (5<<4)
+#define BITS_FW_CMD_BB_VGA      (6<<4)
+#define BITS_FW_CMD_BB_VGB      (7<<4)
 #define BITS_FW_CMD_ADCBUF      0x02
 #define BITS_FW_CMD_ADCFLUSH    (1<<4)
 #define BITS_FW_CMD_MEMSIZE     (2<<4)
@@ -77,15 +79,32 @@ fw_set_debug(FWInfo *fw, int level)
 	fw->debug = level;
 }
 
-static uint8_t
-spi_get_subcmd(SPIDev type)
+static int
+spi_get_subcmd(FWInfo *fw, SPIDev type)
 {
+unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
+
+	switch ( fw->brdVers ) {
+		case 0:
+			sup |= (1<<SPI_PGA) | (1<<SPI_FEG); break;
+		case 1:
+			sup |= (1<<SPI_VGA) | (1<<SPI_VGB); break;
+		default:
+			fprintf(stderr, "spi_get_subcmd(): unsupported board/hw version %i\n", fw->brdVers);
+			return -1;
+	}
+	if ( ! ((1<<type) & sup) ) {
+		fprintf(stderr, "spi_get_subcmd(): SPI device %i not supported on this board/hw\n", type);
+		return -1;
+	}
 	switch ( type ) {
 		case SPI_NONE  : return BITS_FW_CMD_BB_NONE;
 		case SPI_FLASH : return BITS_FW_CMD_BB_FLASH;
 		case SPI_ADC   : return BITS_FW_CMD_BB_ADC;
 		case SPI_PGA   : return BITS_FW_CMD_BB_PGA;
 		case SPI_FEG   : return BITS_FW_CMD_BB_FEG;
+		case SPI_VGA   : return BITS_FW_CMD_BB_VGA;
+		case SPI_VGB   : return BITS_FW_CMD_BB_VGB;
 		default:
 			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
 			abort();
@@ -195,6 +214,49 @@ uint8_t v = SPI_MASK | I2C_MASK;
 	}
 }
 
+int
+bb_spi_raw(FWInfo *fw, SPIDev type, int clk, int mosi, int cs, int hiz)
+{
+uint8_t v = SPI_MASK | I2C_MASK;
+int     rv;
+uint8_t subcmd;
+
+	rv = spi_get_subcmd( fw, type );
+
+	if ( rv < 0 ) {
+		return rv;
+	}
+
+	subcmd = (uint8_t) rv;
+
+	v &= ~( (1<<CS_SHFT) | (1<<SCL_SHFT) | (1<<MOSI_SHFT) | (1<<HIZ_SHFT) );
+
+	if ( cs ) {
+		v |= (1 << CS_SHFT);
+	}
+	if ( clk ) {
+		v |= (1 << SCL_SHFT);
+	}
+	if ( mosi ) {
+		v |= (1 << MOSI_SHFT);
+	}
+	if ( ! hiz ) {
+		v &= ~(1 << HIZ_SHFT);
+	}
+	printf("FW XFER, subcmd 0x%02x, value 0x%02x\n", subcmd, v);
+	rv = fw_xfer(fw, subcmd, &v, &v, sizeof(v) );
+	if ( rv >= 0 ) {
+		rv = !! (v & (1<<MISO_SHFT));
+	}
+	return rv;
+}
+
+int
+bb_spi_done(FWInfo *fw)
+{
+	return bb_spi_raw( fw, BITS_FW_CMD_BB_NONE, 1, 0, 0, 0 ); 
+}
+
 #define DEPTH    512 /* fifo depth */
 #define MAXDEPTH 500
 
@@ -285,7 +347,12 @@ uint8_t bbbyte = ( ((val ? 1 : 0) << CS_SHFT) | (0 << SCLK_SHFT) ) | SPI_MASK;
 int
 bb_spi_cs(FWInfo *fw, SPIDev type, int val)
 {
-	return __bb_spi_cs( fw, spi_get_subcmd( type ), val );
+	int subcmd = spi_get_subcmd( fw, type );
+	if ( subcmd < 0 ) {
+		/* message already printed */
+		return subcmd;
+	}
+	return __bb_spi_cs( fw, (uint8_t)subcmd, val );
 }
 
 #define BUF_BRK 1024
@@ -300,7 +367,13 @@ size_t   work = len;
 size_t   xlen;
 int      i,j;
 uint8_t  v,z;
-uint8_t  subcmd = spi_get_subcmd( type );
+uint8_t  subcmd;
+
+	if ( ( i = spi_get_subcmd( fw, type ) ) < 0 ) {
+		/* message already printed */
+		return i;
+	}
+	subcmd = (uint8_t) i;
 
 	if ( ! xbuf ) {
 		perror("bb_spi_xfer_nocs(): unable to allocate buffer memory");
@@ -360,9 +433,15 @@ bail:
 int
 bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
 {
-uint8_t  subcmd = spi_get_subcmd( type );
+uint8_t  subcmd;
 int      got;
 
+	if ( (got = spi_get_subcmd( fw, type )) < 0 ) {
+		/* message already printed */
+		return got;
+	}
+
+	subcmd = (uint8_t) got;
 
 	if ( __bb_spi_cs( fw, subcmd, 0 ) ) {
 		return -1;

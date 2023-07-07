@@ -58,7 +58,11 @@ class Scope(QtCore.QObject):
 
   def __init__(self, devnam, *args, **kwargs):
     super().__init__(*args, **kwargs)
-    self._fw       = fw.FwComm( devnam )
+    if ( sys.flags.interactive ):
+       self._fw       = fw.FwCommExprt( devnam )
+    else:
+       self._fw       = fw.FwComm( devnam )
+    self._fw.init()
     self._main     = QtWidgets.QMainWindow()
     self._cent     = QtWidgets.QWidget()
     self._main.setCentralWidget( self._cent )
@@ -244,8 +248,9 @@ class Scope(QtCore.QObject):
   def mksl(self, ch, color):
     hb             = QtWidgets.QHBoxLayout()
     sl             = QtWidgets.QSlider( QtCore.Qt.Horizontal )
-    sl.setMinimum(0)
-    sl.setMaximum(20)
+    minmax         = self._fw.ampGetS2Range()
+    sl.setMinimum(minmax[0])
+    sl.setMaximum(minmax[1])
     sl.setTickPosition( QtWidgets.QSlider.TicksBelow )
     a  = int( round( self._fw.ampGetS2Att( ch ) ) )
     self._fw.ampSetS2Att( ch, a )

@@ -41,6 +41,7 @@ static void usage(const char *nm)
 	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : access PGA registers.\n");
 	printf("   -A                 : access ADC registers.\n");
+	printf("   -i i2c_addr        : access ADC registers.\n");
 	printf("\n");
 	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
 	printf("       Id             : read and print ID bytes.\n");
@@ -251,7 +252,7 @@ int                reg       =  0;
 int                val       = -1;
 unsigned           rdl       = 0;
 
-uint8_t            sla;
+unsigned           sla       = 0;
 
 int                dac       = 0;
 
@@ -270,7 +271,7 @@ int                dumpAdc   = 0;
 int                dumpPrms  = 0;
 const char        *trgOp     = 0;
 
-	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIPpS:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:PpS:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -286,6 +287,7 @@ const char        *trgOp     = 0;
 			case 'v': debug++;                                                        break;
 			case 'V': fwVersion= 1;                                                   break;
 			case 'I': dac = 0; test_reg = TEST_I2C;                                   break;
+			case 'i': dac = 0; test_reg = TEST_I2C; u_p = &sla;                       break;
 			case 'S': test_spi = strdup(optarg);                                      break;
 			case 'T': trgOp    = optarg;                                              break;
 			case 'a': u_p      = &flashAddr;                                          break;
@@ -583,7 +585,14 @@ const char        *trgOp     = 0;
 
 			case TEST_I2C:
 
-				sla = dac ? 0xc2 : 0xd4;
+				if ( dac ) {
+					sla = 0xc2;
+				} else if ( 0 == sla ) {
+					sla = 0xd4;
+				} else {
+					/* they provided address; we convert into i2c cmd */
+					sla <<= 1;
+				}
 
 				if ( reg < 0 && dac ) {
 					/* reset */

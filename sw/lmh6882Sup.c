@@ -12,7 +12,7 @@ lmh6882ReadReg(FWInfo *fw, uint8_t reg)
 uint8_t buf[2];
 	buf[0] = 0x80 | ( reg & 0xf );
 	buf[1] = 0x00;
-	if ( bb_spi_xfer( fw, SPI_PGA, buf, buf, 0, 2 ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_PGA, buf, buf, 0, sizeof(buf) ) < 0 ) {
 		return -1;
 	}
 	return buf[1];	
@@ -24,7 +24,7 @@ lmh6882WriteReg(FWInfo *fw, uint8_t reg, uint8_t val)
 uint8_t buf[2];
 	buf[0] = 0x00 | ( reg & 0xf );
 	buf[1] = val;
-	if ( bb_spi_xfer( fw, SPI_PGA, buf, buf, 0, 2 ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_PGA, buf, buf, 0, sizeof(buf) ) < 0 ) {
 		return -1;
 	}
 	return 0;

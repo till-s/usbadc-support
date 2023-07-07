@@ -122,17 +122,21 @@ cdef class FwMgr:
   def __dealloc__(self):
     fw_close( self._fw )
 
-cdef class VersaClk:
+cdef class FwDev:
   cdef FwMgr _mgr
 
-  def __cinit__(self, FwMgr mgr):
+  def __cinit__(self, FwMgr mgr, *args, **kwargs):
     self._mgr = mgr
 
-  def setFBDiv(self, float div, bool noCal = False):
+  def mgr(self):
+    return self._mgr
+
+cdef class VersaClk(FwDev):
+
+  def setFBDiv(self, float div):
     cdef int  st
-    cdef int  nc = noCal
     with self._mgr as fw, nogil:
-      st = versaClkSetFBDivFlt( fw, div, nc )
+      st = versaClkSetFBDivFlt( fw, div )
     if ( st < 0 ):
       raise IOError("VersaClk.setFBDiv()")
 
@@ -201,11 +205,28 @@ cdef class VersaClk:
       rv = versaClkWriteReg(fw, reg, val)
     return rv
 
-cdef class Max195xxADC:
-  cdef FwMgr _mgr
+cdef class BBRaw(FwDev):
+  cdef SPIDev _tgt
 
-  def __cinit__(self, FwMgr mgr):
-    self._mgr = mgr
+  def __cinit__(self, FwMgr mgr, SPIDev tgt, *args, **kwargs):
+    self._tgt = tgt
+
+  def __call__(self, int clk, int mosi, int cs=0, int hiz=0):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = bb_spi_raw( fw, self._tgt, clk, mosi, cs, hiz )
+    if rv < 0 :
+      raise IOError("BBRaw.__call__: bb_spi_raw failed")
+    return rv
+
+  def done(self):
+    with self._mgr as fw, nogil:
+      rv = bb_spi_done( fw )
+    if rv < 0 :
+      raise IOError("BBRaw.__call__: bb_spi_done failed")
+  
+
+cdef class Max195xxADC(FwDev):
 
   def reset(self):
     cdef int st
@@ -269,11 +290,7 @@ cdef class Max195xxADC:
     elif ( st < 0 ):
       raise IOError("Max195xxADC.setTiming()")
 
-cdef class DAC47CX:
-  cdef FwMgr _mgr
-
-  def __cinit__(self, FwMgr mgr):
-    self._mgr = mgr
+cdef class DAC47CX(FwDev):
 
   def reset(self):
     cdef int st
@@ -292,7 +309,7 @@ cdef class DAC47CX:
   def getRange(self):
     cdef float vmin, vmax
     with self._mgr as fw, nogil:
-      dac47cxGetRange( NULL, NULL, &vmin, &vmax )
+      dac47cxGetRange( fw, NULL, NULL, &vmin, &vmax )
     return (vmin, vmax)
 
   def setTicks(self, int channel, int ticks):
@@ -340,11 +357,230 @@ cdef class DAC47CX:
         raise IOError("DAC47CX.getVolt()")
     return volt
 
+cdef class Amp(FwDev):
+
+  def getS2Range(self):
+    return (0,0)
+
+cdef class AmpLmh6882(Amp):
+
+  def getS2Range(self):
+    return (0,20)
+
+  def getS2Att(self, int channel):
+    cdef float rv
+    with self._mgr as fw, nogil:
+      rv = lmh6882GetAtt( fw, channel )
+    return rv
+
+  def setS2Att(self, int channel, float att):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = lmh6882SetAtt( fw, channel, att )
+    return rv
+
+cdef class I2CDev(FwDev):
+
+  def i2cReadReg(self, uint8_t sla, uint8_t off):
+    cdef int rv
+    sla <<= 1
+    with self._mgr as fw, nogil:
+      rv = bb_i2c_read_reg(fw, sla, off)
+    if ( rv < 0 ):
+      raise IOError("i2cReadReg failed")
+    return rv
+
+  def i2cWriteReg(self, uint8_t sla, uint8_t off, uint8_t val):
+    cdef int rv
+    sla <<= 1
+    with self._mgr as fw, nogil:
+      rv = bb_i2c_write_reg(fw, sla, off, val)
+    if ( rv < 0 ):
+      raise IOError("i2cReadReg failed")
+
+cdef class AmpAd8370(Amp):
+
+  def getS2Range(self):
+    return (0,40)
+
+  def getS2Att(self, int channel):
+    return 0
+
+  def setS2Att(self, int channel, float att):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = ad8370SetAtt( fw, channel, att )
+    return rv
+
+cdef class FEC(FwDev):
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def init(self):
+    pass
+
+  def hasACModeCtl(self, int channel):
+    raise RuntimeError("Front-End has no AC-coupling controller switch")
+
+  def hasAttenuatorCtl(self, int channel):
+    raise RuntimeError("Front-End has no Attenuator controls")
+
+  def hasDACRangeCtl(self, int channel):
+    raise RuntimeError("Front-End has no DAC range controls")
+
+  def hasTerminationCtl(self, int channel):
+    raise RuntimeError("Front-End has no Termination controls")
+
+  def outReg(self, int channel):
+    raise RuntimeError("No output register?")
+
+  def setAttenuator(self, int channel, bool on):
+    raise RuntimeError("Front-End has no Attenuator controls")
+
+  def getAttenuator(self, int channel):
+    raise RuntimeError("Front-End has no Attenuator controls")
+
+  def setTermination(self, int channel, bool on):
+    raise RuntimeError("Front-End has no Termination controls")
+
+  def getTermination(self, int channel):
+    raise RuntimeError("Front-End has no Termination controls")
+
+  def setACMode(self, int channel, bool on):
+    raise RuntimeError("Front-End has no AC-coupling controller switch")
+
+  def getACMode(self, int channel):
+    raise RuntimeError("Front-End has no AC-coupling controller switch")
+
+  def setDacRangeHi(self, int channel, bool on):
+    raise RuntimeError("Front-End has no DAC range controls")
+
+  def getDacRangeHi(self, int channel, bool on):
+    raise RuntimeError("Front-End has no DAC range controls")
+
+
+cdef class I2CFEC(FEC):
+
+  cdef I2CDev _dev
+  cdef int    _sla
+
+  def __init__(self, sla, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self._dev = I2CDev( self.mgr() )
+    self._sla = sla
+    self.allOutputs()
+
+  def init(self):
+    super().init()
+    for ch in [0,1]:
+      try:
+        self.setTermination( ch, False )
+      except RuntimeError:
+        # may have none
+        pass
+
+  def outReg(self, int channel):
+    return 1
+
+  def getBit(self, int channel, int bit):
+    ctl = self._dev.i2cReadReg( self._sla, self.outReg( channel ) )
+    return bool(ctl & (1<<bit))
+
+  def setBit(self, int channel, int bit, int val):
+    ctl = self._dev.i2cReadReg( self._sla, self.outReg(channel) )
+    if ( val ):
+      ctl |=  (1 << bit)
+    else:
+      ctl &= ~(1 << bit)
+    self._dev.i2cWriteReg( self._sla, self.outReg(channel), ctl )
+
+  def getACCtlBit(self, int channel):
+    return self.getBit( channel, self.hasACModeCtl(channel) ) 
+
+  def getAttCtlBit(self, int channel):
+    return self.getBit( channel, self.hasAttenuatorCtl(channel) )
+
+  def getTermCtlBit(self, int channel):
+    return self.getBit( channel, self.hasTerminationCtl(channel) )
+
+  def getDACCtlBit(self, int channel):
+    return self.getBit( channel, self.hasDACRangeCtl(channel) )
+
+  def setACCtlBit(self, int channel, int val):
+    self.setBit( channel, self.hasACModeCtl(channel), val )
+    
+  def setAttCtlBit(self, int channel, int val):
+    self.setBit( channel, self.hasAttenuatorCtl(channel), val )
+
+  def setTermCtlBit(self, int channel, int val):
+    self.setBit( channel, self.hasTerminationCtl(channel), val )
+
+  def setDACCtlBit(self, int channel, int val):
+    self.setBit( channel, self.hasDACRangeCtl(channel), val )
+
+  def setAttenuator(self, int channel, bool on):
+    self.setAttCtlBit( channel, on )
+
+  def getAttenuator(self, int channel):
+    return self.getAttCtlBit( channel )
+
+  def setTermination(self, int channel, bool on):
+    self.setTermCtlBit( channel, on )
+
+  def getTermination(self, int channel):
+    return self.getTermCtlBit( channel )
+
+  def setACMode(self, int channel, bool on):
+    self.setACCtlBit( channel, not on )
+
+  def getACMode(self, int channel):
+    return not self.getACCtlBit( channel )
+
+  def setDacRangeHi(self, int channel, bool on):
+    self.setDACCtlBit( channel, not on )
+
+  def getDacRangeHi(self, int channel, bool on):
+    return not self.setDACCtlBit( channel )
+
+  def allOutputs(self):
+    raise RuntimeError("subclass must implement 'allOutputs'")
+
+
+cdef class GpioFECv1(I2CFEC):
+
+  def __init__(self, *args, **kwargs):
+    # TCA6408
+    super().__init__( 0x20, *args, **kwargs)
+
+  def c(self, channel):
+    if not channel in [0,1]:
+      raise ValueError("Invalid channel number")
+    return channel
+
+  def hasACModeCtl(self, int channel):
+    return { 0: 7, 1: 3 }[self.c(channel)]
+
+  def hasAttenuatorCtl(self, int channel):
+    return { 0: 6, 1: 2 }[self.c(channel)]
+
+  def hasDACRangeCtl(self, int channel):
+    return { 0: 1, 1: 0 }[self.c(channel)]
+
+  def hasTerminationCtl(self, int channel):
+    return { 0: 5, 1: 4 }[self.c(channel)]
+
+  def allOutputs(self):
+    # set control reg. to all outputs
+    self._dev.i2cWriteReg( self._sla, 3, 0x00 )
+
 cdef class FwComm:
   cdef FwMgr           _mgr
   cdef const char     *_nm
   cdef VersaClk        _clk
   cdef DAC47CX         _dac
+  cdef Amp             _amp
+  cdef FEC             _fec
   cdef Max195xxADC     _adc
   cdef int             _bufsz
   cdef AcqParams       _parmCache
@@ -419,12 +655,27 @@ cdef class FwComm:
     self._clk    = VersaClk( self._mgr )
     self._dac    = DAC47CX( self._mgr )
     self._adc    = Max195xxADC( self._mgr )
+
+    brdVers      = self.boardVersion()
+    if   ( 0 == brdVers ):
+      self._amp = AmpLmh6882( self._mgr )
+      self._fec = FEC( self._mgr )
+    elif ( 1 == brdVers ):
+      self._amp = AmpAd8370( self._mgr )
+      self._fec = GpioFECv1( self._mgr )
+    else:
+      self._amp = Amp( self._mgr )
+      self._fec = FEC( self._mgr )
+    
     with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
     self.setBoardInfo()
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
     if ( st != 0 ):
       raise OSError("pthread_create failed with status {:d}".format(st))
+
+  def mgr(self):
+    return self._mgr
 
   # parameters that must be set by the constructor
   def setBoardInfo( self ):
@@ -447,7 +698,6 @@ cdef class FwComm:
       # assume init has been done already
       return
     outs   = dict()
-    noCal  = False
     dflt   = {"IOSTD": OUT_CMOS}
     brdVrs = self.boardVersion()
     if   ( 0 == brdVrs ):
@@ -455,7 +705,6 @@ cdef class FwComm:
     elif ( 1 == brdVrs ):
        outs["ADC"] = {"IOSTD": OUT_LVDS}
        fADC        = 120.0E6
-       noCal       = True
     else:
       raise RuntimeError("Unsupported board version")
     for k,v in self._clkOut.items():
@@ -465,15 +714,14 @@ cdef class FwComm:
         std = dflt["IOSTD"]
       print("Setting output {:d} to {:d}".format(v, std))
       self._clk.setOutCfg( v, std, SLEW_100, LEVEL_18 )
-    fVCO   = 2600.0E6
-    fbkDiv = fVCO / self._clkFRef
-    outDiv = fVCO / fADC
+    fVCO   = self._clkFRef * self._clk.getFBDiv()
+    outDiv = fVCO / fADC / 2.0
 
-    self.clkSetFBDiv( fbkDiv, noCal )
-    self.clkSetOutDiv( self._clkOut["ADC"], outDiv )
-    self.clkSetOutDiv( self._clkOut["EXT"], 4095.0 )
-    self.clkSetFODRoute( self._clkOut["EXT"], CASC_FOD )
-    self.clkSetFODRoute( self._clkOut["ADC"], NORMAL   )
+    self._clk.setOutDiv( self._clkOut["ADC"], outDiv )
+    self._clk.setOutDiv( self._clkOut["EXT"], 4095.0 )
+    self._clk.setFODRoute( self._clkOut["EXT"], CASC_FOD )
+    self._clk.setFODRoute( self._clkOut["ADC"], NORMAL   )
+    self._fec.init()
     self._dac.init()
     self._adc.init()
 
@@ -498,11 +746,11 @@ cdef class FwComm:
   def datSetTestMode(self, Max195xxTestMode m):
     self._adc.setTestMode( m )
 
+  def ampGetS2Range(self):
+    return self._amp.getS2Range()
+
   def ampGetS2Att(self, int channel):
-    return 0
-    cdef float rv
-    with self._mgr as fw, nogil:
-      rv = lmh6882GetAtt( fw, channel )
+    rv = self._amp.getS2Att( channel )
     if ( rv < 0 ):
       if ( rv < -1.0 ):
         raise ValueError("getS2Att(): invalid channel")
@@ -511,15 +759,37 @@ cdef class FwComm:
     return rv
 
   def ampSetS2Att(self, int channel, float att):
-    return
     cdef float rv
-    with self._mgr as fw, nogil:
-      rv = lmh6882SetAtt( fw, channel, att )
+    rv = self._amp.setS2Att(channel, att)
     if ( rv < 0 ):
       if ( rv < -1 ):
         raise ValueError("setS2Att(): invalid channel or attenuation")
       else:
         raise IOError("setS2Att()")
+
+  def fecGetACMode(self, int channel):
+    return self._fec.getACMode( channel )
+
+  def fecSetACMode(self, int channel, bool on ):
+    self._fec.setACMode( channel, on )
+
+  def fecGetAttenuator(self, int channel):
+    return self._fec.getAttenuator( channel )
+
+  def fecSetAttenuator(self, int channel, bool on ):
+    self._fec.setAttenuator( channel, on )
+
+  def fecGetTermination(self, int channel):
+    return self._fec.getTermination( channel )
+
+  def fecSetTermination(self, int channel, bool on ):
+    self._fec.setTermination( channel, on )
+
+  def fecGetDacRangeHi(self, int channel):
+    return self._fec.getDacRangeHi( channel )
+
+  def fecSetDacRangeHi(self, int channel, bool on ):
+    self._fec.setDacRangeHi( channel, on )
 
   def version(self):
     cdef uint32_t ver
@@ -714,8 +984,8 @@ cdef class FwCommExprt(FwComm):
   def adcSetTiming(self, dclkDelay, dataDelay):
     self._adc.setTiming( dclkDelay, dataDelay )
 
-  def clkSetFBDiv(self, float div, bool noCal=False):
-    self._clk.setFBDiv( div, noCal )
+  def clkSetFBDiv(self, float div):
+    self._clk.setFBDiv( div )
 
   def clkGetFBDiv(self):
     return self._clk.getFBDiv()
@@ -735,4 +1005,9 @@ cdef class FwCommExprt(FwComm):
   def clkWriteReg(self, int reg, int val):
     return self._clk.writeReg(reg, val)
 
-
+  def ad8370Write(self, int ch, int val):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = ad8370Write( fw, ch, val )
+    if ( rv < 0 ):
+      raise IOError("ad8370Write failed")

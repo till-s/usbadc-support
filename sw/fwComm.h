@@ -12,7 +12,7 @@ typedef struct FWInfo FWInfo;
 
 typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS } FWCmd;
 
-typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG } SPIDev;
+typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG, SPI_VGA, SPI_VGB } SPIDev;
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,18 +59,29 @@ bb_i2c_stop(FWInfo *fw);
 
 /*
  * RETURNS: read value, -1 on error;
+ *
+ * SLA is 7-bit address LEFT SHIFTED by 1 bit
  */
 int
 bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg);
 
 /*
  * RETURNS: 0 on success, -1 on error;
+ *
+ * SLA is 7-bit address LEFT SHIFTED by 1 bit
  */
 int
 bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val);
 
 int
 bb_spi_cs(FWInfo *fw, SPIDev type, int val);
+
+/* Access to raw bit-bang states (for board debugging) */
+int
+bb_spi_raw(FWInfo *fw, SPIDev type, int clk, int mosi, int cs, int hiz);
+
+int
+bb_spi_done(FWInfo *fw);
 
 /* for bidirectional transfers (where SDI/SDO share a single line, e.g., max19507) the
  * optinal zbuf controls the direction (1:  s->m, 0: m->s) of the (bidirectional) SIO line
