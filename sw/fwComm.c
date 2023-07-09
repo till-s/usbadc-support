@@ -375,7 +375,10 @@ bb_spi_cs(FWInfo *fw, SPIDev type, int val)
 int
 bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
 {
-uint8_t *xbuf = malloc(BUF_BRK*8*2);
+uint8_t *xbuf       = malloc(BUF_BRK*8*2);
+int      stretch    = 1;
+uint8_t *stretchbuf = malloc(BUF_BRK*8*2*stretch);
+int      stretchlen;
 uint8_t *p;
 int      rval = -1;
 size_t   work = len;
@@ -386,7 +389,7 @@ uint8_t  subcmd;
 
 	if ( ( i = spi_get_subcmd( fw, type ) ) < 0 ) {
 		/* message already printed */
-		return i;
+		goto bail;
 	}
 	subcmd = (uint8_t) i;
 
@@ -414,8 +417,16 @@ uint8_t  subcmd;
 			p += j;
 		}
 
+		stretchlen = 0;
+		for ( i = 0; i < xlen*2*8; i++ ) {
+			for ( j = 0; j < stretch; j++ ) {
+				stretchbuf[stretchlen] = xbuf[i];
+				stretchlen++;
+			}
+		}
 
-		if ( fw_xfer_bb( fw, subcmd, xbuf, xbuf, xlen*2*8 ) ) {
+
+		if ( fw_xfer_bb( fw, subcmd, stretchbuf, stretchbuf, stretchlen ) ) {
 			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer_bb failed\n");
 			goto bail;
 		}
@@ -423,14 +434,14 @@ uint8_t  subcmd;
 
 		if ( rbuf ) {
 
-			p = xbuf;
+			p = stretchbuf; /*xbuf;*/
 
 			for ( i = 0; i < xlen; i++ ) {
 				v = 0;
 				for ( j = 0; j < 2*8; j += 2 ) {
-					v   = (v << 1 ) | ( (p[j + 1] & (1 << MISO_SHFT)) ? 1 : 0 );
+					v   = (v << 1 ) | ( (p[stretch*j + 1] & (1 << MISO_SHFT)) ? 1 : 0 );
 				}
-				p += j;
+				p += stretch * j;
 				rbuf[i] = v;
 			}
 
@@ -444,6 +455,7 @@ uint8_t  subcmd;
 
 bail:
 	free( xbuf );
+	free( stretchbuf );
 	return rval;
 }
 
