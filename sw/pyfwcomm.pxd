@@ -7,6 +7,7 @@ cdef extern from "fwComm.h":
     pass
   
   FWInfo        *fw_open(const char *devn, unsigned speed) nogil
+  int            fw_xfer(FWInfo *, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len) nogil
   void           fw_close(FWInfo *) nogil
   uint32_t       fw_get_version(FWInfo *) nogil
   uint8_t        fw_get_api_version(FWInfo *) nogil
