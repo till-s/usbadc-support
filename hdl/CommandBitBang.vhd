@@ -4,6 +4,7 @@ use ieee.numeric_std.all;
 use ieee.math_real.all;
 
 use work.CommandMuxPkg.all;
+use work.ILAWrapperPkg.all;
 
 entity CommandBitBang is
    generic (
@@ -56,18 +57,24 @@ architecture rtl of CommandBitBang is
    signal rrdy            : std_logic;
 
    signal i2cDis          : std_logic;
+   signal loopback        : std_logic := '0';
 
    signal bboLoc          : std_logic_vector(7 downto 0);
 
 begin
 
-   G_ILA : if ( false ) generate
+   G_ILA : if ( true ) generate
       function toSl(constant x : boolean) return std_logic is
       begin
          if ( x ) then return '1'; else return '0'; end if;
       end function toSl;
+
+      signal stateDbg : std_logic;
    begin
-      U_BB_ILA : entity work.ILAWrapper
+
+      stateDbg <= toSl( r.state = FWD );
+
+      U_BB_ILA : component ILAWrapper
          port map (
             clk              => clk,
             trg0(0)          => bboLoc(4),
@@ -79,15 +86,15 @@ begin
             trg0(6)          => wvld,
             trg0(7)          => wrdy,
 
-            trg1(0)          => toSl( r.state = FWD ),
+            trg1(0)          => stateDbg,
             trg1(1)          => rOb,
             trg1(2)          => mIb.vld,
             trg1(3)          => mIb.lst,
             trg1(4)          => r.lstSeen,
             trg1(7 downto 5) => r.cmd,
 
-            trg2             => (others => '0'),
-            trg3             => (others => '0')
+            trg2             => wdat,
+            trg3             => mIb.dat
          );
    end generate G_ILA;
 
@@ -108,6 +115,12 @@ begin
          i2cDis <= '0';
       else
          i2cDis <= '1';
+      end if;
+
+      if ( r.cmd = CMD_BB_NONE_C ) then
+         loopback   <= '1';
+      else
+         loopback   <= '0';
       end if;
 
       case ( r.state ) is
@@ -170,6 +183,7 @@ begin
          rst          => rst,
 
          i2cDis       => i2cDis,
+         echo         => loopback,
 
          rdat         => mIb.dat,
          rvld         => rvld,

@@ -17,6 +17,7 @@ OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
 OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
 OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o PipelinedRShifter.o
 OBJS+=MulShifter.o SpiReg.o
+OBJS+=CommandSpi.o SpiBitShifter.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -109,10 +110,11 @@ SynchronizerBit.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
 BitBangIF.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o SynchronizerBit.o BasicPkg.o
 CommandBitBang.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o CommandMuxPkg.o BitBangIF.o
 MaxAdc.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ILAWrapper.o AcqCtlPkg.o BasicPkg.o CicFilter.o PipelinedRShifter.o MulShifter.o
-CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o GitVersionPkg.o CommandAcqParm.o
+CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o GitVersionPkg.o CommandAcqParm.o CommandSpi.o
 CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
 PipelinedRShifterTb.o: PipelinedRShifter.o
+CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
 
 MulShifter.o PipelinedRShifter.o: BasicPkg.o
 
@@ -121,10 +123,11 @@ CicFilterTb.o: CicFilter.o
 SpiRegTb.o: SpiReg.o
 
 GITVERSION:=$(shell git rev-parse --short=8 HEAD)
+BRDVERSION:=01
 
 GitVersionPkg.vhd: $(HEREDIR)/GitVersionPkg.vhd.in .FORCE
 	echo $(GITVERSION)
-	@if [ ! -f $@ -o $@ -ot $< ] || ! grep -q $(GITVERSION) $@ ; then echo DOIT; sed -e 's/#SUBST#/$(GITVERSION)/' < $< > $@; else echo SKIP; fi
+	@if [ ! -f $@ -o $@ -ot $< ] || ! grep -q $(GITVERSION) $@ ; then echo DOIT; sed -e 's/#SUBST#/$(GITVERSION)/' -e 's/#BOARD#/$(BRDVERSION)/' < $< > $@; else echo SKIP; fi
 
 git: GitVersionPkg.vhd
 

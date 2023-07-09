@@ -90,6 +90,7 @@ begin
    U_DUT : entity work.CommandWrapper
       generic map (
          FIFO_FREQ_G  => 4.0E5,
+         SPI_FREQ_G   => 1.0E5,
          ADC_BITS_G   => ADC_W_C,
          MEM_DEPTH_G  => MEM_DEPTH_C
       )

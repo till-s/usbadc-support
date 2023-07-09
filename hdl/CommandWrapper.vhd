@@ -12,6 +12,7 @@ entity CommandWrapper is
       BBO_INIT_G               : std_logic_vector(7 downto 0) := x"FF";
       I2C_FREQ_G               : real    := 100.0E3;
       FIFO_FREQ_G              : real;
+      SPI_FREQ_G               : real    := 10.0E6;
       ADC_FREQ_G               : real    := 130.0E6;
       ADC_BITS_G               : natural := 8;
       MEM_DEPTH_G              : natural := 1024;
@@ -37,8 +38,13 @@ entity CommandWrapper is
       rdyOb        : in  std_logic;
 
       bbo          : out std_logic_vector(7 downto 0);
-      bbi          : in  std_logic_vector(7 downto 0);
+      bbi          : in  std_logic_vector(7 downto 0) := (others => '0');
       subCmdBB     : out SubCommandBBType;
+
+      spiSClk      : out std_logic;
+      spiMOSI      : out std_logic;
+      spiCSb       : out std_logic;
+      spiMISO      : in  std_logic := '0';
 
       adcClk       : in  std_logic;
       adcRst       : in  std_logic := '0';
@@ -60,12 +66,14 @@ architecture rtl of CommandWrapper is
    constant CMD_BB_IDX_C      : natural := 1;
    constant CMD_ADC_MEM_IDX_C : natural := 2;
    constant CMD_ACQ_PRM_IDX_C : natural := 3;
+   constant CMD_SPI_IDX_C     : natural := 4;
 
    constant CMDS_SUPPORTED_C  : CmdsSupportedType := (
       CMD_VER_IDX_C           => true,
       CMD_BB_IDX_C            => true,
       CMD_ADC_MEM_IDX_C       => true,
-      CMD_ACQ_PRM_IDX_C       => true
+      CMD_ACQ_PRM_IDX_C       => true,
+      CMD_SPI_IDX_C           => true
    );
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
@@ -296,4 +304,26 @@ begin
          );
    end generate G_PARM;
 
+   G_SPI  : if ( CMDS_SUPPORTED_C( CMD_SPI_IDX_C ) ) generate
+      U_SPI : entity work.CommandSpi
+         generic map (
+            CLOCK_FREQ_G => FIFO_FREQ_G
+         )
+         port map (
+            clk          => clk,
+            rst          => rst,
+
+            mIb          => bussesIb(CMD_SPI_IDX_C),
+            rIb          => readysIb(CMD_SPI_IDX_C),
+
+            mOb          => bussesOb(CMD_SPI_IDX_C),
+            rOb          => readysOb(CMD_SPI_IDX_C),
+
+            spiSClk      => spiSClk,
+            spiMOSI      => spiMOSI,
+            spiCSb       => spiCSb,
+            spiMISO      => spiMISO
+         );
+   end generate G_SPI;
+ 
 end architecture rtl;

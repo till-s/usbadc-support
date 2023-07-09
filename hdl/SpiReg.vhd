@@ -46,12 +46,14 @@ architecture rtl of SpiReg is
       lsclk      : std_logic;
       lscsb      : std_logic;
       sr         : std_logic_vector(NUM_BITS_G downto 0);
+      cnt        : natural;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
       lsclk      => '0',
       lscsb      => '1',
-      sr         =>  INIT_VAL_F
+      sr         => INIT_VAL_F,
+      cnt        => NUM_BITS_G - 1
    );
 
    signal r      : RegType := REG_INIT_C;

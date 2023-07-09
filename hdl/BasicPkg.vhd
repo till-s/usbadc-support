@@ -9,6 +9,7 @@ package BasicPkg is
    function toSl(constant x : in boolean) return std_logic;
 
    function ite(constant x : in boolean; constant a,b: in std_logic) return std_logic;
+   function ite(constant x : in boolean; constant a,b: in integer  ) return integer;
 
 end package BasicPkg;
 
@@ -26,6 +27,11 @@ package body BasicPkg is
    end function toSl;
 
    function ite(constant x : in boolean; constant a,b: in std_logic) return std_logic is
+   begin
+      if ( x ) then return a; else return b; end if;
+   end function ite;
+
+   function ite(constant x : in boolean; constant a,b: in integer) return integer is
    begin
       if ( x ) then return a; else return b; end if;
    end function ite;

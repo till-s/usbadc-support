@@ -62,6 +62,15 @@ package CommandMuxPkg is
    function subCommandAcqParmGet(constant cmd : in std_logic_vector (7 downto 0))
       return SubCommandAcqParmType;
 
+   subtype  SubCommandSPIType is std_logic_vector(1 downto 0);
+
+   constant CMD_SPI_DATA_C    : SubCommandSPIType := SubCommandSPIType( to_unsigned( 0, SubCommandSPIType'length ) );
+   constant CMD_SPI_CSLO_C    : SubCommandSPIType := SubCommandSPIType( to_unsigned( 1, SubCommandSPIType'length ) );
+   constant CMD_SPI_CSHI_C    : SubCommandSPIType := SubCommandSPIType( to_unsigned( 2, SubCommandSPIType'length ) );
+
+   function subCommandSPIGet(constant cmd : in std_logic_vector (7 downto 0))
+      return SubCommandSPIType;
+ 
 end package CommandMuxPkg;
 
 package body CommandMuxPkg is
@@ -81,4 +90,11 @@ package body CommandMuxPkg is
    begin
       return SubCommandAcqParmType( cmd(NUM_CMD_BITS_C + SubCommandAcqParmType'length - 1 downto NUM_CMD_BITS_C) );
    end function subCommandAcqParmGet;
+
+   function subCommandSPIGet(constant cmd : in std_logic_vector (7 downto 0))
+      return SubCommandSPIType is
+   begin
+      return SubCommandSPIType( cmd(NUM_CMD_BITS_C + SubCommandSPIType'length - 1 downto NUM_CMD_BITS_C) );
+   end function subCommandSPIGet;
+
 end package body CommandMuxPkg;

@@ -17,6 +17,7 @@ entity BitBangIF is
       rst          : in  std_logic;
       
       i2cDis       : in  std_logic := '1'; -- registered together with bbo
+      echo         : in  std_logic := '0';
 
       rdat         : in  std_logic_vector(7 downto 0);
       rvld         : in  std_logic := '0';
@@ -34,7 +35,7 @@ end entity BitBangIF;
 architecture rtl of BitBangIF is
 
    -- need some clock cycles (well, the internal SpiReg does)
-   constant HPER_MIN_C    : integer := 1;
+   constant HPER_MIN_C    : integer := 10;
 
    function I2C_HPER_F return integer is
       variable v : integer;
@@ -114,7 +115,7 @@ begin
       -- condition to check for clock stretching
       -- readback of SCL must match what we set
       -- on the i2c bus.
-      sclInEqualsOut <= (sclSync = r.bbo(I2C_SCL_G)) or (i2cDis = '1') ;
+      sclInEqualsOut <= (sclSync = r.bbo(I2C_SCL_G)) or ((echo or i2cDis) = '1') ;
          
    end generate GEN_SYNC;
 
@@ -125,7 +126,7 @@ begin
 
    end generate GEN_NO_SYNC;
 
-   P_COMB : process ( r, rdat, rvld, wrdy, bbiSync, sclInEqualsOut, i2cDis ) is
+   P_COMB : process ( r, rdat, rvld, wrdy, bbiSync, sclInEqualsOut, i2cDis, echo ) is
       variable v       : RegType;
       variable rrdyLoc : std_logic;
 
@@ -154,11 +155,15 @@ begin
 
       -- receive data
       if ( (rrdyLoc = '1') and (rvld = '1') ) then
-         v.bbo  := rdat;
-         -- record inputs
-         v.wdat := bbiSync;
+         if ( echo = '0' ) then
+            v.bbo  := rdat;
+            -- record inputs
+            v.wdat := bbiSync;
+         else
+            v.wdat := rdat;
+         end if;
          v.wvld := '1';
-         if ( i2cDis = '0' ) then
+         if ( (echo or i2cDis) = '0' ) then
             v.i2c_timo := to_unsigned(I2C_TIMO_F, v.i2c_timo'length);
          else
             v.i2c_timo := to_unsigned(I2C_TIMO_F - I2C_HPER_F + HPER_MIN_C - 1, v.i2c_timo'length);
