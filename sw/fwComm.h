@@ -10,7 +10,7 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS } FWCmd;
+typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS, FW_CMD_SPI } FWCmd;
 
 typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG, SPI_VGA, SPI_VGB } SPIDev;
 
@@ -93,6 +93,15 @@ int
 bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
 
 /*
+ * Low-level transfer for debugging
+ */
+int
+fw_xfer(FWInfo *fw, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
+
+int
+fw_xfer_vec(FWInfo *fw, uint8_t cmd, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);
+
+/*
  * ADC Buffer / acquisition readout
  */
 
@@ -110,7 +119,7 @@ buf_read_flt(FWInfo *fw, uint16_t *hdr, float *buf, size_t nelms);
 
 typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 
-/* Immediate (manual) trigger can be achieved by 
+/* Immediate (manual) trigger can be achieved by
  * setting the auto-timeout to 0
  */
 
@@ -148,7 +157,7 @@ typedef struct AcqParams {
 /* Set new parameters and obtain previous parameters.
  * A new acquisition is started if any mask bit is set.
  *
- * Either 'set' or 'get' may be NULL with obvious semantics. 
+ * Either 'set' or 'get' may be NULL with obvious semantics.
  */
 
 int
@@ -181,7 +190,7 @@ acq_set_source(FWInfo *, TriggerSource src, int rising);
 
 int
 acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
-	
+
 #ifdef __cplusplus
 }
 #endif
