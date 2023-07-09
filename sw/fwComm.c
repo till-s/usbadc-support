@@ -231,13 +231,13 @@ uint8_t subcmd;
 
 	subcmd = (uint8_t) rv;
 
-	v &= ~( (1<<CS_SHFT) | (1<<SCL_SHFT) | (1<<MOSI_SHFT) | (1<<HIZ_SHFT) );
+	v &= ~( (1<<CS_SHFT) | (1<<SCLK_SHFT) | (1<<MOSI_SHFT) | (1<<HIZ_SHFT) );
 
 	if ( cs ) {
 		v |= (1 << CS_SHFT);
 	}
 	if ( clk ) {
-		v |= (1 << SCL_SHFT);
+		v |= (1 << SCLK_SHFT);
 	}
 	if ( mosi ) {
 		v |= (1 << MOSI_SHFT);
@@ -255,7 +255,7 @@ uint8_t subcmd;
 int
 bb_spi_done(FWInfo *fw)
 {
-	return bb_spi_raw( fw, BITS_FW_CMD_BB_NONE, 1, 0, 0, 0 ); 
+	return bb_spi_raw( fw, BITS_FW_CMD_BB_NONE, 0, 0, 1, 1 );
 }
 
 #define DEPTH    512 /* fifo depth */
