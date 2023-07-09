@@ -65,7 +65,7 @@ struct FWInfo {
 };
 
 static int
-fw_xfer(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
+fw_xfer_bb(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
 
 static int
 __bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val);
@@ -144,7 +144,7 @@ int64_t rval;
 	for ( i = 0; i < got; i++ ) {
 		rval = (rval << 8) | buf[i];
 	}
-	return rval;	
+	return rval;
 }
 
 FWInfo *
@@ -208,7 +208,7 @@ fw_close(FWInfo *fw)
 {
 uint8_t v = SPI_MASK | I2C_MASK;
 	if ( fw ) {
-		fw_xfer(fw, BITS_FW_CMD_BB_NONE, &v, &v, sizeof(v) );
+		fw_xfer_bb(fw, BITS_FW_CMD_BB_NONE, &v, &v, sizeof(v) );
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
 		}
@@ -245,8 +245,7 @@ uint8_t subcmd;
 	if ( ! hiz ) {
 		v &= ~(1 << HIZ_SHFT);
 	}
-	printf("FW XFER, subcmd 0x%02x, value 0x%02x\n", subcmd, v);
-	rv = fw_xfer(fw, subcmd, &v, &v, sizeof(v) );
+	rv = fw_xfer_bb(fw, subcmd, &v, &v, sizeof(v) );
 	if ( rv >= 0 ) {
 		rv = !! (v & (1<<MISO_SHFT));
 	}
@@ -263,7 +262,7 @@ bb_spi_done(FWInfo *fw)
 #define MAXDEPTH 500
 
 static int
-fw_xfer(FWInfo *fw, uint8_t subCmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+fw_xfer_bb(FWInfo *fw, uint8_t subCmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
 uint8_t cmdLoc = fw->cmd | subCmd;
 	return fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 ) < 0 ? -1 : 0;
@@ -282,7 +281,7 @@ bb_i2c_set(FWInfo *fw, int scl, int sda)
 uint8_t bbbyte =  ((scl ? 1 : 0) << SCL_SHFT) | ((sda ? 1 : 0) << SDA_SHFT) | I2C_MASK;
 uint8_t x = bbbyte;
 
-	if ( fw_xfer( fw, BITS_FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( fw_xfer_bb( fw, BITS_FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "bb_i2c_set: unable to set levels\n");
 		return -1;
 	}
@@ -339,7 +338,7 @@ __bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val)
 {
 uint8_t bbbyte = ( ((val ? 1 : 0) << CS_SHFT) | (0 << SCLK_SHFT) ) | SPI_MASK;
 
-	if ( fw_xfer( fw, subcmd, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( fw_xfer_bb( fw, subcmd, &bbbyte, &bbbyte, 1 ) < 0 ) {
 		fprintf(stderr, "Unable to set CS %d\n", !!val);
 		return -1;
 	}
@@ -401,10 +400,12 @@ uint8_t  subcmd;
 			p += j;
 		}
 
-		if ( fw_xfer( fw, subcmd, xbuf, xbuf, xlen*2*8 ) ) {
-			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer failed\n");
+
+		if ( fw_xfer_bb( fw, subcmd, xbuf, xbuf, xlen*2*8 ) ) {
+			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer_bb failed\n");
 			goto bail;
 		}
+
 
 		if ( rbuf ) {
 
@@ -418,7 +419,7 @@ uint8_t  subcmd;
 				p += j;
 				rbuf[i] = v;
 			}
-			
+
 			rbuf += xlen;
 		}
 		if ( tbuf ) tbuf += xlen;
@@ -468,12 +469,12 @@ uint8_t rbuf[3*9];
 	for ( i = 0; i < 3*9; i+= 3 ) {
 		uint8_t sda = (((val & (1<<8)) ? 1 : 0) << SDA_SHFT);
 		xbuf[i + 0] = (I2C_MASK | (0 << SCL_SHFT) | sda);
-		if ( i == 7*3 ) xbuf[i+0] &= 0x7f; 
+		if ( i == 7*3 ) xbuf[i+0] &= 0x7f;
 		xbuf[i + 1] = (I2C_MASK | (1 << SCL_SHFT) | sda);
-		xbuf[i + 2] = (I2C_MASK | (0 << SCL_SHFT) | sda); 
+		xbuf[i + 2] = (I2C_MASK | (0 << SCL_SHFT) | sda);
 		val <<= 1;
 	}
-	if ( fw_xfer( fw, BITS_FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf)) ) {
+	if ( fw_xfer_bb( fw, BITS_FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf)) ) {
 		fprintf(stderr, "bb_i2c_xfer failed\n");
 		return -1;
 	}
@@ -486,7 +487,7 @@ uint8_t rbuf[3*9];
 			pr_i2c_dbg(xbuf[i], rbuf[i]);
 		}
 	}
-	
+
 	return val & 0x1FF;
 }
 
@@ -662,7 +663,7 @@ int8_t  *i_p = (int8_t*)buf;
 			buf[i] = (float)(i_p[i]);
 		}
 	}
-	return rv;	
+	return rv;
 }
 
 uint8_t
@@ -687,7 +688,7 @@ fw_get_version(FWInfo *fw)
 /* Set new parameters and obtain previous parameters.
  * A new acquisition is started if any mask bit is set.
  *
- * Either 'set' or 'get' may be NULL with obvious semantics. 
+ * Either 'set' or 'get' may be NULL with obvious semantics.
  */
 
 int
