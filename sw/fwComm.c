@@ -35,6 +35,7 @@
 #define BITS_FW_CMD_ADCFLUSH    (1<<4)
 #define BITS_FW_CMD_MEMSIZE     (2<<4)
 #define BITS_FW_CMD_ACQPRM      0x03
+#define BITS_FW_CMD_SPI         0x04
 
 #define BITS_FW_CMD_ACQ_MSK_SRC  7
 #define BITS_FW_CMD_ACQ_SHF_SRC  0
@@ -120,6 +121,7 @@ fw_get_cmd(FWCmd aCmd)
 		case FW_CMD_BB_SPI     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
 		case FW_CMD_BB_I2C     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
 		case FW_CMD_ACQ_PARMS  : return BITS_FW_CMD_ACQPRM;
+		case FW_CMD_SPI        : return BITS_FW_CMD_SPI;
 		default:
 			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
 			abort();
