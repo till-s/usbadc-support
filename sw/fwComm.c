@@ -268,6 +268,20 @@ uint8_t cmdLoc = fw->cmd | subCmd;
 	return fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 ) < 0 ? -1 : 0;
 }
 
+int
+fw_xfer(FWInfo *fw, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
+{
+uint8_t cmdLoc = cmd;
+	return fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
+}
+
+int
+fw_xfer_vec(FWInfo *fw, uint8_t cmd, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
+{
+uint8_t cmdLoc = cmd;
+	return fifoXferFrameVec( fw->fd, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
+}
+
 static void pr_i2c_dbg(uint8_t tbyte, uint8_t rbyte)
 {
 	printf("Writing %02x - got %02x (%d %d - %d %d)\n", tbyte, rbyte,
