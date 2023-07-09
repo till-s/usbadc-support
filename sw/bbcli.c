@@ -62,8 +62,7 @@ static void usage(const char *nm)
 static const int blocks [] = {
 	4*1024,
 	32*1024,
-	64*1024,
-	512*1024,
+	64*1024
 };
 
 /* largest block smaller than 'sz' */
