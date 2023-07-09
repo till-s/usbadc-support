@@ -33,7 +33,7 @@ package AcqCtlPkg is
       lvl         => (others => '0'),
       rising      => true,
       nprets      => (others => '0'),
-      autoTimeMs  => AUTO_TIME_STOP_C,
+      autoTimeMs  => to_unsigned( 200, 16 ),
       decm0       => (others => '0'),
       decm1       => (others => '0'),
       shift0      => (others => '0'),
