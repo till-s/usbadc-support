@@ -30,7 +30,7 @@ static void usage(const char *nm)
 	printf("   -a address         : start-address for SPI flash opertions [0x%x].\n", FLASHADDR_DFLT);
 	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
 	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
-	printf("   -d usb-device      : usb-device [/dev/ttyUSB0].\n");
+	printf("   -d usb-device      : usb-device [/dev/ttyUSB0]; you may also set the BBCLI_DEVICE env-var.\n");
 	printf("   -h                 : this message.\n");
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
@@ -239,7 +239,7 @@ bail:
 
 int main(int argc, char **argv)
 {
-const char        *devn      = "/dev/ttyUSB0";
+const char        *devn;
 FWInfo            *fw        = 0;
 int                rval      = 1;
 unsigned           speed     = 115200; /* not sure this really matters */
@@ -269,6 +269,10 @@ int                fwVersion = 0;
 int                dumpAdc   = 0;
 int                dumpPrms  = 0;
 const char        *trgOp     = 0;
+
+	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
+		devn = "/dev/ttyUSB0";
+	}
 
 	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:PpS:T:Vv!?")) > 0 ) {
 		u_p = 0;
