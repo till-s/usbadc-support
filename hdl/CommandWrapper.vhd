@@ -13,8 +13,12 @@ entity CommandWrapper is
       I2C_FREQ_G               : real    := 100.0E3;
       FIFO_FREQ_G              : real;
       SPI_FREQ_G               : real    := 10.0E6;
+      -- time from CS assertion to first SPI clock (0 -> 1/2 SPI clock)
       SPI_CSLO_NS_G            : real    := 0.0;
+      -- min time from CS is held deasserted (0 -> 1/2 SPI clock)
       SPI_CSHI_NS_G            : real    := 0.0;
+      -- delay CS deassertion after last SPI clock negedge (0 -> no delay)
+      SPI_CSHI_DELAY_NS_G      : real    := 0.0;
       ADC_FREQ_G               : real    := 130.0E6;
       ADC_BITS_G               : natural := 8;
       MEM_DEPTH_G              : natural := 1024;
@@ -312,7 +316,8 @@ begin
             CLOCK_FREQ_G => FIFO_FREQ_G,
             SPI_FREQ_G   => SPI_FREQ_G,
             CSLO_NS_G    => SPI_CSLO_NS_G,
-            CSHI_NS_G    => SPI_CSHI_NS_G
+            CSHI_NS_G    => SPI_CSHI_NS_G,
+            CSDL_NS_G    => SPI_CSHI_DELAY_NS_G
          )
          port map (
             clk          => clk,

@@ -9,8 +9,12 @@ entity SpiBitShifter is
   generic (
     WIDTH_G : natural  := 8;
     DIV2_G  : positive := 1; -- half-period of pre-scaler
+    -- delay from cs-lo to clock
     CSLO_G  : natural  := 0; -- 0 -> same as DIV2_G
-    CSHI_G  : natural  := 0  -- 0 -> same as DIV2_G
+    -- min cs high 
+    CSHI_G  : natural  := 0; -- 0 -> same as DIV2_G
+    -- delay cs after negedge of SCLK (0: no delay)
+    CSDL_G  : natural  := 8
   );
   port (
     clk     : in  std_logic;
@@ -40,17 +44,17 @@ end entity SpiBitShifter;
 architecture Impl of SpiBitShifter is
 
   constant LD_W_C : natural := natural( ceil( log2( real( WIDTH_G ) ) ) ) + 1;
-  type StateType is ( IDLE, CHIPSEL, CHIPSELB, SHIFT, DONE );
+  type StateType is ( IDLE, CHIPSELB, SHIFT, DONE );
 
   constant SCLK_INACTIVE_C : std_logic := '0';
 
-  function max(a,b,c: integer)
+  function max(a,b: integer)
     return integer is
   begin
-    return ite( a > b, ite( a > c, a, c ), ite( b > c, b, c ) );
+    return ite( a > b, a, b );
   end function max;
 
-  constant PRHI_C : natural := max( DIV2_G, CSLO_G, CSHI_G );
+  constant PRHI_C : natural := max( max(DIV2_G, CSLO_G), max( CSHI_G, CSDL_G ) );
 
   type RegType is record
     state    : StateType;
@@ -108,25 +112,23 @@ begin
           else
             v.state := CHIPSELB;
             v.prsc  := CSHI_C - 1;
+            if ( CSDL_G > 0 ) then
+              v.scsb := '0';
+              -- delay CHIPSELB for required time before deasserting
+              v.prsc := CSDL_G - 1;
+            end if;
           end if;
         end if;
 
       when CHIPSELB =>
         if ( r.prsc = 0 ) then
-          -- hold CHIPSELB for required time before accepting a new command
-          v.state := DONE;
-        end if;
-
-      when CHIPSEL =>
-        if ( r.prsc = 0 ) then
-          if ( r.scsb = '0' ) then
-            v.state   := SHIFT;
-            v.clkCnt  := to_unsigned(2*WIDTH_G - 1, v.clkCnt'length);
-            v.prsc    := DIV2_G - 1;
-            -- this causes a positive edge; register input
-            v.sreg(0) := serInp;
+          if ( r.scsb = '1' ) then
+            v.state   := DONE;
+            vldOutLoc := '1';
           else
-            v.state  := DONE;
+            -- hold CHIPSELB for required time before accepting a new command
+            v.scsb := '1';
+            v.prsc := CSHI_C - 1;
           end if;
         end if;
 
