@@ -42,12 +42,23 @@ architecture Impl of SpiBitShifter is
   constant LD_W_C : natural := natural( ceil( log2( real( WIDTH_G ) ) ) ) + 1;
   type StateType is ( IDLE, CHIPSEL, CHIPSELB, SHIFT, DONE );
 
+  constant SCLK_INACTIVE_C : std_logic := '0';
+
+  function max(a,b,c: integer)
+    return integer is
+  begin
+    return ite( a > b, ite( a > c, a, c ), ite( b > c, b, c ) );
+  end function max;
+
+  constant PRHI_C : natural := max( DIV2_G, CSLO_G, CSHI_G );
+
   type RegType is record
     state    : StateType;
     clkCnt   : unsigned(LD_W_C - 1 downto 0);
     sreg     : std_logic_vector(WIDTH_G downto 0);
     scsb     : std_logic;
-    prsc     : natural range 0 to DIV2_G - 1;
+    prsc     : natural range 0 to PRHI_C - 1;
+    sclk     : std_logic;
   end record RegType;
 
   constant REG_INIT_C : RegType := (
@@ -55,6 +66,7 @@ architecture Impl of SpiBitShifter is
     clkCnt   => (others => '0'),
     sreg     => (others => '1'),
     scsb     => '1',
+    sclk     => SCLK_INACTIVE_C,
     prsc     => 0
   );
 
@@ -64,29 +76,35 @@ architecture Impl of SpiBitShifter is
   constant CSLO_C : positive := ite( CSLO_G = 0, DIV2_G, CSLO_G );
   constant CSHI_C : positive := ite( CSHI_G = 0, DIV2_G, CSHI_G );
 
-  
 begin
 
   P_COMB : process ( r, datInp, csbInp, serInp, vldInp, rdyOut ) is
-    variable v : RegType;
+    variable v         : RegType;
+    variable vldOutLoc : std_logic;
   begin
     v := r;
     if ( r.prsc > 0 ) then
       v.prsc := r.prsc - 1;
     end if;
-    vldOut <= '0';
-    rdyInp <= '0';
+    vldOutLoc := '0';
+    rdyInp    <= '0';
     case ( r.state ) is
       when IDLE =>
         rdyInp <= '1';
         if ( vldInp = '1' ) then
           -- if chip-select changes then handle this first
-          v.sreg  := datInp & '0';
-          v.prsc  := DIV2_G - 1;
+          v.sreg   := datInp & '0';
+          v.prsc   := DIV2_G - 1;
+          v.scsb   := csbInp;
+          v.sclk   := SCLK_INACTIVE_C;
+          v.clkCnt := to_unsigned(2*WIDTH_G - 1, v.clkCnt'length);
           if ( csbInp = '0' ) then
-            v.scsb  := '0';
-            v.state := CHIPSEL;
-            v.prsc  := CSLO_C - 1;
+            v.state   := SHIFT;
+            if ( r.scsb = '1' ) then
+               v.prsc    := CSLO_C - 1;
+            else
+               v.prsc    := DIV2_G - 1;
+            end if;
           else
             v.state := CHIPSELB;
             v.prsc  := CSHI_C - 1;
@@ -95,11 +113,8 @@ begin
 
       when CHIPSELB =>
         if ( r.prsc = 0 ) then
-          v.prsc  := DIV2_G - 1;
-          v.scsb  := '1';
-          if ( r.scsb = '1' ) then
-            v.state := DONE;
-          end if;
+          -- hold CHIPSELB for required time before accepting a new command
+          v.state := DONE;
         end if;
 
       when CHIPSEL =>
@@ -117,27 +132,34 @@ begin
 
       when SHIFT =>
         if ( r.prsc = 0 ) then
+          v.sclk   := not r.sclk;
           v.clkCnt := r.clkCnt - 1;
-          if ( r.clkCnt = 1 ) then
-            v.state := DONE;
+          if ( r.clkCnt = 0 ) then
+            vldOutLoc := '1';
+            -- possible shortcut (see below)
+            v.state   := DONE;
           else
             v.prsc := DIV2_G - 1;
-            if ( r.clkCnt(0) = '1' ) then
-              -- negative edge, shift out
-              v.sreg(r.sreg'left downto 1) := r.sreg( r.sreg'left - 1 downto 0 );
-            else
-              -- positive edge, register serial input
-              v.sreg(0) := serInp;
-            end if;
+          end if;
+          if ( r.sclk = SCLK_INACTIVE_C ) then
+            -- positive edge, register serial input
+            v.sreg(0) := serInp;
+          else
+            -- negative edge, shift out
+            v.sreg(r.sreg'left downto 1) := r.sreg( r.sreg'left - 1 downto 0 );
           end if;
         end if;
 
       when DONE =>
-        vldOut <= '1';
-        if ( rdyOut = '1' ) then
-          v.state := IDLE;
-        end if;
+        vldOutLoc := '1';
     end case;
+
+    vldOut <= vldOutLoc;
+
+    -- from some states this shortcuts into IDLE
+    if ( (vldOutLoc and rdyOut) = '1' ) then
+       v.state := IDLE;
+    end if;
 
     rin <= v;
   end process P_COMB;
@@ -154,7 +176,7 @@ begin
   end process P_SEQ;
 
   -- assign outputs
-  serClk <= std_logic( r.clkCnt(0) );
+  serClk <= r.sclk;
   serOut <= r.sreg( r.sreg'left );
   serCsb <= r.scsb;
   datOut <= r.sreg( datOut'range );
