@@ -65,14 +65,17 @@ cdef extern from "ad8370Sup.h":
   int            ad8370Write(FWInfo *fw, unsigned channel, float att) nogil
   int            ad8370SetAtt(FWInfo *fw, unsigned channel, float att) nogil
 
+cpdef enum DAC47CXRefSelection:
+  DAC47XX_VREF_INTERNAL_X1
+
 cdef extern from "dac47cxSup.h":
   int            dac47cxReset(FWInfo *) nogil
-  int            dac47cxInit(FWInfo *) nogil
   void           dac47cxGetRange(FWInfo *, int *tickMin, int *tickMax, float *voltMin, float *voltMax) nogil
   int            dac47cxSetVolt(FWInfo *fw, unsigned channel, float val) nogil
   int            dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val) nogil
   int            dac47cxSet(FWInfo *fw, unsigned channel, int val) nogil
   int            dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val) nogil
+  int            dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel) nogil
 
 cdef extern from "max195xxSup.h":
   int            max195xxReadReg( FWInfo *fw, unsigned reg, uint8_t *val ) nogil

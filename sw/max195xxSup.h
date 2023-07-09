@@ -27,9 +27,6 @@ max195xxDLLLocked( FWInfo *fw );
 int
 max195xxSetTiming( FWInfo *fw, int dclkDelay, int dataDelay);
 
-int
-max195xxInit( FWInfo *fw );
-
 typedef enum { NO_TEST, RAMP_TEST, AA55_TEST } Max195xxTestMode;
 
 int

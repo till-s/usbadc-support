@@ -254,16 +254,6 @@ cdef class Max195xxADC(FwDev):
     if ( rv < 0 ):
       raise IOError("Max195xxADC.readReg()")
 
-  def init(self):
-    cdef int rv
-    with self._mgr as fw, nogil:
-      rv = max195xxInit( fw )
-    if ( rv < 0 ):
-      if ( -3 == rv ):
-        raise RuntimeError("Max195ccADC.init(): ADC may have no clock")
-      else:
-        raise IOError("Max195xxADC.init()")
-
   def setTestMode(self, Max195xxTestMode m):
     cdef int st
     with self._mgr as fw, nogil:
@@ -293,6 +283,10 @@ cdef class Max195xxADC(FwDev):
     elif ( st < 0 ):
       raise IOError("Max195xxADC.setTiming()")
 
+  def setMuxedModeB(self):
+    # muxed/DDR mode on port B
+    self.writeReg( 1, 0x06 )
+
 cdef class DAC47CX(FwDev):
 
   def reset(self):
@@ -302,13 +296,6 @@ cdef class DAC47CX(FwDev):
     if ( st < 0 ):
       raise IOError("DAC47CX.reset()")
 
-  def init(self):
-    cdef int st
-    with self._mgr as fw, nogil:
-      st = dac47cxInit( fw )
-    if ( st < 0 ):
-      raise IOError("DAC47CX.init()")
- 
   def getRange(self):
     cdef float vmin, vmax
     with self._mgr as fw, nogil:
@@ -359,6 +346,13 @@ cdef class DAC47CX(FwDev):
       else:
         raise IOError("DAC47CX.getVolt()")
     return volt
+
+  def setRefInternalX1(self):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = dac47cxSetRefSelection(fw, DAC47CXRefSelection.DAC47XX_VREF_INTERNAL_X1)
+    if ( rv < 0 ):
+      raise IOError("DAC47CX.getRefInternalX1(): failed")
 
 cdef class Amp(FwDev):
 
@@ -420,9 +414,6 @@ cdef class FEC(FwDev):
   def __init__(self, *args, **kwargs):
     pass
 
-  def init(self):
-    pass
-
   def hasACModeCtl(self, int channel):
     raise RuntimeError("Front-End has no AC-coupling controller switch")
 
@@ -473,15 +464,6 @@ cdef class I2CFEC(FEC):
     self._dev = I2CDev( self.mgr() )
     self._sla = sla
     self.allOutputs()
-
-  def init(self):
-    super().init()
-    for ch in [0,1]:
-      try:
-        self.setTermination( ch, False )
-      except RuntimeError:
-        # may have none
-        pass
 
   def outReg(self, int channel):
     return 1
@@ -723,9 +705,52 @@ cdef class FwComm:
     self._clk.setOutDiv( self._clkOut["EXT"], 4095.0 )
     self._clk.setFODRoute( self._clkOut["EXT"], CASC_FOD )
     self._clk.setFODRoute( self._clkOut["ADC"], NORMAL   )
-    self._fec.init()
-    self._dac.init()
-    self._adc.init()
+    for ch in [0,1]:
+      try:
+        self._fec.setTermination( ch, False )
+      except RuntimeError:
+        # may have no fec support
+        pass
+    self._dac.reset()
+    self._dac.setRefInternalX1()
+    self._adc.reset()
+    # wait a little bit before initializing the ADC
+    sleep(0.1)
+    # initialize the ADC
+    if not self._adc.dllLocked():
+      raise RuntimeError("ADC may have no clock")
+    self._adc.setMuxedModeB()
+    if ( 0 == brdVrs ):
+	  # Empirically found setting for the prototype board
+      self._adc.setTiming( -1, 3 )
+    else:
+      # on artix board with constraints the 'nominal' settings
+      # seem much better
+      self._adc.setTiming( 0, 0 )
+    if ( 0 == brdVrs ):
+      # set common-mode voltage (also important for PGA output)
+      #
+      # ADC: common mode input voltage range 0.4..1.4V
+      # ADC: controls common mode voltage of PGA
+      # PGA: output common mode voltage: 2*OCM
+      # Resistive divider 232/(232+178)
+      #
+      # PGA VOCM = 2*ADC_VCM
+      #
+      # Valid range for PGA: 2..3V (2.5V best)
+      #
+      # Common-mode register 8:
+      #   bit 6..4, 2..0:
+      #         000       -> 0.9 V
+      #         001       -> 1.05V
+      #         010       -> 1.2V
+      #
+      # With 1.2V -> VOCM of PGA becomes 2.4V   (near optimum)
+      #           -> VICM of ADC becomes 1.358V (close to max)
+      # With 1.05 -> VOCM of PGA becomes 2.1V   (close to min)
+      #           -> VICM of ADC becomes 1.188V (OK)
+      #
+      self._adc.setCMVolt( Max195xxCMVolt.CM_1050mV, Max195xxCMVolt.CM_1050mV )
 
   def getAdcClkFreq(self):
     return self._clkFRef * self._clk.getFBDiv() / self._clk.getOutDiv(self._clkOut["ADC"]) / 2.0

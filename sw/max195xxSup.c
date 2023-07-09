@@ -53,7 +53,9 @@ uint8_t val;
 	return (val & 0x11) == 0x11 ? 0 : -3;
 }
 
-int
+#if 0
+/* this should eventually go away */
+static int
 max195xxInit( FWInfo *fw )
 {
 int     rv;
@@ -99,6 +101,7 @@ int     rv;
 
 	return max195xxSetCMVolt( fw, CM_1050mV, CM_1050mV );
 }
+#endif
 
 #define TIMING_REG 3
 
