@@ -7,6 +7,8 @@
 #include "fwComm.h"
 #include "at25Sup.h"
 
+#define VERIFY_AFTER_WRITE 0
+
 #define AT25_PAGE          256
 #define AT25_OP_ID         0x9f
 #define AT25_OP_FAST_READ  0x0b
@@ -24,9 +26,17 @@
 #define AT25_ST_WEL        0x02
 #define AT25_ST_EPE        0x20
 
-static int verify(FWInfo *fw, unsigned addr, const uint8_t *cmp, size_t len, int addnl);
+static int
+verify(FWInfo *fw, unsigned addr, const uint8_t *cmp, size_t len, int addnl);
 
-static int do_xfer(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
+static int
+do_xfer(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
+
+static int
+do_xfer_bb(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
+
+static int
+do_xfer_spi(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
 
 int
 at25_id(FWInfo *fw)
@@ -312,7 +322,7 @@ uint8_t        junk[AT25_PAGE];
 				goto bail;
 			}
 
-			if ( 1 ) {
+			if ( (check & AT25_CHECK_VERIFY) && VERIFY_AFTER_WRITE ) {
 				if ( verify( fw, wrkAddr, src, x, 0 ) ) {
 					return -1;
 				}
@@ -351,6 +361,17 @@ bail:
 static int
 do_xfer(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
 {
+	if ( !! ( FW_FEATURE_SPI_CONTROLLER & fw_has_feature( fw ) ) ) {
+		return do_xfer_spi(fw, hdr, hlen, tbuf, rbuf, buflen);
+	} else {
+		return do_xfer_bb(fw, hdr, hlen, tbuf, rbuf, buflen);
+	}
+}
+
+
+static int
+do_xfer_spi(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
+{
 uint8_t cmd = fw_get_cmd( FW_CMD_SPI );
 tbufvec tv[2];
 rbufvec rv[2];
@@ -367,6 +388,7 @@ uint8_t hbuf[64];
 		tv[nt].buf = hdr;
 		tv[nt].len = hlen;
 		nt++;
+		
 		rv[nr].buf = hbuf;
 		rv[nr].len = hlen;
 		nr++;
@@ -384,7 +406,7 @@ uint8_t hbuf[64];
 }
 
 static int
-do_xfer_old(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
+do_xfer_bb(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
 {
 unsigned onelen = 0;
 int      rv     = 0;

@@ -7,6 +7,8 @@
 #include "cmdXfer.h"
 #include "fwComm.h"
 
+#define FWCOMM_API_VERSION_1  1
+
 #define CS_SHFT   0
 #define SCLK_SHFT 1
 #define MOSI_SHFT 2
@@ -126,6 +128,16 @@ fw_get_cmd(FWCmd aCmd)
 			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
 			abort();
 	}
+}
+
+uint64_t
+fw_has_feature(FWInfo *fw)
+{
+uint64_t f = 0;
+	if ( fw->apiVers >= FWCOMM_API_VERSION_1 ) {
+		f |= FW_FEATURE_SPI_CONTROLLER;
+	}
+	return f;
 }
 
 static int64_t
