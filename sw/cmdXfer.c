@@ -146,14 +146,23 @@ static void prb(const char * hdr, const uint8_t *b, size_t l)
 }
 
 static size_t
-stuff(uint8_t *dbuf, const uint8_t *buf)
+stuff(uint8_t *dbuf, ssize_t dbufsz, const uint8_t *buf)
 {
 size_t rval = 0;
 
 	/* Stuff dbuf */
 	if ( ( COMMA == *buf ) || ( ESCAP == *buf ) ) {
-		dbuf[rval] = ESCAP;	
+		if ( dbufsz <= 0 ) {
+			fprintf(stderr, "Stuff buffer overrun\n");
+			abort();
+		}
+		dbuf[rval] = ESCAP;
 		rval++;
+		dbufsz--;
+	}
+	if ( dbufsz <= 0 ) {
+		fprintf(stderr, "Stuff buffer overrun\n");
+		abort();
 	}
 	dbuf[rval] = *buf;
 	rval++;
@@ -198,7 +207,7 @@ int             cmdReadback = 0;
 struct timespec timeout;
 
 	tlens = 0;
-	rlens = sizeof(rbufs); 
+	rlens = sizeof(rbufs);
 	put   = got  = tot = 0;
 	puts  = 0;
 	tidx  = ridx = 0;
@@ -212,7 +221,7 @@ struct timespec timeout;
     warned = (0 == rlen ? 1 : 0);
 
 	if ( cmdp ) {
-		tlens      += stuff( tbufs + tlens, cmdp );
+		tlens      += stuff( tbufs + tlens, sizeof(tbufs) - tlens, cmdp );
 		cmdReadback = 1;
 	}
 
@@ -225,7 +234,7 @@ struct timespec timeout;
 			if ( ( tlen > put ) ) {
 				while ( ( tlen > put ) && ( tlens < sizeof(tbufs) - 3 ) ) {
 					/* Stuff tbuf */
-					tlens += stuff( tbufs + tlens, tbuf[tidx].buf + put );
+					tlens += stuff( tbufs + tlens, sizeof(tbufs) - tlens, tbuf[tidx].buf + put );
 					put++;
 					while ( put == tlen && ++tidx < tcnt ) {
 						put  = 0;
@@ -282,7 +291,7 @@ struct timespec timeout;
 				if ( ESC != state && COMMA == rbufs[j] ) {
 					state = DONE;
 					if ( j + 1 < i ) {
-						fprintf(stderr, "fifoXferFrame: WARNING -- receved comma but there are extra data\n");
+						fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
 						break;
 					}
 				} else if ( ESC != state && ESCAP == rbufs[j] ) {
@@ -316,7 +325,7 @@ struct timespec timeout;
 	tot += got;
 
 	return tot;
-	
+
 bail:
 	return -1;
 }
