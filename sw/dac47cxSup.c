@@ -1,5 +1,3 @@
-#ifndef USBADC_DAC47CX_SUP
-#define USBADC_DAC47CX_SUP
 
 #include "dac47cxSup.h"
 #include "fwComm.h"
@@ -43,7 +41,19 @@ uint8_t     buf[4];
 }
 
 int
-dac47cxReset(FWInfo *fw)
+dac47cxDetectMax(DAC47CXDev *dac)
+{
+uint16_t val;
+
+	if ( dac47cxReset( dac )          < 0 ) return -1;
+	if ( dac47cxGet  ( dac, 0, &val ) < 0 ) return -1;
+	dac->dacMax = val;
+	dac->dacMax = ((dac->dacMax + 1) << 1) - 1;
+	return 0;
+}
+
+int
+dac47cxReset(DAC47CXDev *dac)
 {
 uint8_t     buf[2];
 
@@ -205,8 +215,30 @@ int      maxDac = dacMax(fw);
 	return 0;
 }
 
+int
+dac47cxSetRefSelection( DAC47CXDev *dac, DAC47CXRefSelection sel)
+{
+	switch ( sel ) {
+		case DAC47XX_VREF_INTERNAL_X1:
+			/* select internal bandgap (leave at gain 1)
+			 * according to datasheet, if we use the internal
+			 * bandgap then
+			 *  - all channels must use it
+			 *  - select on ch0
+			 *  - other channels must be in external, buffered mode
+			 */
+			if ( dac47cxWriteReg( dac, REG_VREF, VREF_CH1(VREF_EXT_BUF) | VREF_CH0(VREF_INTERNAL) ) < 0 ) {
+				return -1;
+			}
+			break;
+		default:
+			fprintf(stderr, "Error -- dac47cxSetRefSelection(): invalid/unsupported choice\n");
+			return -1;
+	}
+	return 0;
+}
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif
