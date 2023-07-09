@@ -971,6 +971,67 @@ cdef class FwCommExprt(FwComm):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
+  def xfer(self, uint8_t cmd, txb = None, rxb = None):
+    cdef Py_buffer tb
+    cdef Py_buffer rb
+    cdef int       rv
+    cdef uint8_t  *tp;
+    cdef uint8_t  *rp;
+    cdef size_t    tl;
+    cdef size_t    rl;
+    cdef size_t    l;
+
+    tp = <uint8_t*>0
+    rp = <uint8_t*>0
+    tl = 0
+    rl = 0
+    if ( not txb is None ):
+      if ( not PyObject_CheckBuffer( txb ) or 0 != PyObject_GetBuffer( txb, &tb, PyBUF_C_CONTIGUOUS ) ):
+        raise ValueError("FwComm.xfer txb arg must support buffer protocol")
+      if ( tb.itemsize != 1 ):
+        PyBuffer_Release( &tb )
+        raise ValueError("FwComm.xfer txb itemsize must be 1")
+      tp = <uint8_t*>tb.buf
+      tl = tb.len
+      if tl == 0:
+        tp = <uint8_t*>0
+
+    if ( not rxb is None ):
+      if ( not PyObject_CheckBuffer( rxb ) or 0 != PyObject_GetBuffer( rxb, &rb, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
+        raise ValueError("FwComm.xfer rxb arg must support buffer protocol")
+      if ( rb.itemsize != 1 ):
+        PyBuffer_Release( &rb )
+        raise ValueError("FwComm.xfer rxb itemsize must be 1")
+      rp = <uint8_t*>rb.buf
+      rl = rb.len
+      if rl == 0:
+        rp = <uint8_t*>0
+
+    if ( rl != 0 and tl !=0 and rl != tl ):
+        if ( not rxb is None ):
+          PyBuffer_Release( &rb )
+        if ( not txb is None ):
+          PyBuffer_Release( &tb )
+        raise ValueError("FwComm.xfer txb and rxb must be of the same size (or None)")
+
+    # tl and rl are either the same or one of them is 0
+    if tl > 0:
+      l = tl
+    else:
+      l = rl
+
+    with self._mgr as fw, nogil:
+      rv = fw_xfer( fw, cmd, tp, rp, l )
+
+    if ( not txb is None ):
+      PyBuffer_Release( &tb )
+    if ( not rxb is None ):
+      PyBuffer_Release( &rb )
+    if ( rv < 0 ):
+      PyErr_SetFromErrnoWithFilenameObject(OSError, self.mgr().name())
+    return rv
+
+
   def adcReadReg(self, reg):
     return self._adc.readReg( reg )
 
