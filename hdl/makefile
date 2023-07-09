@@ -81,7 +81,7 @@ SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 MaxAdc.o: MaxAdc.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-CommandWrapper.o: CommandWrapper.vhd GitVersionPkg.o
+CommandWrapper.o: CommandWrapper.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
@@ -110,7 +110,7 @@ SynchronizerBit.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
 BitBangIF.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o SynchronizerBit.o BasicPkg.o
 CommandBitBang.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o CommandMuxPkg.o BitBangIF.o
 MaxAdc.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ILAWrapper.o AcqCtlPkg.o BasicPkg.o CicFilter.o PipelinedRShifter.o MulShifter.o
-CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o GitVersionPkg.o CommandAcqParm.o CommandSpi.o
+CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o CommandAcqParm.o CommandSpi.o
 CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
 PipelinedRShifterTb.o: PipelinedRShifter.o
@@ -125,16 +125,10 @@ SpiRegTb.o: SpiReg.o
 GITVERSION:=$(shell git rev-parse --short=8 HEAD)
 BRDVERSION:=01
 
-GitVersionPkg.vhd: $(HEREDIR)/GitVersionPkg.vhd.in .FORCE
-	echo $(GITVERSION)
-	@if [ ! -f $@ -o $@ -ot $< ] || ! grep -q $(GITVERSION) $@ ; then echo DOIT; sed -e 's/#SUBST#/$(GITVERSION)/' -e 's/#BOARD#/$(BRDVERSION)/' < $< > $@; else echo SKIP; fi
-
-git: GitVersionPkg.vhd
-
 .PHONY: .FORCE
 
 clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb
-	$(RM) dump.ghw work-obj*.cf e~*.o GitVersionPkg.vhd cicfiltertb CicFilterTb.o GitVersionPkg.o
+	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
 	$(RM) spiregtb SpiRegTb.o
 	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o

@@ -3,7 +3,6 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 use work.CommandMuxPkg.all;
-use work.GitVersionPkg.all;
 use work.AcqCtlPkg.all;
 
 entity CommandWrapper is
@@ -29,7 +28,9 @@ entity CommandWrapper is
       DDR_TYPE_G               : string  := "IDDR2";
       IDELAY_TAPS_G            : natural := 0;
       INVERT_POL_CHA_G         : boolean := false;
-      INVERT_POL_CHB_G         : boolean := false
+      INVERT_POL_CHB_G         : boolean := false;
+      GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
+      BOARD_VERSION_G          : std_logic_vector( 7 downto 0) := x"00"
    );
    port (
       clk          : in  std_logic;
@@ -102,12 +103,12 @@ architecture rtl of CommandWrapper is
    signal   acqParmsAck       : std_logic;
 
    constant VERSION_C : Slv8Array := (
-      0 => BOARD_VERSION_C,
+      0 => BOARD_VERSION_G,
       1 => CMD_API_VERSION_C,
-      2 => GIT_VERSION_C(31 downto 24),
-      3 => GIT_VERSION_C(23 downto 16),
-      4 => GIT_VERSION_C(15 downto  8),
-      5 => GIT_VERSION_C( 7 downto  0)
+      2 => GIT_VERSION_G(31 downto 24),
+      3 => GIT_VERSION_G(23 downto 16),
+      4 => GIT_VERSION_G(15 downto  8),
+      5 => GIT_VERSION_G( 7 downto  0)
    );
 
    signal verAddr     : integer range -1 to VERSION_C'high := -1;
