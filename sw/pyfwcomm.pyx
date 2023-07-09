@@ -122,6 +122,9 @@ cdef class FwMgr:
   def __dealloc__(self):
     fw_close( self._fw )
 
+  def name(self):
+    return self._nm
+
 cdef class FwDev:
   cdef FwMgr _mgr
 
@@ -576,7 +579,6 @@ cdef class GpioFECv1(I2CFEC):
 
 cdef class FwComm:
   cdef FwMgr           _mgr
-  cdef const char     *_nm
   cdef VersaClk        _clk
   cdef DAC47CX         _dac
   cdef Amp             _amp
@@ -836,7 +838,7 @@ cdef class FwComm:
       raise ValueError("FwComm.read arg buffer itemsize must be 1 or {:d}".format(sizeof(float)))
     PyBuffer_Release( &b )
     if ( rv < 0 ):
-      PyErr_SetFromErrnoWithFilenameObject(OSError, self._nm)
+      PyErr_SetFromErrnoWithFilenameObject(OSError, self.mgr().name())
     return rv, hdr
 
   def acqGetTriggerLevelPercent(self):
