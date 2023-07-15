@@ -645,7 +645,7 @@ begin
                if ( rRd.anb ) then
                   v.busOb.dat := (others => '0');
                   if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rWr.taddr(rWr.taddr'left downto 8));
+                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rWrCC.taddr(rWrCC.taddr'left downto 8));
                   end if;
                   -- prefetch/register (raddr is incremented; see above)
                   v.rdatA := rdatA;
