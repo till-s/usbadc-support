@@ -11,7 +11,8 @@ package BasicPkg is
    function ite(constant x : in boolean; constant a,b: in std_logic) return std_logic;
    function ite(constant x : in boolean; constant a,b: in integer  ) return integer;
 
-   subtype Slv8 is std_logic_vector(7 downto 0);
+   subtype Slv8Type  is std_logic_vector(7 downto 0);
+   type    Slv8Array is array(integer range <>) of Slv8Type;
 
 end package BasicPkg;
 
