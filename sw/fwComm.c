@@ -384,19 +384,70 @@ bb_spi_cs(FWInfo *fw, SPIDev type, int val)
 
 #define BUF_BRK 1024
 
+/* work buffer is assumed to have space for stretch*2*8*len octets */
+static void
+shift_into_buf(uint8_t *xbuf, unsigned stretch, const uint8_t *tbuf, uint8_t *zbuf, size_t len)
+{
+int      i,j,k;
+uint8_t  bbo;
+uint8_t *p;
+uint8_t  z,v;
+
+	p = xbuf;
+
+	for ( i = 0; i < len; i++ ) {
+		v = tbuf ? tbuf[i] : 0;
+		z = zbuf ? zbuf[i] : 0;
+		for ( j = 0; j < 8; j++ ) {
+			bbo = ( (((v & 0x80) ? 1 : 0) << MOSI_SHFT) | (0 << SCLK_SHFT) | (0 << CS_SHFT) ) | SPI_MASK ;
+			if ( ! (z & 0x80) ) {
+				bbo &= ~(1 << HIZ_SHFT);
+			}
+			for ( k = 0; k < stretch; k++ ) {
+				*p = bbo;
+				++p;
+			}
+            bbo     |= (1 << SCLK_SHFT);
+			for ( k = 0; k < stretch; k++ ) {
+				*p = bbo;
+				++p;
+			}
+			v      <<= 1;
+			z      <<= 1;
+		}
+	}
+}
+
+static void
+shift_outof_buf(uint8_t *xbuf, unsigned stretch, uint8_t *rbuf, size_t len)
+{
+int      i,j;
+uint8_t *p;
+uint8_t  v;
+
+	p = xbuf;
+
+	for ( i = 0; i < len; i++ ) {
+		v = 0;
+		for ( j = 0; j < 2*8; j += 2 ) {
+			v   = (v << 1 ) | ( (p[stretch*j + 2*stretch - 1] & (1 << MISO_SHFT)) ? 1 : 0 );
+		}
+
+		p += stretch * j;
+		rbuf[i] = v;
+	}
+}
+
 int
 bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
 {
-uint8_t *xbuf       = malloc(BUF_BRK*8*2);
-int      stretch    = 1;
+int      stretch    = 2;
 uint8_t *stretchbuf = malloc(BUF_BRK*8*2*stretch);
 int      stretchlen;
-uint8_t *p;
 int      rval = -1;
 size_t   work = len;
 size_t   xlen;
-int      i,j;
-uint8_t  v,z;
+int      i;
 uint8_t  subcmd;
 
 	if ( ( i = spi_get_subcmd( fw, type ) ) < 0 ) {
@@ -405,38 +456,17 @@ uint8_t  subcmd;
 	}
 	subcmd = (uint8_t) i;
 
-	if ( ! xbuf ) {
+	if ( ! stretchbuf ) {
 		perror("bb_spi_xfer_nocs(): unable to allocate buffer memory");
 		goto bail;
 	}
 
 	while ( work > 0 ) {
 		xlen = work > BUF_BRK ? BUF_BRK : work;
-		p    = xbuf;
 
-		for ( i = 0; i < xlen; i++ ) {
-			v = tbuf ? tbuf[i] : 0;
-            z = zbuf ? zbuf[i] : 0;
-			for ( j = 0; j < 2*8; j += 2 ) {
-				p[j + 0] = ( (((v & 0x80) ? 1 : 0) << MOSI_SHFT) | (0 << SCLK_SHFT) | (0 << CS_SHFT) ) | SPI_MASK ;
-				if ( ! (z & 0x80) ) {
-					p[j + 0] &= ~(1 << HIZ_SHFT);
-				}
-				p[j + 1] = p[j+0] | (1 << SCLK_SHFT);
-				v      <<= 1;
-				z      <<= 1;
-			}
-			p += j;
-		}
+		shift_into_buf( stretchbuf, stretch, tbuf, zbuf, xlen );
 
-		stretchlen = 0;
-		for ( i = 0; i < xlen*2*8; i++ ) {
-			for ( j = 0; j < stretch; j++ ) {
-				stretchbuf[stretchlen] = xbuf[i];
-				stretchlen++;
-			}
-		}
-
+		stretchlen = xlen * 2 * 8 * stretch;
 
 		if ( fw_xfer_bb( fw, subcmd, stretchbuf, stretchbuf, stretchlen ) ) {
 			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer_bb failed\n");
@@ -446,27 +476,18 @@ uint8_t  subcmd;
 
 		if ( rbuf ) {
 
-			p = stretchbuf; /*xbuf;*/
-
-			for ( i = 0; i < xlen; i++ ) {
-				v = 0;
-				for ( j = 0; j < 2*8; j += 2 ) {
-					v   = (v << 1 ) | ( (p[stretch*j + 1] & (1 << MISO_SHFT)) ? 1 : 0 );
-				}
-				p += stretch * j;
-				rbuf[i] = v;
-			}
+            shift_outof_buf( stretchbuf, stretch, rbuf, xlen );
 
 			rbuf += xlen;
 		}
 		if ( tbuf ) tbuf += xlen;
+		if ( zbuf ) zbuf += xlen;
 		work             -= xlen;
 	}
 
 	rval = len;
 
 bail:
-	free( xbuf );
 	free( stretchbuf );
 	return rval;
 }
