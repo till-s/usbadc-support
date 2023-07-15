@@ -101,7 +101,7 @@ SimPtyIO.o: SimPtyIO.cc
 /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o
 /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o: 
 /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o
-CommandMuxPkg.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o
+CommandMuxPkg.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o BasicPkg.o
 ByteStuffer.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
 SFifo.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o
 ByteDeStuffer.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
