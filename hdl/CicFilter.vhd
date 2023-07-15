@@ -24,9 +24,14 @@ entity CicFilter is
       dataInp      : in  signed  (DATA_WIDTH_G - 1 downto 0);
       -- overrange in
       dovrInp      : in  std_logic                                    := '0';
+      -- trigger in; delayed with the data
+      trigInp      : in  std_logic                                    := '0';
+      -- aux signal; delayed
       dataOut      : out signed  (DATA_WIDTH_G + LD_MAX_DCM_G*NUM_STAGES_G - 1 downto 0);
       -- overrange_out
       dovrOut      : out std_logic;
+      -- trigger out
+      trigOut      : out std_logic;
       strbOut      : out std_logic
    );
 end entity CicFilter;
@@ -37,16 +42,19 @@ architecture rtl of CicFilter is
 
    signal   dataIntg  : DataArray(0 to NUM_STAGES_G)                 := (others => (others => '0') );
    signal   dovrIDel  : std_logic_vector(0 to NUM_STAGES_G)          := (others => '0');
+   signal   trigIDel  : std_logic_vector(0 to NUM_STAGES_G)          := (others => '0');
 
    signal   dataDely  : DataArray(NUM_STAGES_G - 1 downto 0)         := (others => (others => '0') );
    signal   diffDecm  : DataArray(NUM_STAGES_G     downto 0)         := (others => (others => '0') );
    signal   dovrDDel  : std_logic_vector(NUM_STAGES_G downto 0)      := (others => '0');
+   signal   trigDDel  : std_logic_vector(NUM_STAGES_G downto 0)      := (others => '0');
 
    signal   cenDecm   : std_logic_vector(NUM_STAGES_G downto 0)      := (others => '0');
 
    signal   count     : unsigned(decmInp'range)                      := (others => '0');
 
    signal   dovrDecm  : std_logic                                    := '0';
+   signal   trigDecm  : std_logic                                    := '0';
    signal   strbLoc   : std_logic;
 
 begin
@@ -64,6 +72,7 @@ begin
 
    dataIntg(0) <= resize( dataInp, dataIntg(0)'length );
    dovrIDel(0) <= dovrInp;
+   trigIDel(0) <= trigInp;
 
    G_INTG : for i in 1 to NUM_STAGES_G generate
    begin
@@ -73,6 +82,7 @@ begin
             if ( cen = '1' ) then
                dataIntg(i) <= dataIntg(i) + dataIntg(i - 1);
                dovrIDel(i) <= dovrIDel(i - 1);
+               trigIDel(i) <= trigIDel(i - 1);
             end if;
          end if;
       end process P_INTG;
@@ -81,6 +91,8 @@ begin
    diffDecm(NUM_STAGES_G) <= dataIntg(NUM_STAGES_G);
    -- or together all overranges accumulated during a decimation cycle
    dovrDDel(NUM_STAGES_G) <= (dovrIDel(NUM_STAGES_G) or dovrDecm);
+   -- or together all triggers accumulated during a decimation cycle
+   trigDDel(NUM_STAGES_G) <= (trigIDel(NUM_STAGES_G) or trigDecm);
 
    G_DIFF : for i in NUM_STAGES_G - 1 downto 0 generate
       P_DIFF : process ( clk ) is
@@ -90,6 +102,7 @@ begin
                diffDecm(i) <= diffDecm(i+1) - dataDely(i);
                dataDely(i) <= diffDecm(i+1);
                dovrDDel(i) <= dovrDDel(i+1);
+               trigDDel(i) <= trigDDel(i+1);
             end if;
          end if;
       end process P_DIFF;
@@ -125,8 +138,10 @@ begin
          if ( cen = '1' ) then
             if ( cenDecm(cenDecm'left) = '1' ) then
                dovrDecm <= '0';
+               trigDecm <= '0';
             else
                dovrDecm <= dovrDDel(NUM_STAGES_G);
+               trigDecm <= trigDDel(NUM_STAGES_G);
             end if;
          end if;
       end if;
@@ -134,6 +149,7 @@ begin
 
    dataOut <= diffDecm(0);
    dovrOut <= dovrDDel(0);
+   trigOut <= trigDDel(0);
    strbOut <= strbLoc;
    cenbOut <= cenDecm;
 

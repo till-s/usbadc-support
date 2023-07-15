@@ -57,7 +57,9 @@ entity MaxADC is
 
       pllRst      : in  std_logic := '0';
 
-      dlyRefClk   : in  std_logic := '0'
+      dlyRefClk   : in  std_logic := '0';
+
+      extTrg      : in  std_logic := '0'
    );
 end entity MaxADC;
 
@@ -200,6 +202,9 @@ architecture rtl of MaxADC is
    signal rdat0     : RamWord;
    signal rdat1     : RamWord;
 
+   -- external trigger synced into clock domain
+   signal extTrgSyn : std_logic;
+
    -- raw ADC Data
    signal fdatA     : ADCWord;
    signal fdatB     : ADCWord;
@@ -226,7 +231,7 @@ architecture rtl of MaxADC is
    signal rdDon             : std_logic;
    signal wrEna             : boolean;
    signal wrDecm            : std_logic := '1';
-   signal extTrgSyncDelayed : std_logic := '0'; -- must be delayed by decimation filter group delay
+   signal extTrgSynDelayed  : std_logic := '0'; -- must be delayed by decimation filter group delay
    signal startAcq          : std_logic := '0';
 
    signal acqTglIb          : std_logic;
@@ -458,6 +463,14 @@ begin
          rst       => '0',
          datInp(0) => rRd.rdDon,
          datOut(0) => rdDon
+      );
+
+   U_EXT_TRG_SYNC : entity work.SynchronizerBit
+      port map (
+         clk       => filClk,
+         rst       => '0',
+         datInp(0) => extTrg,
+         datOut(0) => extTrgSyn
       );
 
    wrEna <= ( ( (not memFull) and wrDecm ) = '1' );
@@ -709,7 +722,7 @@ begin
 
    -- compare the un-delayed wdatAin/wdatBin to produce the registered
    -- trigger 'trg'...
-   P_TRG : process ( rWr, lparms, wdatAin, wdatBin, extTrgSyncDelayed ) is
+   P_TRG : process ( rWr, lparms, wdatAin, wdatBin, extTrgSynDelayed ) is
       variable v      : std_logic;
       variable l      : signed(wdatAin'range);
    begin
@@ -725,7 +738,7 @@ begin
                v := '1';
             end if;
          when EXT =>
-            v := extTrgSyncDelayed;
+            v := extTrgSynDelayed;
          when others => -- manual
             -- handle separately
       end case;
@@ -961,8 +974,10 @@ begin
 
       signal   stg0CicDatA          : signed(STG0_W_C - 1 downto 0);
       signal   stg0CicDorA          : std_logic;
+      signal   stg0CicTrgA          : std_logic;
       signal   stg0ShfDatA          : signed(stg0Scl'length + stg0CicDatA'length - 1 downto 0);
       signal   stg0ShfDorA          : std_logic;
+      signal   stg0ShfTrgA          : std_logic;
 
       signal   stg0CicDatB          : signed(STG0_W_C - 1 downto 0);
       signal   stg0CicDorB          : std_logic;
@@ -978,8 +993,10 @@ begin
 
       signal   stg1CicDatA          : signed(STG1_W_C - 1 downto 0);
       signal   stg1CicDorA          : std_logic;
+      signal   stg1CicTrgA          : std_logic;
       signal   stg1ShfDatA          : std_logic_vector(STG1_W_C - 1 downto 0);
       signal   stg1ShfDorA          : std_logic;
+      signal   stg1ShfTrgA          : std_logic;
 
       signal   stg1CicDatB          : signed(STG1_W_C - 1 downto 0);
       signal   stg1CicDorB          : std_logic;
@@ -997,6 +1014,7 @@ begin
       signal   mulpB                : signed(2*STG1_OBITS_C - 1 downto 0) := (others => '0');
 
       signal   mulDorDlyA           : std_logic_vector(1 downto 0)        := (others => '0');
+      signal   mulTrgDlyA           : std_logic_vector(1 downto 0)        := (others => '0');
       signal   mulDorDlyB           : std_logic_vector(1 downto 0)        := (others => '0');
 
    -- parametrization of the stage-0 multiplier-shifter; break point is when
@@ -1061,9 +1079,11 @@ begin
 
             dataInp        => signed(fdatA),
             dovrInp        => fdorA,
+            trigInp        => extTrgSyn,
 
             dataOut        => stg0CicDatA,
             dovrOut        => stg0CicDorA,
+            trigOut        => stg0CicTrgA,
 
             strbOut        => cenOut0
          );
@@ -1127,7 +1147,7 @@ begin
             FBIG_WIDTH_G   => stg0CicDatA'length,
             FACT_WIDTH_G   => MUL_FACT_W_C,
             SCAL_WIDTH_G   => stg0Scl'length,
-            AUXV_WIDTH_G   => 1,
+            AUXV_WIDTH_G   => 2,
             NO_POSTSHF_G   => true
          )
          port map (
@@ -1138,11 +1158,13 @@ begin
             fbigInp        => stg0CicDatA,
             scalInp        => stg0Scl,
             auxvInp(0)     => stg0CicDorA,
+            auxvInp(1)     => stg0CicTrgA,
 
             ctl            => stg0ShfCtl,
 
             prodOut        => stg0ShfDatA,
-            auxvOut(0)     => stg0ShfDorA
+            auxvOut(0)     => stg0ShfDorA,
+            auxvOut(1)     => stg0ShfTrgA
          );
 
       U_SHF0_B : entity work.MulShifter
@@ -1191,9 +1213,11 @@ begin
 
             dataInp        => stg0DatA,
             dovrInp        => stg0ShfDorA,
+            trigInp        => stg0ShfTrgA,
 
             dataOut        => stg1CicDatA,
             dovrOut        => stg1CicDorA,
+            trigOut        => stg1CicTrgA,
 
             strbOut        => cenOut1
          );
@@ -1222,7 +1246,7 @@ begin
       U_SHF1_A : entity work.PipelinedRShifter
          generic map (
             DATW_G         => STG1_W_C,
-            AUXW_G         => 1,
+            AUXW_G         => 2,
             SIGN_EXTEND_G  => true,
             PIPL_SHIFT_G   => false,
             STRIDE_G       => STG1_STRIDE_C
@@ -1236,9 +1260,11 @@ begin
 
             datInp         => std_logic_vector( stg1CicDatA ),
             auxInp(0)      => stg1CicDorA,
+            auxInp(1)      => stg1CicTrgA,
 
             datOut         => stg1ShfDatA,
-            auxOut(0)      => stg1ShfDorA
+            auxOut(0)      => stg1ShfDorA,
+            auxOut(1)      => stg1ShfTrgA
          );
 
       U_CIC1_B : entity work.CicFilter
@@ -1301,12 +1327,14 @@ begin
                   mulaB      <= resize(stg0DatB, mulaB'length);
 
                   mulDorDlyA <= mulDorDlyA(mulDorDlyA'left - 1 downto 0) & stg0ShfDorA;
+                  mulTrgDlyA <= mulTrgDlyA(mulTrgDlyA'left - 1 downto 0) & stg0ShfTrgA;
                   mulDorDlyB <= mulDorDlyB(mulDorDlyB'left - 1 downto 0) & stg0ShfDorB;
                else
                   mulaA      <= signed(stg1DatA(mulaA'range));
                   mulaB      <= signed(stg1DatB(mulaB'range));
 
                   mulDorDlyA <= mulDorDlyA(mulDorDlyA'left - 1 downto 0) & stg1ShfDorA;
+                  mulTrgDlyA <= mulTrgDlyA(mulTrgDlyA'left - 1 downto 0) & stg1ShfTrgA;
                   mulDorDlyB <= mulDorDlyB(mulDorDlyB'left - 1 downto 0) & stg1ShfDorB;
                end if;
                mulpA <= mulaA * mulbA;
@@ -1319,10 +1347,12 @@ begin
       stg1DatA <= stg1ShfDatA(stg1DatA'range);
       stg1DatB <= stg1ShfDatB(stg1DatB'range);
 
-      wdatAin <= std_logic_vector( resize( shift_right( mulpA, mulbA'length - 2 ), wdatAin'length ) );
-      wdatBin <= std_logic_vector( resize( shift_right( mulpB, mulbB'length - 2 ), wdatBin'length ) );
-      wdorAin <= mulDorDlyA(mulDorDlyA'left);
-      wdorBin <= mulDorDlyB(mulDorDlyB'left);
+      wdatAin  <= std_logic_vector( resize( shift_right( mulpA, mulbA'length - 2 ), wdatAin'length ) );
+      wdatBin  <= std_logic_vector( resize( shift_right( mulpB, mulbB'length - 2 ), wdatBin'length ) );
+      wdorAin  <= mulDorDlyA(mulDorDlyA'left);
+      wdorBin  <= mulDorDlyB(mulDorDlyB'left);
+
+      extTrgSynDelayed <= mulTrgDlyA(mulTrgDlyA'left);
 
       cenCic1 <= '0'                   when rWr.decmIs1 else cenOut0;
       wrDecm  <= cenOut0               when rWr.decmIs1 else cenOut1;
@@ -1350,6 +1380,8 @@ begin
          wdatBin <= ladj(fdatB);
          wdorAin <= fdorA;
          wdorBin <= fdorB;
+
+         extTrgSynDelayed <= extTrgSyn;
 
          wrDecm  <= '1';
 

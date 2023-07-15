@@ -56,6 +56,8 @@ entity CommandWrapper is
       adcClk       : in  std_logic;
       adcRst       : in  std_logic := '0';
 
+      extTrg       : in  std_logic := '0';
+
       -- bit 0 is the DOR (overrange) bit
       adcDataDDR   : in  std_logic_vector(ADC_BITS_G downto 0);
 
@@ -286,7 +288,9 @@ begin
             pllLocked    => adcDcmLocked,
             pllRst       => '0',
 
-            dlyRefClk    => dlyRefClk
+            dlyRefClk    => dlyRefClk,
+
+            extTrg       => extTrg
          );
    end generate G_ADC;
 
