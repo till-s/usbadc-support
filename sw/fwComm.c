@@ -231,7 +231,7 @@ uint8_t v = SPI_MASK | I2C_MASK;
 int
 bb_spi_raw(FWInfo *fw, SPIDev type, int clk, int mosi, int cs, int hiz)
 {
-uint8_t v = SPI_MASK | I2C_MASK;
+uint8_t v = SPI_MASK;
 int     rv;
 uint8_t subcmd;
 
@@ -254,8 +254,8 @@ uint8_t subcmd;
 	if ( mosi ) {
 		v |= (1 << MOSI_SHFT);
 	}
-	if ( ! hiz ) {
-		v &= ~(1 << HIZ_SHFT);
+	if ( hiz ) {
+		v |= (1 << HIZ_SHFT);
 	}
 	rv = fw_xfer_bb(fw, subcmd, &v, &v, sizeof(v) );
 	if ( rv >= 0 ) {
