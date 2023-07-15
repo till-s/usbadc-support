@@ -466,12 +466,20 @@ const char        *trgOp     = 0;
 					goto bail;
 				}
 				printf("SPI Flash status: 0x%02x\n", i);
-			} else if ( strstr(op, "Wena") ) {
+			} else if ( strstr(op, "Gunlock") ) {
 				if ( at25_global_unlock( fw ) ) {
 					goto bail;
 				}
-			} else if ( strstr(op, "Wdis") ) {
+			} else if ( strstr(op, "Glock") ) {
 				if ( at25_global_lock( fw ) ) {
+					goto bail;
+				}
+			} else if ( strstr(op, "Wena") ) {
+				if ( at25_write_ena( fw ) ) {
+					goto bail;
+				}
+			} else if ( strstr(op, "Wdis") ) {
+				if ( at25_write_dis( fw ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Prog") ) {
