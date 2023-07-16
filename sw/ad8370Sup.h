@@ -13,7 +13,14 @@ int
 ad8370Write(FWInfo *fw, int channel, uint8_t val);
 
 int
+ad8370Read(FWInfo *fw, int channel);
+
+int
 ad8370SetAtt(FWInfo *fw, unsigned channel, float att);
+
+/* returns NaN if there is an error */
+float
+ad8370GetAtt(FWInfo *fw, unsigned channel);
 
 #ifdef __cplusplus
 }

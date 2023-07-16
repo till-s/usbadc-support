@@ -20,7 +20,7 @@
 #define COMMA  0xCA
 #define ESCAP  0x55
 
-static int fifoDebug = 0;
+static int fifoDebug = 1;
 
 typedef enum { RX, ESC, DONE } RxState;
 

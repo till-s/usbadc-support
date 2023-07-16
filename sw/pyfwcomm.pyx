@@ -407,6 +407,16 @@ cdef class AmpAd8370(Amp):
     cdef int rv
     with self._mgr as fw, nogil:
       rv = ad8370SetAtt( fw, channel, att )
+    if ( rv < 0 ):
+      raise IOError("ad8370SetAtt failed")
+    return rv
+
+  def getS2Att(self, int channel):
+    cdef float rv
+    with self._mgr as fw, nogil:
+      rv = ad8370GetAtt( fw, channel )
+    if ( isnan( rv ) ):
+      raise IOError("ad8370GetAtt failed")
     return rv
 
 cdef class FEC(FwDev):
@@ -1092,6 +1102,14 @@ cdef class FwCommExprt(FwComm):
 
   def clkWriteReg(self, int reg, int val):
     return self._clk.writeReg(reg, val)
+
+  def ad8370Read(self, int ch):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = ad8370Read( fw, ch )
+    if ( rv < 0 ):
+      raise IOError("ad8370Read failed")
+    return rv
 
   def ad8370Write(self, int ch, int val):
     cdef int rv

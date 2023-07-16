@@ -1,6 +1,7 @@
 #cython: embedsignature=True, language_level=3, c_string_type=str, c_string_encoding=ascii
 
 from libc.stdint cimport *
+from libc.math   cimport isnan
 
 cdef extern from "fwComm.h":
   ctypedef struct FWInfo:
@@ -62,8 +63,10 @@ cdef extern from "lmh6882Sup.h":
   int            lmh6882SetAtt(FWInfo *fw, unsigned channel, float att) nogil
 
 cdef extern from "ad8370Sup.h":
-  int            ad8370Write(FWInfo *fw, unsigned channel, float att) nogil
+  int            ad8370Write(FWInfo *fw, unsigned channel, uint8_t val) nogil
+  int            ad8370Read(FWInfo *fw, unsigned channel) nogil
   int            ad8370SetAtt(FWInfo *fw, unsigned channel, float att) nogil
+  float          ad8370GetAtt(FWInfo *fw, unsigned channel) nogil
 
 cpdef enum DAC47CXRefSelection:
   DAC47XX_VREF_INTERNAL_X1
