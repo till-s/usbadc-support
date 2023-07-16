@@ -80,6 +80,7 @@ void
 fw_set_debug(FWInfo *fw, int level)
 {
 	fw->debug = level;
+	fifoSetDebug( (level > 1) );
 }
 
 static int
