@@ -84,9 +84,6 @@ bb_spi_cs(FWInfo *fw, SPIDev type, int val);
 int
 bb_spi_raw(FWInfo *fw, SPIDev type, int clk, int mosi, int cs, int hiz);
 
-int
-bb_spi_done(FWInfo *fw);
-
 /* for bidirectional transfers (where SDI/SDO share a single line, e.g., max19507) the
  * optinal zbuf controls the direction (1:  s->m, 0: m->s) of the (bidirectional) SIO line
  */

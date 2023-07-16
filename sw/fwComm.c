@@ -265,12 +265,6 @@ uint8_t subcmd;
 	return rv;
 }
 
-int
-bb_spi_done(FWInfo *fw)
-{
-	return bb_spi_raw( fw, BITS_FW_CMD_BB_NONE, 0, 0, 1, 1 );
-}
-
 #define DEPTH    512 /* fifo depth */
 #define MAXDEPTH 500
 

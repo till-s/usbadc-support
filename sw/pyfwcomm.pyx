@@ -222,13 +222,6 @@ cdef class BBRaw(FwDev):
       raise IOError("BBRaw.__call__: bb_spi_raw failed")
     return rv
 
-  def done(self):
-    with self._mgr as fw, nogil:
-      rv = bb_spi_done( fw )
-    if rv < 0 :
-      raise IOError("BBRaw.__call__: bb_spi_done failed")
-  
-
 cdef class Max195xxADC(FwDev):
 
   def reset(self):

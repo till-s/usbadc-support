@@ -38,8 +38,6 @@ cdef extern from "fwComm.h":
   int            ACQ_PARAM_TIMEOUT_INF
   int            acq_set_params(FWInfo *, AcqParams *set, AcqParams *get) nogil
   int            bb_spi_raw(FWInfo *, SPIDev, int clk, int mosi, int cs, int hiz) nogil
-  int            bb_spi_raw(FWInfo *, SPIDev, int clk, int mosi, int cs, int hiz) nogil
-  int            bb_spi_done(FWInfo *) nogil
   int            bb_i2c_read_reg(FWInfo *, uint8_t sla, uint8_t reg) nogil
   int            bb_i2c_write_reg(FWInfo *, uint8_t sla, uint8_t reg, uint8_t val) nogil
 
