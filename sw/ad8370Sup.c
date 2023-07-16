@@ -68,7 +68,9 @@ unsigned       cod;
 	}
 	v |= cod;
 
+/*
 	printf("ATT: ch %d, att %f, gain %f, cod 0x%02x\n", channel, att, gain, v);
+ */
 
 	return ad8370Write( fw, channel, v );
 }
@@ -76,24 +78,32 @@ unsigned       cod;
 float
 ad8370GetAtt(FWInfo *fw, unsigned channel)
 {
-int    v  = ad8370Read( fw, channel );
-int    hi;
-double gain;
+int     v  = ad8370Read( fw, channel );
+int     hi;
+double  gain, att;
+uint8_t cod;
 
 	if ( v < 0 )
 		return 0./0.;
 
-	if ( ( v & 0x7f) == 0 ) {
+	cod = v & 0x7f;
+	if ( 0 == cod ) {
 		/* artificial max */
 		return 65.0;
 	}
 
 	hi = ((v & 0x80) ? 1 : 0 );
 
-    gain = VERNIER * ((double)(v & 0x7f));
+    gain = VERNIER * ((double)cod);
 	if ( hi ) {
     	gain *= PREGAIN;
 	}
+
+    att = 34.0 - 20.0*log10( gain );
+
+/*
+	printf("reg: %x; gain %g, att %g\n", v, gain, att);
+ */
 	
-    return 34.0 - 20.0*log10( gain );
+	return (float)att;
 }

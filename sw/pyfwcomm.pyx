@@ -400,9 +400,6 @@ cdef class AmpAd8370(Amp):
   def getS2Range(self):
     return (0,40)
 
-  def getS2Att(self, int channel):
-    return 0
-
   def setS2Att(self, int channel, float att):
     cdef int rv
     with self._mgr as fw, nogil:
