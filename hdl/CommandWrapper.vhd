@@ -31,7 +31,9 @@ entity CommandWrapper is
       INVERT_POL_CHA_G         : boolean := false;
       INVERT_POL_CHB_G         : boolean := false;
       GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
-      BOARD_VERSION_G          : std_logic_vector( 7 downto 0) := x"00"
+      BOARD_VERSION_G          : std_logic_vector( 7 downto 0) := x"00";
+      -- dedicated SPI interface for faster flash operations;
+      HAVE_SPI_CMD_G           : boolean := false
    );
    port (
       clk          : in  std_logic;
@@ -83,7 +85,7 @@ architecture rtl of CommandWrapper is
       CMD_BB_IDX_C            => true,
       CMD_ADC_MEM_IDX_C       => true,
       CMD_ACQ_PRM_IDX_C       => true,
-      CMD_SPI_IDX_C           => true
+      CMD_SPI_IDX_C           => HAVE_SPI_CMD_G
    );
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
