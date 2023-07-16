@@ -70,7 +70,7 @@ static int
 fw_xfer_bb(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len);
 
 static int
-__bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val);
+__bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval);
 
 #define BUF_SIZE_FAILED ((long)-1L)
 static long
@@ -355,46 +355,56 @@ bb_i2c_stop(FWInfo *fw)
 }
 
 static int
-__bb_spi_cs(FWInfo *fw, uint8_t subcmd, int val)
+__bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval)
 {
-uint8_t bbbyte = ( ((val ? 1 : 0) << CS_SHFT) | (0 << SCLK_SHFT) ) | SPI_MASK;
+uint8_t buf[2];
+int     csWasHi = !! ( lastval & (1 << CS_SHFT) );
 
-	if ( fw_xfer_bb( fw, subcmd, &bbbyte, &bbbyte, 1 ) < 0 ) {
-		fprintf(stderr, "Unable to set CS %d\n", !!val);
+	if ( SPI_MODE0 == mode || SPI_MODE1 == mode ) {
+       lastval &= ~(1 << SCLK_SHFT);
+    } else {
+       lastval |=  (1 << SCLK_SHFT);
+	}
+	if ( ! csWasHi ) {
+		/* CS will be deasserted below; make SDIO hi-z */
+		lastval |= (1 << HIZ_SHFT);
+	}
+	buf[0]   = lastval;
+	/* Toggle CS */
+	lastval ^= (1 << CS_SHFT);
+	buf[1]   = lastval;
+
+	if ( fw_xfer_bb( fw, subcmd, buf, buf, sizeof(buf) ) < 0 ) {
+		fprintf(stderr, "Unable to set CS to %d\n", !csWasHi);
 		return -1;
 	}
-	return 0;
-}
-
-int
-bb_spi_cs(FWInfo *fw, SPIDev type, int val)
-{
-	int subcmd = spi_get_subcmd( fw, type );
-	if ( subcmd < 0 ) {
-		/* message already printed */
-		return subcmd;
-	}
-	return __bb_spi_cs( fw, (uint8_t)subcmd, val );
+	return lastval;
 }
 
 #define BUF_BRK 1024
 
 /* work buffer is assumed to have space for stretch*2*8*len octets */
 static void
-shift_into_buf(uint8_t *xbuf, unsigned stretch, const uint8_t *tbuf, uint8_t *zbuf, size_t len)
+shift_into_buf(uint8_t *xbuf, SPIMode mode, unsigned stretch, const uint8_t *tbuf, const uint8_t *zbuf, size_t len)
 {
 int      i,j,k;
 uint8_t  bbo;
 uint8_t *p;
 uint8_t  z,v;
+uint8_t  msk;
 
 	p = xbuf;
+
+	msk = SPI_MASK & ~ (1 << CS_SHFT);
+	if ( SPI_MODE3 == mode || SPI_MODE1 == mode ) {
+		msk |= ( 1 << SCLK_SHFT );
+	}
 
 	for ( i = 0; i < len; i++ ) {
 		v = tbuf ? tbuf[i] : 0;
 		z = zbuf ? zbuf[i] : 0;
 		for ( j = 0; j < 8; j++ ) {
-			bbo = ( (((v & 0x80) ? 1 : 0) << MOSI_SHFT) | (0 << SCLK_SHFT) | (0 << CS_SHFT) ) | SPI_MASK ;
+			bbo = ( (((v & 0x80) ? 1 : 0) << MOSI_SHFT) | msk );
 			if ( ! (z & 0x80) ) {
 				bbo &= ~(1 << HIZ_SHFT);
 			}
@@ -402,7 +412,7 @@ uint8_t  z,v;
 				*p = bbo;
 				++p;
 			}
-            bbo     |= (1 << SCLK_SHFT);
+            bbo     ^= (1 << SCLK_SHFT);
 			for ( k = 0; k < stretch; k++ ) {
 				*p = bbo;
 				++p;
@@ -434,83 +444,90 @@ uint8_t  v;
 }
 
 int
-bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
+bb_spi_xfer_vec(FWInfo *fw, SPIMode mode, SPIDev type, const struct bb_vec *vec, size_t nelms)
 {
-int      stretch    = 2;
-uint8_t *stretchbuf = malloc(BUF_BRK*8*2*stretch);
-int      stretchlen;
-int      rval = -1;
-size_t   work = len;
-size_t   xlen;
-int      i;
-uint8_t  subcmd;
+int               stretch = 1;
+uint8_t           buf[BUF_BRK*8*2*stretch];
+int               el;
+int               rval = 0;
+uint8_t           subcmd;
+size_t            work;
+size_t            xlen;
+size_t            stretchlen;
+const uint8_t    *tbuf;
+uint8_t          *rbuf;
+const uint8_t    *zbuf;
+uint8_t           last;
 
-	if ( ( i = spi_get_subcmd( fw, type ) ) < 0 ) {
+	if ( ( el = spi_get_subcmd( fw, type ) ) < 0 ) {
 		/* message already printed */
-		goto bail;
+		return -1;
 	}
-	subcmd = (uint8_t) i;
+	subcmd = (uint8_t) el;
 
-	if ( ! stretchbuf ) {
-		perror("bb_spi_xfer_nocs(): unable to allocate buffer memory");
-		goto bail;
+
+	/* assert CS */
+	if ( (el = __bb_spi_cs( fw, mode, subcmd, SPI_MASK | (1 << CS_SHFT) )) < 0 ) {
+		return -1;
 	}
+	last = el;
 
-	while ( work > 0 ) {
-		xlen = work > BUF_BRK ? BUF_BRK : work;
+	for ( el = 0; el < nelms; el++ ) {
 
-		shift_into_buf( stretchbuf, stretch, tbuf, zbuf, xlen );
+		work = vec[el].len;
+        tbuf = vec[el].tbuf;
+        rbuf = vec[el].rbuf;
+        zbuf = vec[el].zbuf;
 
-		stretchlen = xlen * 2 * 8 * stretch;
+		rval += work;
 
-		if ( fw_xfer_bb( fw, subcmd, stretchbuf, stretchbuf, stretchlen ) ) {
-			fprintf(stderr, "bb_spi_xfer_nocs(): fw_xfer_bb failed\n");
-			goto bail;
+		while ( work > 0 ) {
+			xlen = work > BUF_BRK ? BUF_BRK : work;
+
+		    stretchlen = xlen * 2 * 8 * stretch;
+
+			shift_into_buf( buf, mode, stretch, tbuf, zbuf, xlen );
+
+			/* keep a copy of the last bbo */
+			last = buf[stretchlen - 1];
+
+			if ( fw_xfer_bb( fw, subcmd, buf, buf, stretchlen ) ) {
+				fprintf(stderr, "bb_spi_xfer_vec(): fw_xfer_bb failed\n");
+				return -1;
+			}
+
+			if ( rbuf ) {
+
+				shift_outof_buf( buf, 1, rbuf, xlen );
+
+				rbuf += xlen;
+			}
+			if ( tbuf ) tbuf += xlen;
+			if ( zbuf ) zbuf += xlen;
+			work             -= xlen;
 		}
-
-
-		if ( rbuf ) {
-
-            shift_outof_buf( stretchbuf, stretch, rbuf, xlen );
-
-			rbuf += xlen;
-		}
-		if ( tbuf ) tbuf += xlen;
-		if ( zbuf ) zbuf += xlen;
-		work             -= xlen;
 	}
 
-	rval = len;
+	/* deassert CS */
+	if ( __bb_spi_cs( fw, mode, subcmd, last ) < 0 ) {
+		return -1;
+	}
 
-bail:
-	free( stretchbuf );
 	return rval;
 }
 
 int
-bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
+bb_spi_xfer(FWInfo *fw, SPIMode mode, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len)
 {
-uint8_t  subcmd;
-int      got;
+bb_vec vec[1];
+size_t nelms = 0;
 
-	if ( (got = spi_get_subcmd( fw, type )) < 0 ) {
-		/* message already printed */
-		return got;
-	}
-
-	subcmd = (uint8_t) got;
-
-	if ( __bb_spi_cs( fw, subcmd, 0 ) ) {
-		return -1;
-	}
-
-	got = bb_spi_xfer_nocs( fw, type, tbuf, rbuf, zbuf, len );
-
-	if ( __bb_spi_cs( fw, subcmd, 1 ) ) {
-		return -1;
-	}
-
-	return got;
+	vec[nelms].tbuf = tbuf;
+	vec[nelms].rbuf = rbuf;
+	vec[nelms].zbuf = zbuf;
+	vec[nelms].len  = len;
+	nelms++;
+	return bb_spi_xfer_vec(fw, mode, type, vec, nelms);
 }
 
 /* XFER 9 bits (lsbit is ACK) */

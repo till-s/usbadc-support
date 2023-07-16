@@ -77,21 +77,27 @@ bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg);
 int
 bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val);
 
-int
-bb_spi_cs(FWInfo *fw, SPIDev type, int val);
-
 /* Access to raw bit-bang states (for board debugging) */
 int
 bb_spi_raw(FWInfo *fw, SPIDev type, int clk, int mosi, int cs, int hiz);
+
+typedef enum SPIMode { SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3 } SPIMode;
 
 /* for bidirectional transfers (where SDI/SDO share a single line, e.g., max19507) the
  * optinal zbuf controls the direction (1:  s->m, 0: m->s) of the (bidirectional) SIO line
  */
 int
-bb_spi_xfer_nocs(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
+bb_spi_xfer(FWInfo *fw, SPIMode mode, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
+
+typedef struct bb_vec {
+	const uint8_t *tbuf;
+	uint8_t       *rbuf;
+	const uint8_t *zbuf;
+	size_t         len;
+} bb_vec;
 
 int
-bb_spi_xfer(FWInfo *fw, SPIDev type, const uint8_t *tbuf, uint8_t *rbuf, uint8_t *zbuf, size_t len);
+bb_spi_xfer_vec(FWInfo *fw, SPIMode mode, SPIDev type, const struct bb_vec *vec, size_t nelms);
 
 /*
  * Low-level transfer for debugging

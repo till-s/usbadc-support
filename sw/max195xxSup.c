@@ -16,7 +16,7 @@ int     rv;
 	buf[3] = (rdnwr ? 0xff : 0x00);
 	buf[0] = (rdnwr ? 0x80 : 0x00 ) | (reg & 0x7f);
 	buf[1] = (rdnwr ? 0x00 : *val );
-	rv = bb_spi_xfer(fw, SPI_ADC, buf, buf, buf+2, 2);
+	rv = bb_spi_xfer(fw, SPI_MODE0, SPI_ADC, buf, buf, buf+2, 2);
 	if ( rdnwr ) {
 		*val = buf[1];
 	}

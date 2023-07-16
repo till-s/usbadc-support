@@ -35,7 +35,7 @@ end entity BitBangIF;
 architecture rtl of BitBangIF is
 
    -- need some clock cycles (well, the internal SpiReg does)
-   constant HPER_MIN_C    : integer := 8 - 1;
+   constant HPER_MIN_C    : integer := 2 - 1;
 
    function I2C_HPER_F return integer is
       variable v : integer;

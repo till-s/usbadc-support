@@ -11,7 +11,7 @@ ad8370Write(FWInfo *fw, int channel, uint8_t val)
 {
 uint8_t buf[1];
 	buf[0] = val;
-	if ( bb_spi_xfer( fw, (channel ? SPI_VGB : SPI_VGA), buf, 0, 0, sizeof(buf) ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_MODE0, (channel ? SPI_VGB : SPI_VGA), buf, 0, 0, sizeof(buf) ) < 0 ) {
 		return -1;
 	}
 	return 0;
@@ -23,7 +23,7 @@ ad8370Read(FWInfo *fw, int channel)
 uint8_t rbuf[1];
 uint8_t zbuf[1];
 	zbuf[0] = 0xff;
-	if ( bb_spi_xfer( fw, (channel ? SPI_VGB : SPI_VGA), zbuf, rbuf, zbuf, sizeof(rbuf) ) < 0 ) {
+	if ( bb_spi_xfer( fw, SPI_MODE0, (channel ? SPI_VGB : SPI_VGA), zbuf, rbuf, zbuf, sizeof(rbuf) ) < 0 ) {
 		return -1;
 	}
 	return (int)rbuf[0];

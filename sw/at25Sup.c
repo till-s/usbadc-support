@@ -361,7 +361,7 @@ bail:
 static int
 do_xfer(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
 {
-	if ( !! ( FW_FEATURE_SPI_CONTROLLER & fw_has_feature( fw ) ) ) {
+	if ( !! ( FW_FEATURE_SPI_CONTROLLER & fw_has_feature( fw ) ) && 0 ) {
 		return do_xfer_spi(fw, hdr, hlen, tbuf, rbuf, buflen);
 	} else {
 		return do_xfer_bb(fw, hdr, hlen, tbuf, rbuf, buflen);
@@ -411,6 +411,8 @@ do_xfer_bb(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, u
 unsigned onelen = 0;
 int      rv     = 0;
 int      st;
+bb_vec   vec[2];
+size_t   nelms = 0;
 
 	if ( !  ( hlen > 0 && buflen > 0 ) ) {
 		/* only one of tlen, hlen can be != 0 */
@@ -418,36 +420,32 @@ int      st;
 	}
 
 	if ( 0 != onelen ) {
-		return bb_spi_xfer( fw, SPI_FLASH, (hlen > 0 ) ? hdr : tbuf, rbuf, 0, onelen );
+		return bb_spi_xfer( fw, SPI_MODE0, SPI_FLASH, (hlen > 0 ) ? hdr : tbuf, rbuf, 0, onelen );
 	} else {
-		if ( bb_spi_cs( fw, SPI_FLASH, 0 ) < 0 ) {
-			fprintf(stderr, "do_xfer: bb_spi_cs failed to set CS low\n");
-			goto bail;
-		}
-
 		if ( hlen > 0 ) {
-			st = bb_spi_xfer_nocs( fw, SPI_FLASH, hdr, 0, 0, hlen );
-			if ( st < 0 ) {
-				fprintf(stderr, "do_xfer: bb_spi_xfer failed to send header\n");
-				rv = -1;
-				goto bail;
-			}
-			rv += st;
+            vec[nelms].tbuf = hdr;
+            vec[nelms].rbuf = 0;
+            vec[nelms].zbuf = 0;
+            vec[nelms].len  = hlen;
+            nelms++;
 		}
 		if ( buflen > 0 ) {
-			st = bb_spi_xfer_nocs( fw, SPI_FLASH, tbuf, rbuf, 0, buflen );
+            vec[nelms].tbuf = tbuf;
+            vec[nelms].rbuf = rbuf;
+            vec[nelms].zbuf = 0;
+            vec[nelms].len  = buflen;
+            nelms++;
+		}
+		if ( nelms ) {
+			st = bb_spi_xfer_vec( fw, SPI_MODE0, SPI_FLASH, vec, nelms );
 			if ( st < 0 ) {
-				fprintf(stderr, "do_xfer: bb_spi_xfer failed to send data\n");
+				fprintf(stderr, "do_xfer: bb_spi_xfer_vec failed\n");
 				rv = -1;
 				goto bail;
 			}
 			rv += st;
 		}
 bail:
-		if ( bb_spi_cs( fw, SPI_FLASH, 1 ) < 0 ) {
-			fprintf(stderr, "do_xfer: bb_spi_cs failed to set CS high\n");
-			rv = -1;
-		}
 		return rv;
 	}
 }
