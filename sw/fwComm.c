@@ -55,6 +55,8 @@
 
 #define BITS_FW_CMD_ACQ_DCM0_SHFT 20
 
+#define BITS_FW_CMD_UNSUPPORTED   0xff
+
 struct FWInfo {
 	int             fd;
 	uint8_t         cmd;
@@ -142,14 +144,14 @@ uint64_t f = 0;
 }
 
 static int64_t
-__fw_get_version(int fd)
+__fw_get_version(FWInfo *fw)
 {
 uint8_t buf[sizeof(int64_t)];
 int     got, i;
 uint8_t cmd = fw_get_cmd( FW_CMD_VERSION );
 int64_t rval;
 
-	got = fifoXferFrame( fd, &cmd, 0, 0, buf, sizeof(buf) );
+	got = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 	if ( got < 0 ) {
 		return (int64_t)-1;
 	}
@@ -203,7 +205,7 @@ int64_t vers;
 		rv->memSize = (unsigned long)sz;
 	}
 
-	if ( ( vers = __fw_get_version( fd ) ) == (int64_t) -1 ) {
+	if ( ( vers = __fw_get_version( rv ) ) == (int64_t) -1 ) {
 		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
 		free( rv );
 		return 0;
@@ -272,21 +274,35 @@ static int
 fw_xfer_bb(FWInfo *fw, uint8_t subCmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
 uint8_t cmdLoc = fw->cmd | subCmd;
-	return fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 ) < 0 ? -1 : 0;
+int     st;
+
+    st = fw_xfer( fw, cmdLoc, tbuf, rbuf, len );
+    return st < 0 ? st : 0;
 }
 
 int
 fw_xfer(FWInfo *fw, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
 uint8_t cmdLoc = cmd;
-	return fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
+int     st;
+
+	st = fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
+	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
+		st = FW_CMD_ERR_NOTSUP;
+	}
+	return st;
 }
 
 int
 fw_xfer_vec(FWInfo *fw, uint8_t cmd, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
 {
 uint8_t cmdLoc = cmd;
-	return fifoXferFrameVec( fw->fd, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
+int     st;
+	st = fifoXferFrameVec( fw->fd, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
+	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
+		st = FW_CMD_ERR_NOTSUP;
+	}
+	return st;
 }
 
 static void pr_i2c_dbg(uint8_t tbyte, uint8_t rbyte)
@@ -665,7 +681,7 @@ uint8_t buf[4];
 long    rval;
 uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
 
-	rval = fifoXferFrame( fw->fd, &cmd, 0, 0, buf, sizeof(buf) );
+	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 
 	if ( 2 != rval ) {
 		if ( -2 == rval ) {
@@ -710,7 +726,7 @@ int     rv;
 	if ( 0 == len ) {
 		cmd |= BITS_FW_CMD_ADCFLUSH;
 	}
-	rv = fifoXferFrameVec( fw->fd, &cmd, 0, 0, v, rcnt );
+	rv = fw_xfer_vec( fw, cmd, 0, 0, v, rcnt );
 	if ( hdr ) {
 		*hdr = (h[1]<<8) | h[0];
 	}
@@ -866,7 +882,7 @@ printf("Default scale %d\n", set->scale);
 	buf[BITS_FW_CMD_ACQ_IDX_SCL +  3]  = (v32 >> 24) & 0xff;
 
 
-	got = fifoXferFrame( fw->fd, &cmd, buf, sizeof(buf), buf, sizeof(buf) );
+	got = fw_xfer( fw, cmd, buf, buf, sizeof(buf) );
 
 	if ( got < 0 ) {
 		fprintf(stderr, "Error: acq_set_params(); fifo transfer failed\n");

@@ -99,6 +99,10 @@ typedef struct bb_vec {
 int
 bb_spi_xfer_vec(FWInfo *fw, SPIMode mode, SPIDev type, const struct bb_vec *vec, size_t nelms);
 
+/* Timeout */
+#define FW_CMD_ERR_TIMEOUT (-2)
+/* Unsupported command */
+#define FW_CMD_ERR_NOTSUP  (-3)
 /*
  * Low-level transfer for debugging
  */

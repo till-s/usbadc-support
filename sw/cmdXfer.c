@@ -262,7 +262,7 @@ struct timespec timeout;
 		if ( i <= 0 ) {
 			if ( 0 == i ) {
 				/* Timeout */
-				return -2;
+				return FIFO_ERR_TIMEOUT;
 			}
 			perror("select failure");
 			goto bail;

@@ -31,7 +31,9 @@ typedef struct tbufvec {
 } tbufvec;
 
 
-/* These routines return -2 on timeout */
+#define FIFO_ERR_TIMEOUT (-2)
+
+/* These routines return FIFO_ERR_TIMEOUT on timeout */
 int fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen);
 
 int fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);
