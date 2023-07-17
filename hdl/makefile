@@ -5,12 +5,12 @@
 
 GHDL=ghdl
 #GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
-GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie
+GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
 
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
-all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb
+all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb spishadowregtb
 
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
@@ -18,7 +18,7 @@ OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
 OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o PipelinedRShifter.o
 OBJS+=MulShifter.o SpiReg.o
 OBJS+=CommandSpi.o SpiBitShifter.o
-OBJS+=SpiFlashSim.o
+OBJS+=SpiFlashSim.o SpiChecker.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -31,6 +31,9 @@ commandwrappersim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o  $@
 
 cicfiltertb: $(OBJS) CicFilterTb.o
+	$(GHDL) -e $(GHDLFLAGS)  $@
+
+spishadowregtb: $(OBJS) SpiShadowRegTb.o
 	$(GHDL) -e $(GHDLFLAGS)  $@
 
 pipelinedrshiftertb: PipelinedRShifterTb.o $(OBJS)
@@ -117,6 +120,9 @@ CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
 PipelinedRShifterTb.o: PipelinedRShifter.o
 CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
 SpiFlashSim.o: SpiReg.o
+CommandWrapperSim.o: SpiReg.o SpiChecker.o
+
+SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
 MulShifter.o PipelinedRShifter.o: BasicPkg.o
 
@@ -133,4 +139,4 @@ clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb
 	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
 	$(RM) spiregtb SpiRegTb.o
-	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o
+	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o
