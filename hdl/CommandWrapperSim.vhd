@@ -240,4 +240,14 @@ begin
       end if;
    end process P_SPIR;
 
+   U_SPI_CHECK : entity work.SpiChecker
+      port map (
+         clk    => clk,
+         sclk   => sclk,
+         scsb   => scsb,
+         mosi   => mosi,
+         miso   => miso,
+         viol   => open
+      );
+
 end architecture sim;
