@@ -28,6 +28,8 @@ package CommandMuxPkg is
    -- command 0xF is reserved
    constant NUM_CMD_MAX_C  : natural := 2**NUM_CMD_BITS_C - 1;
 
+   constant CMD_ERROR_C       : std_logic_vector(7 downto 0) := x"FF";
+
    subtype  CmdIdxRangeType  is natural range 0 to NUM_CMD_MAX_C;
 
    type     CmdsSupportedType is array(CmdIdxRangeType range <>) of boolean;

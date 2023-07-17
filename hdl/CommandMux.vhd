@@ -30,8 +30,8 @@ architecture rtl of CommandMux is
 
    constant NUM_CMDS_C : natural := CMDS_SUPPORTED_G'length;
 
-   subtype SelType   is natural range 0 to NUM_CMDS_C - 1;
-   type    StateType is (IDLE, CMD, FWD, WAI);
+   subtype SelType   is natural range 0 to 2**NUM_CMD_BITS_C - 1;
+   type    StateType is (IDLE, CMD, FWD, WAI, ERR);
 
    type RegType      is record
       state     : StateType;
@@ -116,8 +116,10 @@ begin
       
 
       -- drain unselected channels
-      rdyMuxedOb <= (others => '1');
-      busObLoc   <= SIMPLE_BUS_MST_INIT_C;
+      rdyMuxedOb   <= (others => '1');
+      busObLoc     <= SIMPLE_BUS_MST_INIT_C;
+      busObLoc.dat <= CMD_ERROR_C;
+      busObLoc.lst <= '1';
 
       case ( r.state ) is
          when IDLE =>
@@ -137,8 +139,6 @@ begin
                if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
                   v.obLstSeen := true;
                end if;
-            else
-               v.obLstSeen := true; -- fake reply
             end if;
 
             if ( r.cmd.lst = '1' ) then
@@ -158,27 +158,43 @@ begin
                   v.state := ns;
                end if;
             else
-               v.state := ns; -- drop CMD
+               v.state := ERR;
+            end if;
+
+         when ERR  =>
+            if ( r.obLstSeen ) then
+               busObLoc.vld <= '0';
+            else
+               busObLoc.vld <= '1';
+               if ( rdyOb = '1' ) then -- rdy and vld
+                  v.obLstSeen := true;
+               end if;
+            end if;
+            -- r.cmd.lst could initially be '1' if they sent just the command byte
+            if ( r.cmd.lst /= '1' ) then
+               rdy := '1';
+               if ( (busIb.vld and busIb.lst) = '1' ) then
+                  -- abuse 'lst' flag in cmd
+                  v.cmd.lst := '1';
+               end if;
+            elsif ( r.obLstSeen ) then
+               -- input dumped and reply sent
+               v.state := IDLE;
             end if;
 
          when FWD  =>
-            if ( selOK ) then
-               busMuxedIb(sel) <= busIb;
-               rdy             := rdyMuxedIb(sel);
+            busMuxedIb(sel) <= busIb;
+            rdy             := rdyMuxedIb(sel);
 
-               -- in FWD state we always forward inbound traffic (otherwise we'd be in WAI); however, we
-               -- must stop outbound traffic after outbound 'lst' was seen
-               if ( not r.obLstSeen ) then
-                  rdyMuxedOb(sel) <= rdyOb;
-                  busObLoc        <= busMuxedOb(sel);
+            -- in FWD state we always forward inbound traffic (otherwise we'd be in WAI); however, we
+            -- must stop outbound traffic after outbound 'lst' was seen
+            if ( not r.obLstSeen ) then
+               rdyMuxedOb(sel) <= rdyOb;
+               busObLoc        <= busMuxedOb(sel);
 
-                  if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
-                     v.obLstSeen := true;
-                  end if;
+               if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
+                  v.obLstSeen := true;
                end if;
-            else
-               rdy         := '1';  -- drop
-               v.obLstSeen := true; -- pretend we've seen it
             end if;
 
             if ( (busIb.vld = '1') and (rdy = '1') and (busIb.lst = '1') ) then
