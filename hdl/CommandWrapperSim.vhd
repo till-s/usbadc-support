@@ -188,7 +188,7 @@ begin
       port map (
          clk        => clk,
          sclk       => memSClk,
-         cslb       => memCSb,
+         scsb       => memCSb,
          mosi       => memMosi,
          miso       => memMiso
       );

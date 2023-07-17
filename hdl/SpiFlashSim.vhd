@@ -6,7 +6,7 @@ entity SpiFlashSim is
    port (
       clk            : in  std_logic;
       sclk           : in  std_logic;
-      cslb           : in  std_logic;
+      scsb           : in  std_logic;
       mosi           : in  std_logic;
       miso           : out std_logic
    );
@@ -34,7 +34,7 @@ architecture sim of SpiFlashSim is
 
    type RegType is record
       state        : StateType;
-      lcslb        : std_logic;
+      lscsb        : std_logic;
       lsclk        : std_logic;
       lmosi        : std_logic;
       dat_out      : std_logic_vector(7 downto 0);
@@ -47,7 +47,7 @@ architecture sim of SpiFlashSim is
 
    constant REG_INIT_C : RegType := (
       state        => IDLE,
-      lcslb        => '1',
+      lscsb        => '1',
       lsclk        => '0',
       lmosi        => '0',
       dat_out      => (others => '0'),
@@ -67,11 +67,11 @@ architecture sim of SpiFlashSim is
 
 begin
 
-   P_COMB : process ( r, cslb, sclk, mosi, rs, ws, dat_inp, mem ) is
+   P_COMB : process ( r, scsb, sclk, mosi, rs, ws, dat_inp, mem ) is
       variable v : RegType;
    begin
       v       := r;
-      v.lcslb := cslb;
+      v.lscsb := scsb;
       v.lsclk := sclk;
       v.lmosi := mosi;
 
@@ -156,7 +156,7 @@ begin
            end if;
       end case;
 
-      if ( (cslb and not r.lcslb) = '1' ) then
+      if ( (scsb and not r.lscsb) = '1' ) then
          v.state   := IDLE;
          v.dat_out := x"ff";
       end if;
@@ -172,7 +172,7 @@ begin
    begin
       if ( rising_edge( clk ) ) then
          r <= rin;
-         if ( (cslb and not r.lcslb and r.status(1)) = '1' ) then
+         if ( (scsb and not r.lscsb and r.status(1)) = '1' ) then
             if    ( r.op = OP_PAGE_WR_C ) then
                for i in 0 to PG_SZ_C - 1 loop
                   mem( bas(r, x"ffff00") + i ) <= r.pgbuf(i);
@@ -201,7 +201,7 @@ begin
       port map (
          clk       => clk,
          sclk      => sclk,
-         scsb      => cslb,
+         scsb      => scsb,
          mosi      => mosi,
          miso      => miso,
 
