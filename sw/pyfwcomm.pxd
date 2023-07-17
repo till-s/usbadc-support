@@ -10,6 +10,7 @@ cdef extern from "fwComm.h":
   FWInfo        *fw_open(const char *devn, unsigned speed) nogil
   int            fw_xfer(FWInfo *, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len) nogil
   void           fw_close(FWInfo *) nogil
+  void           fw_set_debug(FWInfo *fw, int level) nogil
   uint32_t       fw_get_version(FWInfo *) nogil
   uint8_t        fw_get_api_version(FWInfo *) nogil
   uint8_t        fw_get_board_version(FWInfo *) nogil
@@ -23,6 +24,7 @@ cdef extern from "fwComm.h":
   int            acq_set_source(FWInfo *, TriggerSource src, int rising) nogil
   int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout) nogil
   int            acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale) nogil
+
   struct AcqParams:
     unsigned      mask
     TriggerSource src
