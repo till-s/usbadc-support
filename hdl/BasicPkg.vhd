@@ -14,6 +14,8 @@ package BasicPkg is
    subtype Slv8Type  is std_logic_vector(7 downto 0);
    type    Slv8Array is array(integer range <>) of Slv8Type;
 
+   constant SLV8_ARRAY_EMPTY_C : Slv8Array(0 downto 1) := (others => (others =>'0'));
+
 end package BasicPkg;
 
 package body BasicPkg is
