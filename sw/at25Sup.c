@@ -361,7 +361,7 @@ bail:
 static int
 do_xfer(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
 {
-	if ( !! ( FW_FEATURE_SPI_CONTROLLER & fw_has_feature( fw ) ) && 0 ) {
+	if ( !! ( FW_FEATURE_SPI_CONTROLLER & fw_get_features( fw ) ) ) {
 		return do_xfer_spi(fw, hdr, hlen, tbuf, rbuf, buflen);
 	} else {
 		return do_xfer_bb(fw, hdr, hlen, tbuf, rbuf, buflen);

@@ -66,6 +66,7 @@ struct FWInfo {
 	uint32_t        gitHash;
 	uint8_t         brdVers;
 	uint8_t         apiVers;
+	uint64_t        features;
 };
 
 static int
@@ -134,13 +135,9 @@ fw_get_cmd(FWCmd aCmd)
 }
 
 uint64_t
-fw_has_feature(FWInfo *fw)
+fw_get_features(FWInfo *fw)
 {
-uint64_t f = 0;
-	if ( fw->apiVers >= FWCOMM_API_VERSION_1 ) {
-		f |= FW_FEATURE_SPI_CONTROLLER;
-	}
-	return f;
+	return fw->features;
 }
 
 static int64_t
@@ -193,10 +190,11 @@ int64_t vers;
 		return 0;
 	}
 
-	rv->fd    = fd;
-	rv->cmd   = BITS_FW_CMD_BB;
-	rv->debug = 0;
-	rv->ownFd = 0;
+	rv->fd       = fd;
+	rv->cmd      = BITS_FW_CMD_BB;
+	rv->debug    = 0;
+	rv->ownFd    = 0;
+	rv->features = 0;
 	sz = __buf_get_size( rv );
 	if ( BUF_SIZE_FAILED == sz ) {
 		fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
@@ -214,6 +212,11 @@ int64_t vers;
 	rv->gitHash = ( vers & 0xffffffff );
 	rv->apiVers = ( (vers >> 32) & 0xff );
     rv->brdVers = ( (vers >> 40) & 0xff );
+
+	/* avoid a timeout on old fw */
+	if ( rv->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( rv, BITS_FW_CMD_SPI, 0, 0, 0 ) ) {
+		rv->features |= FW_FEATURE_SPI_CONTROLLER;
+	}
 
 	return rv;
 }
@@ -280,6 +283,9 @@ int     st;
     return st < 0 ? st : 0;
 }
 
+/* Caution: fw_xfer is called from fw_open and not all fields are initialized yet
+ *          (but fd is).
+ */
 int
 fw_xfer(FWInfo *fw, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {

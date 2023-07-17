@@ -39,6 +39,8 @@ fw_get_version(FWInfo *fw);
 uint8_t
 fw_get_board_version(FWInfo *fw);
 
+#define FW_API_VERSION_1 (1)
+
 uint8_t
 fw_get_api_version(FWInfo *fw);
 
@@ -47,7 +49,7 @@ bb_i2c_start(FWInfo *fw, int restart);
 
 #define FW_FEATURE_SPI_CONTROLLER (1ULL<<0)
 uint64_t
-fw_has_feature(FWInfo *fw);
+fw_get_features(FWInfo *fw);
 
 /* set 'I2C_READ' when writing the i2c address */
 #define I2C_READ (1<<0)
