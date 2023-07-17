@@ -53,12 +53,23 @@ architecture sim of CommandWrapperSim is
    signal spirCsb : std_logic := '1';
    signal spirDO  : std_logic;
    signal spirDI  : std_logic;
+   signal memCSb  : std_logic;
+   signal memMiso : std_logic;
+   signal memSClk : std_logic;
+   signal memMosi : std_logic;
 
    signal sclk    : std_logic;
    signal mosi    : std_logic;
    signal scsb    : std_logic;
    signal shiz    : std_logic;
    signal miso    : std_logic;
+
+   signal spiMISO : std_logic := '0';
+   signal spiMOSI : std_logic;
+   signal spiSClk : std_logic;
+   signal spiCSb  : std_logic;
+
+   signal extTrg  : std_logic := '0';
 
    signal subCmdBB: SubCommandBBType;
 
@@ -116,6 +127,13 @@ begin
          adcDataDDR(ADC_W_C downto 1)  => std_logic_vector(adcDDR),
          adcDataDDR(               0)  => dorDDR,
 
+         extTrg       => extTrg,
+
+         spiSClk      => spiSClk,
+         spiMOSI      => spiMOSI,
+         spiMISO      => spiMISO,
+         spiCSb       => spiCSb,
+
          smplClk      => open
       );
 
@@ -161,10 +179,19 @@ begin
    end process P_DDR;
 
 
-   P_BBMON : process (bbo) is
-   begin
-      report "BBO: " & std_logic'image(bbo(1)) & std_logic'image(bbo(0));
-   end process P_BBMON;
+--   P_BBMON : process (bbo) is
+--   begin
+--      report "BBO: " & std_logic'image(bbo(1)) & std_logic'image(bbo(0));
+--   end process P_BBMON;
+
+   U_SPIMEM : entity work.SpiFlashSim
+      port map (
+         clk        => clk,
+         sclk       => memSClk,
+         cslb       => memCSb,
+         mosi       => memMosi,
+         miso       => memMiso
+      );
 
    U_SPIREG : entity work.SpiReg
       port map (
@@ -193,9 +220,14 @@ begin
    bbi(BB_SPI_T_C  ) <= '0';
    bbi(BB_SPI_MSI_C) <= miso;
 
-   spirDI   <= mosi   when shiz = '0' else spirDO;
-   spirCsb  <= scsb   when subCmdBB = CMD_BB_SPI_FEG_C else '1';
-   miso     <= spirDO when subCmdBB = CMD_BB_SPI_FEG_C else 'X';
+   spirDI   <= mosi    when shiz = '0' else spirDO;
+   spirCsb  <= scsb    when subCmdBB = CMD_BB_SPI_FEG_C   else '1';
+   miso     <= spirDO  when subCmdBB = CMD_BB_SPI_FEG_C   else
+               memMiso when subCmdBB = CMD_BB_SPI_ROM_C   else 'X';
+   memCsb   <= scsb    when subCmdBB = CMD_BB_SPI_ROM_C   else spiCSb;
+   memMosi  <= mosi    when subCmdBB = CMD_BB_SPI_ROM_C   else spiMOSI;
+   memSClk  <= sclk    when subCmdBB = CMD_BB_SPI_ROM_C   else spiSClk;
+   spiMISO  <= memMiso;
 
    P_SPIR : process ( clk ) is
    begin

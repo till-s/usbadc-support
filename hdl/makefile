@@ -18,6 +18,7 @@ OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
 OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o PipelinedRShifter.o
 OBJS+=MulShifter.o SpiReg.o
 OBJS+=CommandSpi.o SpiBitShifter.o
+OBJS+=SpiFlashSim.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -115,6 +116,7 @@ CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /op
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
 PipelinedRShifterTb.o: PipelinedRShifter.o
 CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
+SpiFlashSim.o: SpiReg.o
 
 MulShifter.o PipelinedRShifter.o: BasicPkg.o
 

@@ -5,8 +5,9 @@ use     ieee.std_logic_1164.all;
 
 entity SpiReg is
    generic (
-      NUM_BITS_G : natural := 8;
-      INIT_VAL_G : std_logic_vector := ""
+      NUM_BITS_G : positive := 8; -- must be more than 1
+      INIT_VAL_G : std_logic_vector := "";
+      FRAMED_G   : boolean  := false
    );
    port (
       clk        : in  std_logic;
@@ -46,14 +47,16 @@ architecture rtl of SpiReg is
       lsclk      : std_logic;
       lscsb      : std_logic;
       sr         : std_logic_vector(NUM_BITS_G downto 0);
-      cnt        : natural;
+      bcnt       : natural range 0 to NUM_BITS_G - 1;
+      ws         : std_logic;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
       lsclk      => '0',
       lscsb      => '1',
       sr         => INIT_VAL_F,
-      cnt        => NUM_BITS_G - 1
+      bcnt       => 0,
+      ws         => '0'
    );
 
    signal r      : RegType := REG_INIT_C;
@@ -64,8 +67,18 @@ architecture rtl of SpiReg is
 
 begin
 
-   rsLoc <= not scsb and r.lscsb;
-   wsLoc <=     scsb and not r.lscsb;
+
+
+   G_WS_NOF : if ( not FRAMED_G ) generate
+      rsLoc <= not scsb and r.lscsb;
+      wsLoc <=     scsb and not r.lscsb;
+   end generate G_WS_NOF;
+
+   G_WS_F   : if ( FRAMED_G ) generate
+      rsLoc <= '1' when ( ((not (scsb or sclk)) and (r.lscsb or r.lsclk)) = '1') and r.bcnt = 0 else '0';
+      wsLoc <= r.ws;
+   end generate G_WS_F;
+
 
    P_COMB : process( r, sclk, scsb, mosi, data_inp, rsLoc, wsLoc ) is
       variable v : RegType;
@@ -75,21 +88,30 @@ begin
       v.lscsb := scsb;
       v.lsclk := sclk;
 
-      if     ( rsLoc = '1' ) then
-         v.sr(r.sr'left - 1 downto 0) := data_inp;
-         v.sr(r.sr'left)              := data_inp(data_inp'left);
-      end if;
+      v.ws    := '0';
 
       if ( scsb = '0' ) then
          if ( (sclk and not r.lsclk) = '1' ) then
             -- rising sclk
             v.sr(v.sr'left - 1 downto 0) := r.sr(r.sr'left - 2 downto 0) & mosi;
+            if ( r.bcnt = NUM_BITS_G - 1 ) then
+               v.bcnt := 0;
+               v.ws   := '1';
+            else
+               v.bcnt := r.bcnt + 1;
+            end if;
          elsif ( (not sclk and r.lsclk) = '1' ) then
             -- falling sclk
             v.sr(v.sr'left) := r.sr(r.sr'left - 1);
          end if;
       else
+         v.bcnt  := 0;
          v.lsclk := '0';
+      end if;
+
+      if     ( rsLoc = '1' ) then
+         v.sr(r.sr'left - 1 downto 0) := data_inp;
+         v.sr(r.sr'left)              := data_inp(data_inp'left);
       end if;
 
       rin <= v;
