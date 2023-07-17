@@ -661,6 +661,10 @@ cdef class FwComm:
   def mgr(self):
     return self._mgr
 
+  def setDebug(self, int level):
+    with self._mgr as fw, nogil:
+      fw_set_debug( fw, level )
+
   # parameters that must be set by the constructor
   def setBoardInfo( self ):
     brdVrs      = self.boardVersion()
