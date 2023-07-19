@@ -3,15 +3,17 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 
+use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.ILAWrapperPkg.all;
 
 entity CommandBitBang is
    generic (
-      I2C_SCL_G    : integer := -1; -- index of I2C SCL (to handle clock stretching)
+      CLOCK_FREQ_G : real;
+      I2C_SCL_G    : integer      := -1; -- index of I2C SCL (to handle clock stretching)
       BBO_INIT_G   : std_logic_vector(7 downto 0) := x"FF";
-      I2C_FREQ_G   : real    := 100.0E3;
-      CLOCK_FREQ_G : real
+      I2C_FREQ_G   : real         := 100.0E3;
+      HPER_DELAY_G : NaturalArray := NATURAL_ARRAY_EMPTY_C
    );
    port (
       clk          : in  std_logic;
@@ -33,6 +35,41 @@ end entity CommandBitBang;
 architecture rtl of CommandBitBang is
 
    type StateType is (ECHO, FWD);
+
+   function HPER_WIDTH_F return natural is
+      variable v : natural := 0;
+   begin
+      for i in HPER_DELAY_G'range loop
+         if ( HPER_DELAY_G(i) > v ) then
+            v := HPER_DELAY_G(i);
+         end if;
+      end loop;
+      if ( v > 0 ) then
+         return numBits(v);
+      end if;
+      return 1;
+   end function HPER_WIDTH_F;
+
+   subtype HperDelayType is unsigned(HPER_WIDTH_F - 1 downto 0);
+
+   type HperDelayArray is array (natural range <>) of HperDelayType;
+
+   constant HPER_DELAY_DEFAULT_C : HperDelayType := to_unsigned( 1, HperDelayType'length );
+
+   function HPER_DELAY_F return HperDelayArray is
+      variable v : HperDelayArray(natural range 0 to 2**SubCommandBBType'length - 1);
+   begin
+      for i in v'range loop
+         if ( i >= HPER_DELAY_G'length ) then
+            v(i) := HPER_DELAY_DEFAULT_C;
+         else
+            v(i) := to_unsigned( HPER_DELAY_G(i), v(i)'length );
+         end if;
+      end loop;
+      return v;
+   end function HPER_DELAY_F;
+
+   constant HPER_DELAY_C : HperDelayArray := HPER_DELAY_F;
 
    type RegType is record
       state         : StateType;
@@ -60,6 +97,8 @@ architecture rtl of CommandBitBang is
    signal loopback        : std_logic := '0';
 
    signal bboLoc          : std_logic_vector(7 downto 0);
+
+   signal hper            : HperDelayType;
 
 begin
 
@@ -99,6 +138,8 @@ begin
    end generate G_ILA;
 
    subCmd <= r.cmd;
+
+   hper   <= HPER_DELAY_C( to_integer( unsigned( r.cmd ) ) );
 
    P_COMB : process ( r, mIb, rOb, wdat, wvld, rrdy ) is
       variable v       : RegType;
@@ -176,7 +217,8 @@ begin
          I2C_SCL_G    => I2C_SCL_G,
          BBO_INIT_G   => BBO_INIT_G,
          I2C_FREQ_G   => I2C_FREQ_G,
-         CLOCK_FREQ_G => CLOCK_FREQ_G
+         CLOCK_FREQ_G => CLOCK_FREQ_G,
+         HPER_WIDTH_G => hper'length
       )
       port map (
          clk          => clk,
@@ -194,7 +236,9 @@ begin
          wrdy         => wrdy,
 
          bbo          => bboLoc,
-         bbi          => bbi
+         bbi          => bbi,
+
+         hper         => hper
       );
 
    bbo <= bboLoc;

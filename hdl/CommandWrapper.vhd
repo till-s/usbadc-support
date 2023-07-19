@@ -32,6 +32,9 @@ entity CommandWrapper is
       INVERT_POL_CHB_G         : boolean := false;
       GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
       BOARD_VERSION_G          : std_logic_vector( 7 downto 0) := x"00";
+      -- may configure specific delays for individual SPI
+      -- devices (indexed by BB subCmd)
+      BB_DELAY_ARRAY_G         : NaturalArray := NATURAL_ARRAY_EMPTY_C;
       -- dedicated SPI interface for faster flash operations;
       HAVE_SPI_CMD_G           : boolean := false
    );
@@ -236,7 +239,8 @@ begin
             I2C_SCL_G    => I2C_SCL_G,
             BBO_INIT_G   => BBO_INIT_G,
             I2C_FREQ_G   => I2C_FREQ_G,
-            CLOCK_FREQ_G => FIFO_FREQ_G
+            CLOCK_FREQ_G => FIFO_FREQ_G,
+            HPER_DELAY_G => BB_DELAY_ARRAY_G
          )
          port map (
             clk          => clk,

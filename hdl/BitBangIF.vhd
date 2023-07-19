@@ -10,7 +10,8 @@ entity BitBangIF is
       I2C_SCL_G    : integer := -1; -- index of I2C SCL (to handle clock stretching)
       BBO_INIT_G   : std_logic_vector(7 downto 0) := x"FF";
       I2C_FREQ_G   : real    := 100.0E3;
-      CLOCK_FREQ_G : real
+      CLOCK_FREQ_G : real;
+      HPER_WIDTH_G : natural := 1
    );
    port (
       clk          : in  std_logic;
@@ -28,7 +29,9 @@ entity BitBangIF is
       wrdy         : in  std_logic;
 
       bbo          : out std_logic_vector(7 downto 0);
-      bbi          : in  std_logic_vector(7 downto 0)
+      bbi          : in  std_logic_vector(7 downto 0);
+
+      hper         : in  unsigned(HPER_WIDTH_G - 1 downto 0) := to_unsigned(2-1, HPER_WIDTH_G)
    );
 end entity BitBangIF;
 
@@ -41,8 +44,8 @@ architecture rtl of BitBangIF is
       variable v : integer;
    begin
       v := integer( ceil ( 0.5*CLOCK_FREQ_G/I2C_FREQ_G ) ) - 1;
-      if ( v < HPER_MIN_C ) then
-        v := HPER_MIN_C;
+      if ( v < 0 ) then
+        v := 0;
       end if;
       return v;
    end function I2C_HPER_F;
@@ -57,12 +60,16 @@ architecture rtl of BitBangIF is
       return v;
    end function I2C_TIMO_F;
 
-   constant I2C_LD_TIMO_C : integer := numBits( I2C_TIMO_F );
+   function max(a,b: integer) return integer is
+   begin
+     return ite( a > b, a, b );
+   end function max;
 
+   constant I2C_LD_TIMO_C : integer := max( numBits( I2C_TIMO_F ), HPER_WIDTH_G );
 
    type RegType is record
       i2c_timo      : unsigned(I2C_LD_TIMO_C - 1 downto 0);
-      bbo           : std_logic_vector(bbo'range);
+      bbo           : std_logic_vector(7 downto 0);
       wvld          : std_logic;
       wdat          : std_logic_vector(7 downto 0);
    end record RegType;
@@ -126,7 +133,7 @@ begin
 
    end generate GEN_NO_SYNC;
 
-   P_COMB : process ( r, rdat, rvld, wrdy, bbiSync, sclInEqualsOut, i2cDis, echo ) is
+   P_COMB : process ( r, rdat, rvld, wrdy, bbiSync, sclInEqualsOut, i2cDis, echo, hper ) is
       variable v       : RegType;
       variable rrdyLoc : std_logic;
 
@@ -143,7 +150,6 @@ begin
 
       -- block reception of new data 
       rrdyLoc := '0';
-
       -- if i2c_timeo is already 0 then this logic reverts the decrement
       if ( r.i2c_timo < (I2C_TIMO_F - I2C_HPER_F) ) then
          if ( sclInEqualsOut or (r.i2c_timo = 0) ) then
@@ -166,7 +172,8 @@ begin
          if ( (echo or i2cDis) = '0' ) then
             v.i2c_timo := to_unsigned(I2C_TIMO_F, v.i2c_timo'length);
          else
-            v.i2c_timo := to_unsigned(I2C_TIMO_F - I2C_HPER_F + HPER_MIN_C - 1, v.i2c_timo'length);
+            v.i2c_timo := to_unsigned(I2C_TIMO_F - I2C_HPER_F - 1, v.i2c_timo'length);
+            v.i2c_timo := v.i2c_timo + resize( hper, v.i2c_timo'length );
          end if;
       end if;
 
