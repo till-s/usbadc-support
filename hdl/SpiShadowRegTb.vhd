@@ -8,6 +8,7 @@ end entity SpiShadowRegTb;
 architecture sim of SpiShadowRegTb is
    constant N_C           : natural   := 3;
    constant NREG_C        : natural   := 2;
+   constant HPER_C        : natural   := 2; -- half-period of SCLK (in clk ticks)
 
    type  Slv8Array is array ( natural range <> ) of std_logic_vector(7 downto 0);
    signal clk             : std_logic := '0';
@@ -37,6 +38,14 @@ architecture sim of SpiShadowRegTb is
 
    signal wsChecked       : natural := 0;
    signal rbChecked       : natural := 0;
+
+   procedure hpertick is
+   begin
+      for i in 1 to HPER_C loop
+         wait until rising_edge( clk );
+      end loop;
+   end procedure hpertick;
+
 begin
 
    P_CLK : process is
@@ -46,18 +55,6 @@ begin
          clk <= not clk;
       end if;
    end process P_CLK;
-
-   P_SCLK : process ( clk ) is
-      variable cnt : natural := 0;
-   begin
-      if ( rising_edge(clk) ) then
-         cnt := cnt + 1;
-         if ( cnt = 4 ) then
-            sclk <= not sclk;
-            cnt := 0;
-         end if;
-      end if;
-   end process P_SCLK;
 
    P_FEED : process (rsSrc) is
       variable cnt : natural := 0;
@@ -103,16 +100,17 @@ begin
    P_DRV : process is
       variable cnt : natural := 0;
    begin
-      wait until falling_edge(sclk);
-      wait until rising_edge(clk);
+      hpertick;
       scsb(0) <= '0';
       for i in 1 to 16 loop
-         wait until rising_edge(sclk);
+         hpertick;
+         sclk <= '1';
+         hpertick;
+         sclk <= '0';
       end loop;
-      wait until falling_edge(sclk);
-      wait until rising_edge(clk);
+      hpertick;
       scsb(0) <= '1';
-      wait until rising_edge(clk);
+      hpertick;
    end process P_DRV;
 
    U_DRV : entity work.SpiReg

@@ -153,12 +153,16 @@ begin
          when DEASS_CS =>
             propagateSPI := true;
             -- wait for clock to be deasserted
-            if ( sclkIb /= CLK_ACT_C ) then
-               v.state   := DRAIN;
+            if ( (r.phas /= CLK_ACT_C) or (sclkIb /= CLK_ACT_C) ) then
+               -- stop SCLK to the target but keep CS asserted
+               propagateSPI  := false;
+               scsbOb(r.sel) <= scsbIb;
+               v.phas        := not CLK_ACT_C;
+               -- hang here until scsIb is deasserted (statement below)
             end if;
 
          when DRAIN =>
-               -- wait until CS raising edga (see below)
+               -- wait until CS raising edge (see below)
       end case;
 
       if ( (scsbIb and not r.lscsb) = '1' ) then
