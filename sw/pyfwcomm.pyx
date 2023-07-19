@@ -131,6 +131,11 @@ cdef class FwDev:
   def __cinit__(self, FwMgr mgr, *args, **kwargs):
     self._mgr = mgr
 
+  # one-time initialization
+  # after power-up.
+  def init(self):
+    pass
+
   def mgr(self):
     return self._mgr
 
@@ -357,13 +362,13 @@ cdef class AmpLmh6882(Amp):
   def getS2Range(self):
     return (0,20)
 
-  def getS2Att(self, int channel):
+  def getS2Att(self, unsigned channel):
     cdef float rv
     with self._mgr as fw, nogil:
       rv = lmh6882GetAtt( fw, channel )
     return rv
 
-  def setS2Att(self, int channel, float att):
+  def setS2Att(self, unsigned channel, float att):
     cdef int rv
     with self._mgr as fw, nogil:
       rv = lmh6882SetAtt( fw, channel, att )
@@ -393,7 +398,7 @@ cdef class AmpAd8370(Amp):
   def getS2Range(self):
     return (0,40)
 
-  def setS2Att(self, int channel, float att):
+  def setS2Att(self, unsigned channel, float att):
     cdef int rv
     with self._mgr as fw, nogil:
       rv = ad8370SetAtt( fw, channel, att )
@@ -401,13 +406,30 @@ cdef class AmpAd8370(Amp):
       raise IOError("ad8370SetAtt failed")
     return rv
 
-  def getS2Att(self, int channel):
+  def getS2Att(self, unsigned channel):
     cdef float rv
     with self._mgr as fw, nogil:
       rv = ad8370GetAtt( fw, channel )
     if ( isnan( rv ) ):
       raise IOError("ad8370GetAtt failed")
     return rv
+
+  def readReg(self, unsigned channel):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = ad8370Read( fw, channel )
+    if ( rv < 0 ):
+      raise IOError("ad8370ReadReg failed")
+    return rv
+
+  def writeReg(self, unsigned channel, uint8_t val):
+    cdef int rv
+    with self._mgr as fw, nogil:
+      rv = ad8370Write( fw, channel, val )
+    if ( rv < 0 ):
+      raise IOError("ad8370ReadReg failed")
+    return rv
+
 
 cdef class FEC(FwDev):
 
@@ -463,7 +485,6 @@ cdef class I2CFEC(FEC):
     super().__init__(*args, **kwargs)
     self._dev = I2CDev( self.mgr() )
     self._sla = sla
-    self.allOutputs()
 
   def outReg(self, int channel):
     return 1
@@ -481,7 +502,7 @@ cdef class I2CFEC(FEC):
     self._dev.i2cWriteReg( self._sla, self.outReg(channel), ctl )
 
   def getACCtlBit(self, int channel):
-    return self.getBit( channel, self.hasACModeCtl(channel) ) 
+    return self.getBit( channel, self.hasACModeCtl(channel) )
 
   def getAttCtlBit(self, int channel):
     return self.getBit( channel, self.hasAttenuatorCtl(channel) )
@@ -494,7 +515,7 @@ cdef class I2CFEC(FEC):
 
   def setACCtlBit(self, int channel, int val):
     self.setBit( channel, self.hasACModeCtl(channel), val )
-    
+
   def setAttCtlBit(self, int channel, int val):
     self.setBit( channel, self.hasAttenuatorCtl(channel), val )
 
@@ -537,6 +558,14 @@ cdef class GpioFECv1(I2CFEC):
   def __init__(self, *args, **kwargs):
     # TCA6408
     super().__init__( 0x20, *args, **kwargs)
+
+  def init(self):
+    for ch in [0,1]:
+      self.setTermination(ch, False)
+      self.setAttenuator (ch, True )
+      self.setACMode     (ch, False)
+      self.setDacRangeHi (ch, True )
+    self.allOutputs()
 
   def c(self, channel):
     if not channel in [0,1]:
@@ -650,7 +679,7 @@ cdef class FwComm:
     else:
       self._amp = Amp( self._mgr )
       self._fec = FEC( self._mgr )
-    
+
     with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
     self.setBoardInfo()
@@ -709,12 +738,9 @@ cdef class FwComm:
     self._clk.setOutDiv( self._clkOut["EXT"], 4095.0 )
     self._clk.setFODRoute( self._clkOut["EXT"], CASC_FOD )
     self._clk.setFODRoute( self._clkOut["ADC"], NORMAL   )
-    for ch in [0,1]:
-      try:
-        self._fec.setTermination( ch, False )
-      except RuntimeError:
-        # may have no fec support
-        pass
+    # board-specific FEC init
+    self._fec.init()
+
     self._dac.reset()
     self._dac.setRefInternalX1()
     self._adc.reset()
@@ -780,16 +806,16 @@ cdef class FwComm:
   def ampGetS2Range(self):
     return self._amp.getS2Range()
 
-  def ampGetS2Att(self, int channel):
+  def ampGetS2Att(self, unsigned channel):
     rv = self._amp.getS2Att( channel )
-    if ( rv < 0 ):
+    if ( rv <= -1.0 ):
       if ( rv < -1.0 ):
         raise ValueError("getS2Att(): invalid channel")
       else:
         raise IOError("getS2Att()")
     return rv
 
-  def ampSetS2Att(self, int channel, float att):
+  def ampSetS2Att(self, unsigned channel, float att):
     cdef float rv
     rv = self._amp.setS2Att(channel, att)
     if ( rv < 0 ):
@@ -1105,7 +1131,7 @@ cdef class FwCommExprt(FwComm):
       raise IOError("ad8370Read failed")
     return rv
 
-  def ad8370Write(self, int ch, int val):
+  def ad8370Write(self, int ch, uint8_t val):
     cdef int rv
     with self._mgr as fw, nogil:
       rv = ad8370Write( fw, ch, val )
