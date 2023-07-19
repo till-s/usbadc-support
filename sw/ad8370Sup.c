@@ -9,9 +9,10 @@
 int
 ad8370Write(FWInfo *fw, int channel, uint8_t val)
 {
-uint8_t buf[1];
-	buf[0] = val;
-	if ( bb_spi_xfer( fw, SPI_MODE0, (channel ? SPI_VGB : SPI_VGA), buf, 0, 0, sizeof(buf) ) < 0 ) {
+uint8_t buf[2];
+	buf[0] = fw_spireg_cmd_write( channel );
+	buf[1] = val;
+	if ( bb_spi_xfer( fw, SPI_MODE0, SPI_PGA, buf, 0, 0, sizeof(buf) ) < 0 ) {
 		return -1;
 	}
 	return 0;
@@ -20,15 +21,14 @@ uint8_t buf[1];
 int
 ad8370Read(FWInfo *fw, int channel)
 {
-uint8_t rbuf[1];
-uint8_t zbuf[1];
-	zbuf[0] = 0xff;
-	if ( bb_spi_xfer( fw, SPI_MODE0, (channel ? SPI_VGB : SPI_VGA), zbuf, rbuf, zbuf, sizeof(rbuf) ) < 0 ) {
+uint8_t buf[2];
+	buf[0] = fw_spireg_cmd_read( channel );
+	buf[1] = 0xff;
+	if ( bb_spi_xfer( fw, SPI_MODE0, SPI_PGA, buf, buf, 0, sizeof(buf) ) < 0 ) {
 		return -1;
 	}
-	return (int)rbuf[0];
+	return (int)buf[1];
 }
-
 
 static const double VERNIER = 0.055744; /* magic values from datasheet */
 static const double PREGAIN = 7.079458;
