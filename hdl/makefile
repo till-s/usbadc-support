@@ -124,7 +124,7 @@ CommandWrapperSim.o: SpiReg.o SpiChecker.o
 
 SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
-MulShifter.o PipelinedRShifter.o: BasicPkg.o
+MulShifter.o PipelinedRShifter.o SpiBitShifter.o CommandBitBang.o SpiShadowReg.o: BasicPkg.o
 
 CicFilterTb.o: CicFilter.o
 
@@ -139,4 +139,4 @@ clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb
 	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
 	$(RM) spiregtb SpiRegTb.o
-	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o
+	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o spishadowregtb
