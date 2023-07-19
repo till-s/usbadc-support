@@ -45,7 +45,7 @@ int v;
 	}
 	if ( ( v = lmh6882ReadReg( fw, PGA_REG_ATT_CHA + channel ) ) < 0 ) {
 		return -1.0;
-	} 
+	}
 	return ((float)v)/4.0;
 }
 
