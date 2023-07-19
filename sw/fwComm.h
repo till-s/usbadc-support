@@ -114,6 +114,12 @@ fw_xfer(FWInfo *fw, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 int
 fw_xfer_vec(FWInfo *fw, uint8_t cmd, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);
 
+uint8_t
+fw_spireg_cmd_read(unsigned ch);
+
+uint8_t
+fw_spireg_cmd_write(unsigned ch);
+
 /*
  * ADC Buffer / acquisition readout
  */
