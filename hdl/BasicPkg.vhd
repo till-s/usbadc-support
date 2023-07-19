@@ -16,6 +16,10 @@ package BasicPkg is
 
    constant SLV8_ARRAY_EMPTY_C : Slv8Array(0 downto 1) := (others => (others =>'0'));
 
+   type NaturalArray is array(integer range <>) of natural;
+
+   constant NATURAL_ARRAY_EMPTY_C : NaturalArray(0 downto 1) := (others => 0);
+
 end package BasicPkg;
 
 package body BasicPkg is
