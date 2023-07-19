@@ -95,7 +95,7 @@ unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
 		case 0:
 			sup |= (1<<SPI_PGA) | (1<<SPI_FEG); break;
 		case 1:
-			sup |= (1<<SPI_VGA) | (1<<SPI_VGB); break;
+			sup |= (1<<SPI_PGA);                break;
 		default:
 			fprintf(stderr, "spi_get_subcmd(): unsupported board/hw version %i\n", fw->brdVers);
 			return -1;
@@ -520,7 +520,7 @@ uint8_t           last;
 
 			if ( rbuf ) {
 
-				shift_outof_buf( buf, 1, rbuf, xlen );
+				shift_outof_buf( buf, stretch, rbuf, xlen );
 
 				rbuf += xlen;
 			}
@@ -1040,4 +1040,16 @@ AcqParams p;
 	p.mask          = ACQ_PARAM_MSK_AUT;
 	p.autoTimeoutMS = timeout;
 	return acq_set_params( fw, &p, 0 );
+}
+
+uint8_t
+fw_spireg_cmd_read(unsigned ch)
+{
+	return 0x80 | (ch & 0x1f);
+}
+
+uint8_t
+fw_spireg_cmd_write(unsigned ch)
+{
+	return 0x00 | (ch & 0x1f);
 }
