@@ -102,7 +102,7 @@ architecture rtl of CommandBitBang is
 
 begin
 
-   G_ILA : if ( true ) generate
+   G_ILA : if ( false ) generate
       function toSl(constant x : boolean) return std_logic is
       begin
          if ( x ) then return '1'; else return '0'; end if;

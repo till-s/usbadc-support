@@ -92,7 +92,7 @@ begin
    spiMOSI <= spiMOSILoc;
    spiCSb  <= spiCSbLoc;
 
-   G_ILA : if ( true ) generate
+   G_ILA : if ( false ) generate
       signal stateDbg : std_logic_vector(1 downto 0);
    begin
 
