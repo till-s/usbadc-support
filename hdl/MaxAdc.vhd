@@ -618,20 +618,12 @@ begin
                   else
                      v.raddr     := rWrCC.taddr - resize(rWrCC.parms.nprets, v.raddr'length) + MEM_DEPTH_G;
                   end if;
-                  v.saddr     := v.raddr;
-                  -- transmit start address -- not really necessary; we keep it for
-                  -- debugging purposes and maybe to convey additional info in the
-                  -- future... 
-                  if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat                  := std_logic_vector(rWrCC.taddr(7 downto 0));
-                  else
-                     v.busOb.dat                  := (others => '0');
-                     v.busOb.dat(rRd.saddr'range) := std_logic_vector(rWrCC.taddr);
-                  end if;
+                  v.saddr        := v.raddr;
+                  v.busOb.dat    := (others => '0');
                   v.busOb.dat(0) := toSl(rWrCC.ovrA /= 0);
                   v.busOb.dat(1) := toSl(rWrCC.ovrB /= 0);
-                  v.busOb.vld := '1';
-                  v.busOb.lst := '0';
+                  v.busOb.vld    := '1';
+                  v.busOb.lst    := '0';
                else
                   busOb.lst <= '1';
                   if ( wrDon = '1' ) then  -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
@@ -657,9 +649,6 @@ begin
                v.anb := not rRd.anb;
                if ( rRd.anb ) then
                   v.busOb.dat := (others => '0');
-                  if ( NUM_ADDR_BITS_C > 7 ) then
-                     v.busOb.dat(NUM_ADDR_BITS_C - 9 downto 0) := std_logic_vector(rWrCC.taddr(rWrCC.taddr'left downto 8));
-                  end if;
                   -- prefetch/register (raddr is incremented; see above)
                   v.rdatA := rdatA;
                   v.rdatB := rdatB;
