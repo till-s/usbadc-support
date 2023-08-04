@@ -72,6 +72,14 @@ package CommandMuxPkg is
 
    function subCommandSPIGet(constant cmd : in std_logic_vector (7 downto 0))
       return SubCommandSPIType;
+
+   subtype  SubCommandRegType is std_logic_vector(2 downto 0);
+
+   constant CMD_REG_RD8_C     : SubCommandRegType := SubCommandRegType( to_unsigned( 0, SubCommandRegType'length ) );
+   constant CMD_REG_WR8_C     : SubCommandRegType := SubCommandRegType( to_unsigned( 1, SubCommandRegType'length ) );
+
+   function subCommandRegGet(constant cmd : std_logic_vector(7 downto 0))
+      return SubCommandRegType;
  
 end package CommandMuxPkg;
 
@@ -98,5 +106,10 @@ package body CommandMuxPkg is
    begin
       return SubCommandSPIType( cmd(NUM_CMD_BITS_C + SubCommandSPIType'length - 1 downto NUM_CMD_BITS_C) );
    end function subCommandSPIGet;
+
+   function subCommandRegGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandBBType is
+   begin
+      return SubCommandRegType( cmd(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C) );
+   end function subCommandRegGet;
 
 end package body CommandMuxPkg;

@@ -73,6 +73,15 @@ architecture sim of CommandWrapperSim is
 
    signal subCmdBB: SubCommandBBType;
 
+   signal regRDat  : std_logic_vector(7 downto 0) := (others => '0');
+   signal regWDat  : std_logic_vector(7 downto 0);
+   signal regAddr  : unsigned(7 downto 0);
+   signal regRdnw  : std_logic;
+   signal regVld   : std_logic;
+   signal regRdy   : std_logic := '0';
+   signal regErr   : std_logic := '1';
+
+
 begin
 
    P_CLK : process is
@@ -120,6 +129,14 @@ begin
          bbo          => bbo,
          bbi          => bbi,
          subCmdBB     => subCmdBB,
+
+         regRDat      => regRDat,
+         regWDat      => regWDat,
+         regAddr      => regAddr,
+         regRdnw      => regRdnw,
+         regVld       => regVld,
+         regRdy       => regRdy,
+         regErr       => regErr,
 
          adcClk       => clk,
          adcRst       => rst(rst'left),
@@ -249,5 +266,60 @@ begin
          miso   => miso,
          viol   => open
       );
+
+   P_REG  : process ( clk, regAddr, regVld, regRdnw ) is
+      variable r0 : std_logic_vector(7 downto 0) := (others => 'X');
+      variable r1 : std_logic_vector(7 downto 0) := (others => 'X');
+      variable r2 : std_logic_vector(7 downto 0) := (others => 'X');
+
+      variable dly: unsigned(2 downto 0)         := to_unsigned(2, 3);
+      variable rdy: std_logic;
+   begin
+      rdy    := '1';
+      regErr <= '0';
+      case ( to_integer( regAddr ) ) is
+         when 4 | 24  =>
+            regRDat <= x"14";
+            regErr  <= not regRdnw;
+         when 5 | 25  =>
+            regRDat <= x"15";
+            regErr  <= not regRdnw;
+         when 6 | 26  =>
+            regRDat <= x"16";
+            regErr  <= not regRdnw;
+
+         when 10 | 30 =>
+            regRDat <= r0;
+         when 11 | 31 =>
+            regRDat <= r1;
+         when 12 | 32 =>
+            regRDat <= r2;
+         when others =>
+            regRDat <= (others => 'X');
+            regErr  <= '1';
+      end case;
+      if ( to_integer( regAddr ) > 20 ) then
+         rdy := dly(dly'left);
+      end if;
+      if ( rising_edge( clk ) ) then
+         if ( regVld = '1' ) then
+            if ( rdy = '1' ) then
+               if ( regRdnw = '0' ) then
+                  if    ( regAddr = 10 or regAddr = 30 ) then
+                     r0 := regWDat;
+                  elsif ( regAddr = 11 or regAddr = 31 ) then
+                     r1 := regWDat;
+                  elsif ( regAddr = 12 or regAddr = 32 ) then
+                     r2 := regWDat;
+                  end if;
+               end if;
+               dly := to_unsigned(2, dly'length);
+            else
+               dly := dly - 1;
+            end if;
+         end if;
+      end if;
+      regRdy <= rdy;
+   end process P_REG;
 
 end architecture sim;

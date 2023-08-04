@@ -27,7 +27,7 @@ static void usage(const char *nm)
 	printf("   -f flash-file      : file to write/verify when operating on SPI flash.\n");
     printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
     printf("   -?                 : instead of programming the flash verify its contents against a file (-f also required).\n");
-	printf("   -a address         : start-address for SPI flash opertions [0x%x].\n", FLASHADDR_DFLT);
+	printf("   -a address         : start-address for SPI flash operations [0x%x].\n", FLASHADDR_DFLT);
 	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
 	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
 	printf("   -d usb-device      : usb-device [/dev/ttyUSB0]; you may also set the BBCLI_DEVICE env-var.\n");
@@ -40,6 +40,9 @@ static void usage(const char *nm)
 	printf("   -p                 : dump acquisition parameters.\n");
 	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : access PGA registers.\n");
+	printf("   -R <reg_op>        : register read/write operation:\n");
+	printf("                         READ : <addr>:<len>\n");
+	printf("                         WRITE: <addr>=<val>{,<val>}\n");
 	printf("   -A                 : access ADC registers.\n");
 	printf("   -i i2c_addr        : access ADC registers.\n");
 	printf("\n");
@@ -237,6 +240,60 @@ bail:
 	return rval;
 }
 
+static int
+opReg(FWInfo *fw, const char *op)
+{
+unsigned    addr, len, val;
+uint8_t     buf[256];
+int         st;
+const char *p;
+	if        ( 2 == sscanf(op, "%i:%i", &addr, &len) ) {
+		if ( addr >= 256 || len > sizeof(buf) || (addr + len) > 256 ) {
+			fprintf(stderr, "Error: invalid register read address or/and length.\n");
+			return -1;
+		}
+		if ( (st = fw_reg_read(fw, addr, buf, len, 0)) < 0 ) {
+			fprintf(stderr, "Error: fw_reg_read() failed (%d)\n", st);
+			return -1;
+		}
+		for ( st = 0; st < len; st++ ) {
+			printf("0x%02x: 0x%02x\n", addr + st, buf[st]);
+		}
+	} else if ( 2 == sscanf(op, "%i=%i", &addr, &val) ) {
+		buf[0] = val;
+		len    = 1;
+		for ( p = strchr(op, ','); p; p = strchr(p, ',') ) {
+			++p;
+			if ( len >= sizeof(buf) ) {
+				fprintf(stderr, "Error: too many register values\n");
+				return -1;
+			}
+			if ( 1 != sscanf(p, "%i", &val) ) {
+				fprintf(stderr, "Error: unable to scan register value\n");
+				return -1;
+			}
+			if ( val > 255 ) {
+				fprintf(stderr, "Error: register value out of range\n");
+				return -1;
+			}
+			buf[len] = val;
+			len++;
+		}
+		if ( addr > 256 || (addr + len ) >= 256 ) {
+			fprintf(stderr, "Error: invalid register write address or/and too many values.\n");
+			return -1;
+		}
+		if ( (st = fw_reg_write( fw, addr, buf, len, 0 )) < 0 ) {
+			fprintf(stderr, "Error: fw_reg_write() failed (%d)\n", st);
+			return -1;
+		}
+	} else {
+		fprintf(stderr, "Error: Unable to parse register operation command\n");
+		return -1;
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 const char        *devn;
@@ -269,12 +326,13 @@ int                fwVersion = 0;
 int                dumpAdc   = 0;
 int                dumpPrms  = 0;
 const char        *trgOp     = 0;
+const char        *regOp     = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyUSB0";
 	}
 
-	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:PpS:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:PpR:S:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -285,8 +343,9 @@ const char        *trgOp     = 0;
 			case 'A': dac  = 0; test_reg = TEST_ADC;                                  break;
 			case 'G': dac  = 0; test_reg = TEST_FEG;                                  break;
 			case 'B': dumpAdc = 1;                                                    break;
-			case 'F': dumpAdc = -1;                                                    break;
+			case 'F': dumpAdc = -1;                                                   break;
 			case 'p': dumpPrms= 1;                                                    break;
+            case 'R': regOp   = optarg;                                               break;
 			case 'v': debug++;                                                        break;
 			case 'V': fwVersion= 1;                                                   break;
 			case 'I': dac = 0; test_reg = TEST_I2C;                                   break;
@@ -587,6 +646,12 @@ const char        *trgOp     = 0;
 
 		}
 
+	}
+
+    if ( regOp ) {
+		if ( opReg( fw, regOp ) ) {
+			goto bail;
+		}
 	}
 
 

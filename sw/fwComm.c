@@ -39,6 +39,10 @@
 #define BITS_FW_CMD_ACQPRM      0x03
 #define BITS_FW_CMD_SPI         0x04
 
+#define BITS_FW_CMD_REG         0x05
+#define BITS_FW_CMD_REG_RD8     (0<<4)
+#define BITS_FW_CMD_REG_WR8     (1<<4)
+
 #define BITS_FW_CMD_ACQ_MSK_SRC  7
 #define BITS_FW_CMD_ACQ_SHF_SRC  0
 #define BITS_FW_CMD_ACQ_SHF_EDG  3
@@ -128,6 +132,8 @@ fw_get_cmd(FWCmd aCmd)
 		case FW_CMD_BB_I2C     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
 		case FW_CMD_ACQ_PARMS  : return BITS_FW_CMD_ACQPRM;
 		case FW_CMD_SPI        : return BITS_FW_CMD_SPI;
+        case FW_CMD_REG_RD8    : return BITS_FW_CMD_REG | BITS_FW_CMD_REG_RD8;
+        case FW_CMD_REG_WR8    : return BITS_FW_CMD_REG | BITS_FW_CMD_REG_WR8;
 		default:
 			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
 			abort();
@@ -1052,4 +1058,65 @@ uint8_t
 fw_spireg_cmd_write(unsigned ch)
 {
 	return 0x00 | (ch & 0x1f);
+}
+
+int
+fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
+{
+	tbufvec tvec[1];
+	rbufvec rvec[2];
+	uint8_t pbuf[2];
+	uint8_t status;
+	uint8_t cmd      = fw_get_cmd( FW_CMD_REG_RD8 );
+	int     st;
+
+	if ( addr >= 256 || (addr + len) > 256 ) {
+		return FW_CMD_ERR_INVALID;
+	}
+
+	pbuf[0]     = (uint8_t)addr;
+	pbuf[1]     = (uint8_t)(len - 1);
+
+    tvec[0].buf = pbuf;
+    tvec[0].len = sizeof(pbuf);
+
+	rvec[0].buf = buf;
+	rvec[0].len = len;
+	rvec[1].buf = &status;
+	rvec[1].len = 1;
+
+	st = fw_xfer_vec( fw, cmd, tvec, sizeof(tvec)/sizeof(tvec[0]), rvec, sizeof(rvec)/sizeof(rvec[0]) );
+	if ( st < 0 ) {
+		return st;
+	}
+	return (len + 1 != st) || status ? FW_CMD_ERR : len;
+}
+
+int
+fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned flags)
+{
+	tbufvec tvec[2];
+	rbufvec rvec[1];
+	uint8_t byteAddr = addr;
+	uint8_t status;
+	uint8_t cmd      = fw_get_cmd( FW_CMD_REG_WR8 );
+	int     st;
+
+	if ( addr >= 256 || (addr + len) > 256 ) {
+		return FW_CMD_ERR_INVALID;
+	}
+
+    tvec[0].buf = &byteAddr;
+    tvec[0].len = 1;
+	tvec[1].buf = buf;
+	tvec[1].len = len;
+
+	rvec[0].buf = &status;
+	rvec[0].len = 1;
+
+	st = fw_xfer_vec( fw, cmd, tvec, sizeof(tvec)/sizeof(tvec[0]), rvec, sizeof(rvec)/sizeof(rvec[0]) );
+	if ( st < 0 ) {
+		return st;
+	}
+	return (1 != st ) || status ? FW_CMD_ERR : len;
 }

@@ -24,6 +24,9 @@ cdef extern from "fwComm.h":
   int            acq_set_source(FWInfo *, TriggerSource src, int rising) nogil
   int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout) nogil
   int            acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale) nogil
+  int            fw_reg_read(FWInfo *, uint32_t, uint8_t *, size_t, unsigned) nogil
+  int            fw_reg_write(FWInfo *, uint32_t, uint8_t *, size_t, unsigned) nogil
+
 
   struct AcqParams:
     unsigned      mask

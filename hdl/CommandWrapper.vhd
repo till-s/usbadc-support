@@ -66,6 +66,15 @@ entity CommandWrapper is
 
       extTrg       : in  std_logic := '0';
 
+      -- register interface
+      regRDat      : in  std_logic_vector(7 downto 0) := (others => '0');
+      regWDat      : out std_logic_vector(7 downto 0);
+      regAddr      : out unsigned(7 downto 0);
+      regRdnw      : out std_logic;
+      regVld       : out std_logic;
+      regRdy       : in  std_logic := '1';
+      regErr       : in  std_logic := '1';
+
       -- bit 0 is the DOR (overrange) bit
       adcDataDDR   : in  std_logic_vector(ADC_BITS_G downto 0);
 
@@ -84,13 +93,15 @@ architecture rtl of CommandWrapper is
    constant CMD_ADC_MEM_IDX_C : natural := 2;
    constant CMD_ACQ_PRM_IDX_C : natural := 3;
    constant CMD_SPI_IDX_C     : natural := 4;
+   constant CMD_REG_IDX_C     : natural := 5;
 
    constant CMDS_SUPPORTED_C  : CmdsSupportedType := (
       CMD_VER_IDX_C           => true,
       CMD_BB_IDX_C            => true,
       CMD_ADC_MEM_IDX_C       => true,
       CMD_ACQ_PRM_IDX_C       => true,
-      CMD_SPI_IDX_C           => HAVE_SPI_CMD_G
+      CMD_SPI_IDX_C           => HAVE_SPI_CMD_G,
+      CMD_REG_IDX_C           => true
    );
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
@@ -351,5 +362,27 @@ begin
             spiMISO      => spiMISO
          );
    end generate G_SPI;
+
+   G_REGS : if ( CMDS_SUPPORTED_C( CMD_REG_IDX_C ) ) generate
+      U_REG : entity work.CommandReg
+         port map (
+            clk          => clk,
+            rst          => rst,
+
+            mIb          => bussesIb(CMD_REG_IDX_C),
+            rIb          => readysIb(CMD_REG_IDX_C),
+
+            mOb          => bussesOb(CMD_REG_IDX_C),
+            rOb          => readysOb(CMD_REG_IDX_C),
+
+            rdat         => regRDat,
+            wdat         => regWDat,
+            addr         => regAddr,
+            rdnw         => regRdnw,
+            vld          => regVld,
+            rdy          => regRdy,
+            err          => regErr
+         );
+    end generate G_REGS;
  
 end architecture rtl;
