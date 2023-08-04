@@ -53,6 +53,8 @@ entity MaxADC is
       busOb       : out SimpleBusMstType;
       rdyOb       : in  std_logic;
 
+      status      : out std_logic_vector(7 downto 0);
+
       pllLocked   : out std_logic := '1';
 
       pllRst      : in  std_logic := '0';
@@ -243,6 +245,8 @@ architecture rtl of MaxADC is
    signal msTimerStartDly   : std_logic;
 
    signal lparms            : AcqCtlParmType;
+
+   signal statusLoc         : std_logic_vector(status'range) := (others => '0');
 
 begin
 
@@ -574,14 +578,14 @@ begin
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWrCC) is
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWrCC, parms, parmsTgl) is
       variable v      : RdRegType;
    begin
-      v     := rRd;
+      v          := rRd;
 
-      rdyIb <= '1'; -- drop anything extra;
+      rdyIb      <= '1'; -- drop anything extra;
 
-      busOb <= rRd.busOb;
+      busOb      <= rRd.busOb;
 
       if ( wrDon = '0' ) then
          v.rdDon := '0';
@@ -954,7 +958,7 @@ begin
 
       signal   cenOut0              : std_logic;
 
-      
+
       signal   cenCic1              : std_logic;
       attribute KEEP of cenCic1     : signal is "TRUE";
 
@@ -1376,6 +1380,25 @@ begin
 
          cenCic1 <= '1';
    end generate G_NO_DECIMATORS;
+
+   statusLoc(ACQ_STA_OVR_A_C) <= toSl(rWrCC.ovrA /= 0);
+   statusLoc(ACQ_STA_OVR_B_C) <= toSl(rWrCC.ovrB /= 0);
+   statusLoc(ACQ_STA_HALTD_C) <= memFull;
+   statusLoc(ACQ_STA_SRC_A_C) <= '1' when rWr.parms.src = CHA else '0';
+   statusLoc(ACQ_STA_SRC_B_C) <= '1' when rWr.parms.src = CHB else '0';
+
+   U_STATUS_SYNC : entity work.SynchronizerBit
+      generic map (
+         WIDTH_G    => status'length,
+         IN_REG_G   => true
+      )
+      port map (
+         clkInp     => memClk,
+         datInp     => statusLoc,
+         clk        => busClk,
+         rst        => busRst,
+         datOut     => status
+      );
 
    smplClk <= memClk;
 

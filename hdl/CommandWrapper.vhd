@@ -54,6 +54,8 @@ entity CommandWrapper is
       bbi          : in  std_logic_vector(7 downto 0) := (others => '0');
       subCmdBB     : out SubCommandBBType;
 
+      adcStatus    : out std_logic_vector(7 downto 0) := (others => '0');
+
       spiSClk      : out std_logic;
       spiMOSI      : out std_logic;
       spiCSb       : out std_logic;
@@ -291,6 +293,8 @@ begin
 
             busOb        => bussesOb(CMD_ADC_MEM_IDX_C),
             rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
+
+            status       => adcStatus,
 
             pllLocked    => adcDcmLocked,
             pllRst       => '0',

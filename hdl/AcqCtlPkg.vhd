@@ -45,6 +45,13 @@ package AcqCtlPkg is
 
    function ite(constant x: in boolean) return std_logic;
 
+   -- status bits
+   constant ACQ_STA_OVR_A_C : natural := 0; -- channel A over-range
+   constant ACQ_STA_OVR_B_C : natural := 1; -- channel B over-range
+   constant ACQ_STA_HALTD_C : natural := 2; -- acquisition in HALT state (done)
+   constant ACQ_STA_SRC_A_C : natural := 3; -- trigger source A
+   constant ACQ_STA_SRC_B_C : natural := 4; -- trigger source B
+
 end package AcqCtlPkg;
 
 package body AcqCtlPkg is
