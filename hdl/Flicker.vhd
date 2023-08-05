@@ -9,8 +9,8 @@ use     work.BasicPkg.all;
 
 entity Flicker is
    generic (
-      CLOCK_FREQ_G     : real; -- hz
-      HOLD_TIME_G      : real; -- s
+      CLOCK_FREQ_G     : real;             -- hz
+      HOLD_TIME_G      : real      := 0.1; -- s
       ACTIVE_G         : std_logic := '1'
    );
    port (
