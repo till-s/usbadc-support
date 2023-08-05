@@ -6,6 +6,46 @@ use ieee.math_real.all;
 use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 
+-- simple memory mapped access
+--
+--  READ REQUEST:
+--    command byte followed by an address byte and a count byte; the count is
+--    the actual count minus one (e.g., 0 represents a count of 1).
+--
+--       cmd, addr, count
+--
+--  READ REPLY:
+--    command byte (echo) followed by count + 1 data bytes and a termiating status
+--    byte.
+--
+--       cmd, d0, ..., status
+--
+--    status is 0 on success and nonzero if a an error occurred (note that incomplete
+--    requests also result in an error reply - without any data).
+--    The application may flag a read error by asserting 'err'.
+--
+--  WRITE REQUEST:
+--    command byte followed by an address byte and one or more data bytes.
+--
+--       cmd, addr, d0, ..., dn
+--
+--  WRITE REPLY:
+--    command byte (echo) followed by a status byte
+--
+--       cmd, status
+--
+--    nonzero status indicates a write error flagged by the application or
+--    an invalid command (e.g., missing address).
+--
+--  APPLICATION DATA PORT:
+--
+--    addr, rdnw ('1' for read, '0' for write) and wdat (if rdnw='0') qualified by 'vld=1'
+--
+--    the application responds by asserting 'rdy' and providing 'rdat' (if rdnw='1') and
+--    status (err='0' success, err='1' error; this leads to the entire request being
+--    aborted).
+--    Data are transferred during the cycle when 'vld' and 'rdy' are both asserted.
+
 entity CommandReg is
    generic (
       ADDR_W_G     : natural := 8;
@@ -165,7 +205,6 @@ begin
       end case;
 
       rin        <= v;
-
    end process P_COMB;
 
    P_SEQ : process ( clk ) is
