@@ -194,6 +194,47 @@ class Scope(QtCore.QObject):
       ch.setPen( self._channelColors[i] )
       self._ch.append( ch )
 
+    def tryAddTgl( lst, chn, lbls, getter, setter ):
+      try:
+        btn  = QtWidgets.QPushButton()
+        btn.setCheckable( True )
+        btn.setAutoDefault( False )
+        def setLbl(checked):
+          if ( checked ):
+            btn.setText( lbls[0] )
+            btn.setChecked(True)
+          else:
+            btn.setText( lbls[1] )
+            btn.setChecked(False)
+        setLbl( getter( chn ) )
+        def cb( checked ):
+          setLbl( checked )
+          setter( chn, checked )
+        btn.toggled.connect( cb )
+        lst.append( btn )
+      except RuntimeError:
+        # not supported
+        pass
+
+    # try to make input controls
+    wids = []
+    for i in range(self._numCh):
+      elms = []
+      tryAddTgl( elms, i, ["50Ohm", "1MOhm" ], self._fw.fecGetTermination, self._fw.fecSetTermination)
+      tryAddTgl( elms, i, ["AC",    "DC"    ], self._fw.fecGetACMode, self._fw.fecSetACMode )
+      tryAddTgl( elms, i, ["-20dB", "0dB"   ], self._fw.fecGetAttenuator, self._fw.fecSetAttenuator )
+      if len(elms) > 0:
+        elms.insert(0, QtWidgets.QLabel("{}:".format(self._channelNames[i])))
+        wids.append(elms)
+
+    if ( len(wids) > 0 ):
+      frm.addRow( QtWidgets.QLabel("Input Stage:") )
+      for row in wids:
+        hb = QtWidgets.QHBoxLayout()
+        for w in row:
+          hb.addWidget( w )
+        frm.addRow( hb )
+
     frm.addRow( QtWidgets.QLabel("Measurements:") )
     self._meanLbls = []
     self._stdLbls  = []
