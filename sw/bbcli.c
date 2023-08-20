@@ -47,6 +47,7 @@ static void usage(const char *nm)
 	printf("   -i i2c_addr        : access ADC registers.\n");
 	printf("\n");
 	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
+	printf("       ForceBB        : force using bit-bang, even if a SPI controller is available.\n");
 	printf("       Id             : read and print ID bytes.\n");
 	printf("       St             : read and print status.\n");
 	printf("       Rd<size>       : read and print <size> bytes [100] (starting at -a <addr>)\n");
@@ -465,7 +466,9 @@ const char        *regOp     = 0;
 
 		for ( op = test_spi; (op = strtok_r( op, ",", &wrk )); op = 0 /* for strtok_r */  ) {
 
-			if ( strstr(op, "Id") ) {
+			if ( strstr(op, "ForceBB") ) {
+				fw_disable_features( fw, FW_FEATURE_SPI_CONTROLLER );
+			} else if ( strstr(op, "Id") ) {
 				if ( at25_id( fw ) < 0 ) {
 					goto bail;
 				}
