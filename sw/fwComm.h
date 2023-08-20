@@ -51,6 +51,10 @@ bb_i2c_start(FWInfo *fw, int restart);
 uint64_t
 fw_get_features(FWInfo *fw);
 
+/* Disable features selected by 'mask' */
+void
+fw_disable_features(FWInfo *fw, uint64_t mask);
+
 /* set 'I2C_READ' when writing the i2c address */
 #define I2C_READ (1<<0)
 

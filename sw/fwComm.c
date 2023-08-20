@@ -146,6 +146,12 @@ fw_get_features(FWInfo *fw)
 	return fw->features;
 }
 
+void
+fw_disable_features(FWInfo *fw, uint64_t mask)
+{
+	fw->features &= ~mask;
+}
+
 static int64_t
 __fw_get_version(FWInfo *fw)
 {
