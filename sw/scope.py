@@ -63,24 +63,28 @@ class Scope(QtCore.QObject):
     else:
        self._fw       = fw.FwComm( devnam )
     self._fw.init()
-    self._main     = QtWidgets.QMainWindow()
-    self._cent     = QtWidgets.QWidget()
+    self._main          = QtWidgets.QMainWindow()
+    self._cent          = QtWidgets.QWidget()
     self._main.setCentralWidget( self._cent )
-    hlay           = QtWidgets.QHBoxLayout()
-    self._plot     = Qwt.QwtPlot()
+    hlay                = QtWidgets.QHBoxLayout()
+    self._plot          = Qwt.QwtPlot()
     self._plot.setAutoReplot( True )
+    d0, d1 = self._fw.acqGetDecimation()
+    self._decimation    = d0*d1
+    self._adcClkFreq    = self._fw.getAdcClkFreq()
     self.updateYAxis()
     self.updateXAxis()
-    self._zoom     = Qwt.QwtPlotZoomer( self._plot.canvas() )
+    self._zoom          = Qwt.QwtPlotZoomer( self._plot.canvas() )
     hlay.addWidget( self._plot, stretch = 2 )
-    vlay           = QtWidgets.QVBoxLayout()
+    vlay                = QtWidgets.QVBoxLayout()
     hlay.addLayout( vlay )
-    frm            = QtWidgets.QFormLayout()
-    edt            = QtWidgets.QLineEdit()
-    self._numCh    = 2
+    frm                 = QtWidgets.QFormLayout()
+    edt                 = QtWidgets.QLineEdit()
+    self._numCh         = 2
     self._channelColors = [ QtGui.QColor( QtCore.Qt.blue ), QtGui.QColor( QtCore.Qt.black ) ]
     self._channelNames  = [ "A", "B" ]
     self._trgArm        = "Continuous"
+    self.clrOvrLed()
     def g():
       rv = self._fw.acqGetTriggerLevelPercent()
       return "{:.0f}".format(rv)
@@ -148,10 +152,12 @@ class Scope(QtCore.QObject):
     class TrgArmMenu(MenuButton):
       def __init__(mb, parent = None):
         val = self._trgArm
+        self.clrTrgLed()
         MenuButton.__init__(mb, [val, "Off", "Single", "Continuous"], parent )
 
       def activated(mb, act):
         super().activated(act)
+        self.clrTrgLed()
         txt     = act.text()
         self._trgArm = txt
 
@@ -172,14 +178,16 @@ class Scope(QtCore.QObject):
 
     edt = QtWidgets.QLineEdit()
     def g():
-      d0, d1 = self._fw.acqGetDecimation()
-      return str( d0*d1 )
+      return str( self._decimation )
     def s(s):
-      self._fw.acqSetDecimation( int(s) )
+      val = int(s)
+      self._fw.acqSetDecimation( val )
+      self._decimation = val
+      self.updateXAxis()
     createValidator( edt, g, s, QtGui.QIntValidator, 1, 16*2**12 )
     frm.addRow( QtWidgets.QLabel("Decimation"), edt )
 
-    frm.addRow( QtWidgets.QLabel("ADC Clock Freq."), QtWidgets.QLabel("{:g}".format( self._fw.getAdcClkFreq() )) )
+    frm.addRow( QtWidgets.QLabel("ADC Clock Freq."), QtWidgets.QLabel("{:g}".format( self._adcClkFreq )) )
  
     self._cent.setLayout( hlay )
     self._ov       = []
@@ -212,15 +220,20 @@ class Scope(QtCore.QObject):
           setter( chn, checked )
         btn.toggled.connect( cb )
         lst.append( btn )
+        return True
       except RuntimeError:
         # not supported
-        pass
+        return False
 
     # try to make input controls
     wids = []
     for i in range(self._numCh):
       elms = []
-      tryAddTgl( elms, i, ["50Ohm", "1MOhm" ], self._fw.fecGetTermination, self._fw.fecSetTermination)
+      def setTerm(ch, val):
+        self._fw.fecSetTermination(ch, val)
+        self._fw.ledSet( 'Term{}'.format( self._channelNames[ch] ), val )
+      if ( tryAddTgl( elms, i, ["50Ohm", "1MOhm" ], self._fw.fecGetTermination, setTerm ) ):
+        self._fw.ledSet( 'Term{}'.format( self._channelNames[i] ), elms[-1].isChecked() )
       tryAddTgl( elms, i, ["AC",    "DC"    ], self._fw.fecGetACMode, self._fw.fecSetACMode )
       tryAddTgl( elms, i, ["-20dB", "0dB"   ], self._fw.fecGetAttenuator, self._fw.fecSetAttenuator )
       if len(elms) > 0:
@@ -256,6 +269,14 @@ class Scope(QtCore.QObject):
     self._data   = None
     self._reader.start()
 
+  def clrOvrLed(self):
+    for chn in self._channelNames:
+      self._fw.ledSet( 'OVR{}'.format( chn ), 0 )
+
+  def clrTrgLed(self):
+    self._fw.ledSet('Trig', 0)
+    self.clrOvrLed()
+
   def updateYAxis(self):
     self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -128, 127 )
 
@@ -264,6 +285,8 @@ class Scope(QtCore.QObject):
     t = self._fw.acqGetNPreTriggerSamples()
     xmax = n - t
     xmin = xmax - n
+    xmin *= self._decimation / self._adcClkFreq
+    xmax *= self._decimation / self._adcClkFreq
     self._plot.setAxisScale( Qwt.QwtPlot.xBottom, xmin, xmax )
 
   def updateData(self):
@@ -279,9 +302,12 @@ class Scope(QtCore.QObject):
     hdr        = d.getHdr()
     for i in range( self._numCh ):
       self._ch[i].setSamples( d.getCurv( i ) )
-      self._ov[i].setVisible( (hdr & (1<<i)) != 0 )
+      ovrRng = ( ( hdr & (1<<i) ) != 0 )
+      self._ov[i].setVisible( ovrRng )
+      self._fw.ledSet( 'OVR{}'.format( self._channelNames[i] ), ovrRng )
       self._meanLbls[i].setText("{:>7.2f}".format( d._mean[i] ))
       self._stdLbls[i].setText ("{:>7.2f}".format( d._std[i]  ))
+    self._fw.ledSet('Trig', 1)
     if ( self._trgArm == "Single" ):
       self._trgArm = "Off"
       self._trgArmMenu.setText("Off")
