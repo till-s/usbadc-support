@@ -139,6 +139,77 @@ cdef class FwDev:
   def mgr(self):
     return self._mgr
 
+cdef class LED(FwDev):
+
+  def getVal(self, name):
+    return False
+
+  def setVal(self, name, val):
+    pass
+
+cdef class LEDv1(LED):
+
+  cdef uint8_t _led[3]
+
+  ledBase = 0
+
+  def __init__(self, *args, **kwargs):
+    cdef uint32_t addr
+    cdef uint8_t  buf[3]
+    super().__init__()
+    addr = self.ledBase
+    with self._mgr as fw, nogil:
+      fw_reg_read( fw, addr, self._led, sizeof(self._led), 0 );
+
+  ledMap = {
+    "FrontRight_R":  8,
+    "FrontRight_G":  9,
+    "FrontRight_B": 10,
+
+    "CHA_R"       :  4,
+    "CHA_G"       :  5,
+    "CHA_B"       :  6,
+
+    "CHB_R"       :  0,
+    "CHB_G"       :  1,
+    "CHB_B"       :  2,
+
+    "FrontMid_R"  : 12,
+    "FrontMid_G"  : 13,
+    "FrontMid_B"  : 14,
+
+    "FrontLeft"   : 15,
+
+    "Trig"        : 16,
+    "TermA"       :  6,
+    "TermB"       :  2,
+
+    "OVRA"        :  4,
+    "OVRB"        :  0
+  }
+
+  def getVal(self, name):
+    idx = self.ledMap[name]
+    adr = int(idx / 8)
+    msk = (1<<(idx % 8))
+    return (self._led[adr] & msk) != 0
+
+  def setVal(self, name, val):
+    cdef uint8_t  buf[1]
+    cdef uint32_t adr
+    idx = self.ledMap[name]
+    adr = idx / 8
+    msk = (1<<(idx % 8))
+    if val:
+      self._led[adr] |=  msk
+    else:
+      self._led[adr] &= ~msk
+    buf[0] = self._led[adr]
+    adr   += self.ledBase
+    with self._mgr as fw, nogil:
+      fw_reg_write( fw, adr, buf, 1, 0 )
+
+
 cdef class VersaClk(FwDev):
 
   def setFBDiv(self, float div):
@@ -594,6 +665,7 @@ cdef class FwComm:
   cdef DAC47CX         _dac
   cdef Amp             _amp
   cdef FEC             _fec
+  cdef LED             _led
   cdef Max195xxADC     _adc
   cdef int             _bufsz
   cdef AcqParams       _parmCache
@@ -673,12 +745,15 @@ cdef class FwComm:
     if   ( 0 == brdVers ):
       self._amp = AmpLmh6882( self._mgr )
       self._fec = FEC( self._mgr )
+      self._led = LED( self._mgr )
     elif ( 1 == brdVers ):
       self._amp = AmpAd8370( self._mgr )
       self._fec = GpioFECv1( self._mgr )
+      self._led = LEDv1( self._mgr )
     else:
       self._amp = Amp( self._mgr )
       self._fec = FEC( self._mgr )
+      self._led = LED( self._mgr )
 
     with self._mgr as fw, nogil:
       self._bufsz = buf_get_size( fw )
@@ -847,6 +922,19 @@ cdef class FwComm:
 
   def fecSetDacRangeHi(self, int channel, bool on ):
     self._fec.setDacRangeHi( channel, on )
+
+  def ledGet(self, name):
+    try:
+      return self._led.getVal(name)
+    except KeyError:
+      print("No such LED")
+      return False
+
+  def ledSet(self, name, val):
+    try:
+      self._led.setVal(name, val)
+    except KeyError:
+      print("No such LED")
 
   def version(self):
     cdef uint32_t ver
