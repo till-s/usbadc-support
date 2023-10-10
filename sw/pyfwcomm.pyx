@@ -3,7 +3,9 @@ from pyfwcomm cimport *
 
 from cpython.exc cimport *
 from cpython     cimport *
-from time        import sleep
+from time        import  sleep
+from libc.string cimport strdup
+from libc.stdlib cimport free
 
 cdef extern from "pthread.h":
   ctypedef struct pthread_mutexattr_t
@@ -101,14 +103,14 @@ cdef class Cond:
 
 cdef class FwMgr:
   cdef FWInfo     *_fw
-  cdef const char *_nm
+  cdef char       *_nm
   cdef Mtx         _mtx
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
     self._mtx = Mtx()
     self._fw  = fw_open(name, speed)
-    self._nm  = name
+    self._nm  = strdup( name )
     if self._fw is NULL:
       PyErr_SetFromErrnoWithFilenameObject( OSError, name )
 
@@ -120,6 +122,7 @@ cdef class FwMgr:
     return self._mtx.__exit__(exc_typ, exc_val, trc)
 
   def __dealloc__(self):
+    free( self._nm )
     fw_close( self._fw )
 
   def name(self):
@@ -678,6 +681,9 @@ cdef class FwComm:
   cdef float           _clkFRef
   cdef dict            _clkOut
 
+  def exc(self):
+    raise TimeoutError("foo")
+
   def readAsync(self, pyb, callback, float timeout = -1.0):
     if (not callable( callback ) ):
       raise ValueError( "FwComm.readAsync: callback not callable" )
@@ -712,7 +718,11 @@ cdef class FwComm:
           numIter = 1
       rv = 0
       while ( 0 != numIter and 0 == rv ):
-        rv, hdr = self.read( pyb )
+        try:
+          rv, hdr = self.read( pyb )
+        except Exception as e:
+          print("Exception in read (ignoring): ", e)
+          rv = 0
         if ( rv == 0 ):
           # avoid busy polling if there is no data
           sleep(0.01)
@@ -786,6 +796,7 @@ cdef class FwComm:
       raise RuntimeError("Unsupported board version")
 
   def init( self, force = False ):
+    print("DLL Locked: ", self._adc.dllLocked())
     if self._adc.dllLocked() and not force:
       # assume init has been done already
       return
