@@ -1,2 +1,4 @@
-GitVersionPkg.vhd
-*.swp
+*.o
+*tb
+commandwrappersim
+work-*.cf
