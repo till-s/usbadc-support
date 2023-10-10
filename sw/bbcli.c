@@ -20,6 +20,8 @@
 #define  FLASHADDR_DFLT 0x30000
 #endif
 
+#define  NCHANNELS 2
+
 static void usage(const char *nm)
 {
 	printf("usage: %s [-hvDI!?] [-d usb-dev] [-S SPI_flashCmd] [-a flash_addr] [-f flash_file] [register] [values...]\n", nm);
@@ -439,8 +441,19 @@ const char        *regOp     = 0;
 	if ( dumpAdc ) {
 		int      j;
 		uint16_t hdr;
-		printf("ADC Buffer size: %ld\n", buf_get_size( fw ));
+		unsigned long nSamples = buf_get_size( fw );
+		size_t        reqBufSz = nSamples * NCHANNELS * sizeof(buf[0]);
+		fprintf(stderr, "ADC Buffer size (# samples): %ld\n", nSamples);
 		if ( dumpAdc > 0 ) {
+			uint8_t cmd = 0x0f;
+			if ( buflen < reqBufSz ) {
+				buflen = reqBufSz;
+				buf = realloc(buf, buflen);
+				if ( ! buf ) {
+					fprintf(stderr, "Error: not enough memory\n");
+					goto bail;
+				}
+			}
 			i = buf_read( fw, &hdr, buf, buflen );
 		} else {
 			i = buf_flush( fw );
@@ -456,8 +469,13 @@ const char        *regOp     = 0;
 			if ( (j & 0xf) ) {
 				printf("\n");
 			}
+		} else if ( i < 0 ) {
+			if ( FW_CMD_ERR_TIMEOUT == i ) {
+				fw_inv_cmd( fw );
+				fprintf(stderr, "Error: buffer-read timeout\n");
+			}
+			goto bail;
 		}
-
 	}
 
 	if ( test_spi ) {
