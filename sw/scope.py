@@ -1,30 +1,45 @@
 #!/usr/bin/env python3
 import sys
+import io
 import pyfwcomm  as fw
-from   PyQt5     import QtCore, QtGui, QtWidgets, Qwt
+from   PyQt5     import QtCore, QtGui, QtWidgets, Qwt, Qt
 from   Utils     import createValidator, MenuButton
 import numpy     as np
 from   threading import Thread, RLock, Lock, Condition, Semaphore
 import time
 import getopt
+from   MsgDialog import MessageDialog
 
 class Buf(object):
-  def __init__(self, sz, npts = -1, scal = 1.0, *args, **kwargs):
+
+  def __init__(self, pooler, sz, npts = -1, scal = 1.0, *args, **kwargs):
     # Using polygons apparently lets us avoid yet another copy...
     super().__init__(*args, **kwargs)
-    self._curv = [ QtGui.QPolygonF(sz), QtGui.QPolygonF(sz) ]
+    self._pooler   = pooler
+    self._curv     = [ QtGui.QPolygonF(sz), QtGui.QPolygonF(sz) ]
     # no way to find out if Qt was configured for single-
     # or double-precision float without resorting e.g., to cython...
     # just assume double
-    dt         = np.dtype('float64')
-    self._sz   = sz
-    self._npts = npts
-    self._scal = scal
-    self._mem  = [ np.frombuffer( p.data().asarray( 2 * dt.itemsize * sz ), dtype=dt ) for p in self._curv ]
-    self._hdr  = 0
+    dt             = np.dtype('float64')
+    self._sz       = sz
+    self._npts     = npts
+    self._scal     = scal
+    self._mem      = [ np.frombuffer( p.data().asarray( 2 * dt.itemsize * sz ), dtype=dt ) for p in self._curv ]
+    self._hdr      = 0
     self.updateX( npts )
-    self._mean = [0. for i in range(len(self._mem))]
-    self._std  = [0. for i in range(len(self._mem))]
+    self._mean     = [0. for i in range(len(self._mem))]
+    self._std      = [0. for i in range(len(self._mem))]
+    self._refCnt   = 0
+
+  def incRef(self):
+    self._refCnt += 1
+
+  def decRef(self):
+    self._refCnt -= 1
+    return self._refCnt
+
+  def put(self):
+    self._pooler.putBuf( self )
 
   def updateX(self, npts, scal = 1.0):
     if ( (self._scal != scal or self._npts != npts) and (self._npts >= 0 or npts >= 0) ):
@@ -52,6 +67,25 @@ class Buf(object):
   def getHdr( self ):
     return self._hdr
 
+  # data layout: data[channel][x0,y0,x1,y1,...]
+  def getMem( self ):
+    return self._mem
+
+# context manager for a buffer
+class BufMgr:
+  def __init__(self, buf):
+    self._buf = buf
+
+  def __enter__(self):
+    if ( not self._buf is None ):
+      self._buf.incRef()
+    return self._buf
+
+  def __exit__(self, excTyp, excVal, traceBack):
+    if ( not self._buf is None ):
+      self._buf.put()
+    return None
+
 class Scope(QtCore.QObject):
 
   haveData = QtCore.pyqtSignal()
@@ -65,16 +99,21 @@ class Scope(QtCore.QObject):
     self._fw.init()
     self._main          = QtWidgets.QMainWindow()
     self._cent          = QtWidgets.QWidget()
+    menuBar             = QtWidgets.QMenuBar()
+    fileMenu            = menuBar.addMenu( "File" )
     self._main.setCentralWidget( self._cent )
+    self._main.setMenuBar( menuBar )
     hlay                = QtWidgets.QHBoxLayout()
     self._plot          = Qwt.QwtPlot()
     self._plot.setAutoReplot( True )
     d0, d1 = self._fw.acqGetDecimation()
     self._decimation    = d0*d1
     self._adcClkFreq    = self._fw.getAdcClkFreq()
+    self._zoom          = Qwt.QwtPlotZoomer( self._plot.canvas() )
+    self._zoom.setKeyPattern( Qwt.QwtEventPattern.KeyRedo, Qt.Qt.Key_I )
+    self._zoom.setKeyPattern( Qwt.QwtEventPattern.KeyUndo, Qt.Qt.Key_O )
     self.updateYAxis()
     self.updateXAxis()
-    self._zoom          = Qwt.QwtPlotZoomer( self._plot.canvas() )
     hlay.addWidget( self._plot, stretch = 2 )
     vlay                = QtWidgets.QVBoxLayout()
     hlay.addLayout( vlay )
@@ -114,7 +153,7 @@ class Scope(QtCore.QObject):
         else:
           src = fw.EXT
         self._fw.acqSetTriggerSource( src, edg )
-        
+
     frm.addRow( QtWidgets.QLabel("Trigger Source"), TrgSrcMenu() )
 
     class TrgEdgMenu(MenuButton):
@@ -132,7 +171,7 @@ class Scope(QtCore.QObject):
         src,edg = self._fw.acqGetTriggerSource()
         edg     = (txt == "Rising")
         self._fw.acqSetTriggerSource( src, edg )
- 
+
     frm.addRow( QtWidgets.QLabel("Trigger Edge"), TrgEdgMenu() )
 
     class TrgAutMenu(MenuButton):
@@ -146,7 +185,7 @@ class Scope(QtCore.QObject):
         txt     = act.text()
         val     = 100 if txt == "On" else -1
         self._fw.acqSetAutoTimeoutMs( val )
- 
+
     frm.addRow( QtWidgets.QLabel("Trigger Auto"), TrgAutMenu() )
 
     class TrgArmMenu(MenuButton):
@@ -163,16 +202,15 @@ class Scope(QtCore.QObject):
 
     self._trgArmMenu = TrgArmMenu()
     frm.addRow( QtWidgets.QLabel("Arm Trigger"), self._trgArmMenu )
- 
+
     edt = QtWidgets.QLineEdit()
     def g():
       return str( self._fw.acqGetNPreTriggerSamples() )
     def s(s):
       npts = int(s)
       self._fw.acqSetNPreTriggerSamples( npts )
-      self.updateXAxis()
       self._reader.setParms( npts=npts )
-      self._zoom.setZoomBase()
+      self.updateXAxis()
     createValidator( edt, g, s, QtGui.QIntValidator, 0, self._fw.getBufSize() - 1  )
     frm.addRow( QtWidgets.QLabel("Trigger Sample #"), edt )
 
@@ -183,12 +221,13 @@ class Scope(QtCore.QObject):
       val = int(s)
       self._fw.acqSetDecimation( val )
       self._decimation = val
+      self._reader.setParms( scalX = (self._decimation / self._adcClkFreq) )
       self.updateXAxis()
     createValidator( edt, g, s, QtGui.QIntValidator, 1, 16*2**12 )
     frm.addRow( QtWidgets.QLabel("Decimation"), edt )
 
     frm.addRow( QtWidgets.QLabel("ADC Clock Freq."), QtWidgets.QLabel("{:g}".format( self._adcClkFreq )) )
- 
+
     self._cent.setLayout( hlay )
     self._ov       = []
     self._ch       = []
@@ -263,10 +302,23 @@ class Scope(QtCore.QObject):
 
     vlay.addLayout( frm )
 
-    self._reader = Reader( self )
-
-    self.haveData.connect( self.updateData, QtCore.Qt.QueuedConnection )
     self._data   = None
+
+    def quitAction():
+      sys.exit(0)
+
+    def saveDataAction():
+      self.saveData()
+
+    self._msgDialog = MessageDialog( self._main, "UsbScope Message" )
+    self._threadHandles = []
+
+    fileMenu.addAction( "SaveData" ).triggered.connect( saveDataAction )
+    fileMenu.addAction( "Quit" ).triggered.connect( quitAction )
+
+    self._reader = Reader( self )
+    self._reader.setParms( npts = self._fw.acqGetNPreTriggerSamples(), scalX = self._decimation / self._adcClkFreq )
+    self.haveData.connect( self.updateData, QtCore.Qt.QueuedConnection )
     self._reader.start()
 
   def clrOvrLed(self):
@@ -279,6 +331,7 @@ class Scope(QtCore.QObject):
 
   def updateYAxis(self):
     self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -128, 127 )
+    self._zoom.setZoomBase()
 
   def updateXAxis(self):
     n = self._fw.getBufSize() - 1
@@ -288,16 +341,45 @@ class Scope(QtCore.QObject):
     xmin *= self._decimation / self._adcClkFreq
     xmax *= self._decimation / self._adcClkFreq
     self._plot.setAxisScale( Qwt.QwtPlot.xBottom, xmin, xmax )
+    self._zoom.setZoomBase()
+
+  def saveData(self):
+    # hold a reference - while the filename dialog is spinning
+    # events are dispatched and self._data may update
+    with BufMgr( self._data ) as buf:
+      if ( buf is None ):
+        self._msgDialog.setText( "No Data Available To Save" )
+        self._msgDialog.exec()
+        return
+      op  = QtWidgets.QFileDialog.Options()
+      op |= QtWidgets.QFileDialog.DontUseNativeDialog;
+      prop     = ""
+      filetype = "Text Files (*.txt);;All Files (*)"
+      fnam     = QtWidgets.QFileDialog.getSaveFileName( self._main, "File Name", prop, filetype, options=op )
+      fnam     = fnam[0]
+      if ( len( fnam ) == 0 ):
+         # cancel
+        return
+      fw = FileWriter( buf, fnam )
+      # keep a handle so the thread does not get garbage collected
+      self._threadHandles.append( fw )
+      def errorDialog(msg):
+        self._threadHandles.remove( fw )
+        if len( msg ) != 0:
+          self._msgDialog.setText( msg )
+          self._msgDialog.exec()
+      fw.done.connect( errorDialog )
+      fw.start()
 
   def updateData(self):
     d = self._reader.getData()
     if d is None:
       return
     if ( self._trgArm == "Off" ):
-      self._reader.putBuf( d )
+      d.put()
       return
     if not self._data is None:
-      self._reader.putBuf( self._data )
+      self._data.put()
     self._data = d
     hdr        = d.getHdr()
     for i in range( self._numCh ):
@@ -348,23 +430,48 @@ class Scope(QtCore.QObject):
   def notify(self):
     self.haveData.emit()
 
+class FileWriter(QtCore.QThread):
+
+  done = QtCore.pyqtSignal(str)
+
+  def __init__(self, buf, fnam, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    # keep a reference until the thread is started
+    buf.incRef()
+    self._mgr  = BufMgr( buf )
+    self._fnam = fnam
+
+  def run(self):
+    err = ""
+    with self._mgr as buf:
+      # release the reference we were handed by the thread creator
+      buf.decRef()
+      try:
+        with io.open( self._fnam, "w" ) as f:
+          m = buf.getMem()
+          for i in range( 1, len( m[0] ), 2 ):
+            print("{:10g}, {:10g}".format(m[0][i], m[1][i]), file=f)
+      except Exception as e:
+        err = "ERROR: File could not be written: " + e.args[0]
+    self.done.emit( err )
+
 class Reader(QtCore.QThread):
 
   def __init__(self, scope, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self._lck            = Lock()
-    self._bufAvail       = Condition( self._lck )
+    self._bufAvail       = Condition( Lock() )
     self._readDone       = Semaphore( 0 )
     self._scope          = scope
-    self._fw             = self._scope.getFw() 
+    self._fw             = self._scope.getFw()
     sz                   = self._fw.getBufSize()
-    self._bufs           = [ Buf(sz) for i in range(3) ] 
+    self._bufs           = [ Buf(self, sz) for i in range(3) ]
     self._rbuf           = [ self._fw.mkBuf(), self._fw.mkBuf() ]
     self._bufhdr         = [0, 0]
     self._ridx           = 0
     # read time for 2x16k = 32k samples is ~50ms
     self._pollInterval   = 0.10
-    self._npts           = self._fw.acqGetNPreTriggerSamples()
+    self._npts           = 0
     self._scal           = 1.0
     self._processedBuf   = None
 
@@ -397,7 +504,7 @@ class Reader(QtCore.QThread):
       b.updateX( npts, scal )
       with self._lck:
         if (not self._processedBuf is None):
-          self._bufs.append( self._processedBuf )
+          self._processedBuf.put()
         self._processedBuf = b
       self._scope.notify()
       now   = time.monotonic()
@@ -425,19 +532,23 @@ class Reader(QtCore.QThread):
     with self._bufAvail:
       while ( len(self._bufs) == 0 ):
         self._bufAvail.wait()
-      return self._bufs.pop(0)
+      b = self._bufs.pop(0)
+      b.incRef()
+      return b
 
   def putBuf(self, b):
     with self._bufAvail:
+      if ( b.decRef() > 0 ):
+        return
       self._bufs.append(b)
       self._bufAvail.notify()
 
-  def setParms(self, npts = -1, scal = -1.0):
+  def setParms(self, npts = -1, scalX = -1.0):
     with self._lck:
       if ( npts >= 0 ):
         self._npts = npts
-      if ( scal >  0.0 ):
-        self._scal = scal
+      if ( scalX >  0.0 ):
+        self._scal = scalX
 
 class ScopeThread(QtCore.QThread):
 
