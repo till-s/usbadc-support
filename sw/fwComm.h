@@ -150,6 +150,12 @@ buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len);
 int
 buf_read_flt(FWInfo *fw, uint16_t *hdr, float *buf, size_t nelms);
 
+/*
+ * Send 'invalid' command - can be used to trigger ILAs
+ */
+int
+fw_inv_cmd(FWInfo *fw);
+
 typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 
 /* Immediate (manual) trigger can be achieved by

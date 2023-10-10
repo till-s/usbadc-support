@@ -1126,3 +1126,10 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 	}
 	return (1 != st ) || status ? FW_CMD_ERR : len;
 }
+
+int
+fw_inv_cmd(FWInfo *fw)
+{
+	int st = fw_xfer( fw, BITS_FW_CMD_UNSUPPORTED, 0, 0, 0 );
+	return (FW_CMD_ERR_NOTSUP == st) ? 0 : st;
+}
