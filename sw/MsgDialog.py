@@ -14,10 +14,5 @@ class MessageDialog(QtWidgets.QDialog):
     self._layout.addWidget( self._buttonBox )
     self.setLayout( self._layout )
 
-  def setMsg(self, msg):
+  def setText(self, msg):
     self._lbl.setText( msg )
-
-app=QtWidgets.QApplication([])
-
-msg=MessageDialog(None, "Hello")
-msg.exec()
