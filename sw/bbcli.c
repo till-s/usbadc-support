@@ -445,7 +445,6 @@ const char        *regOp     = 0;
 		size_t        reqBufSz = nSamples * NCHANNELS * sizeof(buf[0]);
 		fprintf(stderr, "ADC Buffer size (# samples): %ld\n", nSamples);
 		if ( dumpAdc > 0 ) {
-			uint8_t cmd = 0x0f;
 			if ( buflen < reqBufSz ) {
 				buflen = reqBufSz;
 				buf = realloc(buf, buflen);
