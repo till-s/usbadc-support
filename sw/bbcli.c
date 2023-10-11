@@ -323,6 +323,7 @@ unsigned          *u_p;
 char              *progFile  = 0;
 uint8_t           *progMap   = (uint8_t*)MAP_FAILED;
 off_t              progSize  = 0;
+int                progRdonly= 1;
 int                doit      = 0;
 int                debug     = 0;
 int                fwVersion = 0;
@@ -507,7 +508,15 @@ const char        *regOp     = 0;
 				}
 
 				if ( progFile ) {
-					if ( fileMap(progFile,  &progMap, &progSize, i) ) {
+					if ( progRdonly ) {
+						if ( (progMap != (uint8_t*)MAP_FAILED) ) {
+							munmap( (void*) progMap, progSize );
+							progMap  = (uint8_t*)MAP_FAILED;
+							progSize = 0;
+						}
+						progRdonly = 0;	
+					}
+					if ( fileMap(progFile,  &progMap, &progSize, i, progRdonly) ) {
 						goto bail;
 					}
 					maddr = progMap;
@@ -585,7 +594,7 @@ const char        *regOp     = 0;
 					cmd = AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY;
 				}
 
-				if ( fileMap(progFile,  &progMap, &progSize, 0) ) {
+				if ( fileMap(progFile,  &progMap, &progSize, 0, progRdonly) ) {
 					goto bail;
 				}
 
@@ -606,7 +615,7 @@ const char        *regOp     = 0;
 
 
 				if ( progFile ) {
-					if ( fileMap(progFile,  &progMap, &progSize, 0) ) {
+					if ( fileMap(progFile,  &progMap, &progSize, 0, progRdonly) ) {
 						goto bail;
 					}
 					i = progSize;
