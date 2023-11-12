@@ -39,12 +39,10 @@ architecture sim of CommandWrapperSim is
    signal bbi     : std_logic_vector(7 downto 0) := x"FF";
    signal bbo     : std_logic_vector(7 downto 0) := x"FF";
 
-   signal adcDDR  : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
    signal adcA    : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
    signal adcB    : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
    signal dorA    : std_logic                    := '0';
    signal dorB    : std_logic                    := '0';
-   signal dorDDR  : std_logic                    := '0';
 
    signal spirReg : std_logic_vector(7 downto 0) := (others => '0');
    signal spirWen : std_logic;
@@ -141,8 +139,10 @@ begin
          adcClk       => clk,
          adcRst       => rst(rst'left),
 
-         adcDataDDR(ADC_W_C downto 1)  => std_logic_vector(adcDDR),
-         adcDataDDR(               0)  => dorDDR,
+         adcDataA(ADC_W_C downto 1)  => std_logic_vector(adcA),
+         adcDataA(               0)  => dorA,
+         adcDataB(ADC_W_C downto 1)  => std_logic_vector(adcB),
+         adcDataB(               0)  => dorB,
 
          extTrg       => extTrg,
 
@@ -183,18 +183,6 @@ begin
          end if;
       end if;
    end process P_FILL_B;
-
-   P_DDR : process( clk, adcA, adcB, dorA, dorB ) is
-   begin
-      if ( clk = '1' ) then
-         adcDDR <= adcA;
-         dorDDR <= dorA;
-      else
-         adcDDR <= adcB;
-         dorDDR <= dorB;
-      end if;
-   end process P_DDR;
-
 
 --   P_BBMON : process (bbo) is
 --   begin

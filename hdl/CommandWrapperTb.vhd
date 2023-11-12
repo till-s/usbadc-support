@@ -39,7 +39,8 @@ architecture sim of CommandWrapperTb is
    signal bbi     : std_logic_vector(7 downto 0) := x"FF";
    signal bbo     : std_logic_vector(7 downto 0) := x"FF";
 
-   signal adcDDR  : unsigned(7 downto 0) := ADC_FIRST_C;
+   signal adcDataA : unsigned(7 downto 0) := ADC_FIRST_C + 1;
+   signal adcDataB : unsigned(7 downto 0) := ADC_FIRST_C;
 
    procedure x(
       signal   mst : inout SimpleBusMstType;
@@ -172,19 +173,26 @@ begin
          adcClk       => clk,
          adcRst       => rst,
 
-         adcDataDDR(8 downto 1)   => std_logic_vector(adcDDR),
-         adcDataDDR(         0)   => '0',
+         adcDataA(8 downto 1)   => std_logic_vector(adcDataA),
+         adcDataA(         0)   => '0',
+         adcDataB(8 downto 1)   => std_logic_vector(adcDataB),
+         adcDataB(         0)   => '0',
 
          smplClk      => open
       );
 
    P_FILL : process ( clk ) is
    begin
-      if ( clk'event ) then
-         if ( adcDDR < ADC_FIRST_C + 2*MEM_DEPTH_C ) then
-            adcDDR <= adcDDR + 1;
+      if ( rising_edge( clk ) ) then
+         if ( adcDataA < ADC_FIRST_C + 2*MEM_DEPTH_C ) then
+            adcDataA <= adcDataA + 2;
          else
-            adcDDR <= ADC_FIRST_C;
+            adcDataA <= ADC_FIRST_C;
+         end if;
+         if ( adcDataB < ADC_FIRST_C + 2*MEM_DEPTH_C ) then
+            adcDataB <= adcDataB + 2;
+         else
+            adcDataB <= ADC_FIRST_C;
          end if;
       end if;
    end process P_FILL;

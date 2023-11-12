@@ -8,36 +8,21 @@ use     work.CommandMuxPkg.all;
 use     work.ILAWrapperPkg.all;
 use     work.AcqCtlPkg.all;
 
-library unisim;
-use     unisim.vcomponents.all;
-
 entity MaxADC is
    generic (
       ADC_CLOCK_FREQ_G     : real    := 130.0E6;
-      DLY_REF_MHZ_G        : real    := 0.0E6;
       MEM_DEPTH_G          : natural := 1024;
       ADC_BITS_G           : natural := 8;
-      -- depending on which port the muxed signal is shipped either A or B samples are
-      -- first (i.e., on the negative edge preceding the positive edge of the adcClk)
-      DDR_A_FIRST_G        : boolean := false;
       ONE_MEM_G            : boolean := false;
-      USE_PLL_G            : string  := "NONE"; -- NONE, DCM
-      DDR_TYPE_G           : string  := "IDDR"; -- NONE, IDDR2 or IDDR
-      TEST_NO_BUF_G        : boolean := false;
-      DISABLE_DECIMATORS_G : boolean := false;
-      IODELAY_GROUP_G      : string  := "ADCDDR";
-      IDELAY_TAPS_G        : natural := 0;
-      INVERT_POL_CHA_G     : boolean := false;
-      INVERT_POL_CHB_G     : boolean := false
+      DISABLE_DECIMATORS_G : boolean := false
    );
    port (
       adcClk      : in  std_logic;
       adcRst      : in  std_logic;
 
       -- bit 0 is the DOR (overrange) bit
-      adcDataDDR  : in  std_logic_vector(ADC_BITS_G downto 0);
-
-      smplClk     : out std_logic;
+      adcDataA    : in  std_logic_vector(ADC_BITS_G downto 0);
+      adcDataB    : in  std_logic_vector(ADC_BITS_G downto 0);
 
       busClk      : in  std_logic;
       busRst      : in  std_logic;
@@ -55,12 +40,6 @@ entity MaxADC is
 
       status      : out std_logic_vector(7 downto 0);
 
-      pllLocked   : out std_logic := '1';
-
-      pllRst      : in  std_logic := '0';
-
-      dlyRefClk   : in  std_logic := '0';
-
       extTrg      : in  std_logic := '0'
    );
 end entity MaxADC;
@@ -68,7 +47,6 @@ end entity MaxADC;
 architecture rtl of MaxADC is
    attribute KEEP           : string;
    attribute DONT_TOUCH     : string;
-   attribute IODELAY_GROUP  : string;
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G - 1);
 
@@ -182,18 +160,6 @@ architecture rtl of MaxADC is
    -- helps writing constraints
    attribute KEEP of rWrCC : signal is "TRUE";
 
-   signal chnl0Data : std_logic_vector(ADC_BITS_G downto 0);
-   signal chnl1Data : std_logic_vector(ADC_BITS_G downto 0);
-
-   signal chnl0ClkL : std_logic;
-   signal chnl1ClkL : std_logic;
-
-   signal iDDRClk   : std_logic;
-
-   signal dcmPSDone : std_logic;
-   signal dcmStatus : std_logic_vector(7 downto 0);
-   signal dcmPSClk  : std_logic := '0';
-
    signal memClk    : std_logic;
    signal filClk    : std_logic;
 
@@ -226,8 +192,6 @@ architecture rtl of MaxADC is
    signal wdorBin   : std_logic;
    signal trgin     : std_logic;
 
-   signal chnl0DataResynced : std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
-
    signal wrDon             : std_logic;
    signal memFull           : std_logic;
    signal rdDon             : std_logic;
@@ -252,204 +216,10 @@ begin
 
    assert MEM_DEPTH_G mod 1024 = 0 and MEM_DEPTH_G >= 1024 report "Cannot report accurate memory size" severity warning;
 
-   lparms <= rWr.parms;
+   lparms  <= rWr.parms;
 
-   GEN_DCM : if ( USE_PLL_G = "DCM" ) generate
-      signal dcmOutClk0   : std_logic;
-      signal dcmOutClk180 : std_logic;
-   begin
-
-     U_DCM  : component DCM_SP
-         generic map (
-            CLKIN_DIVIDE_BY_2  => FALSE,
-            CLK_FEEDBACK       => "1X",
-            CLKIN_PERIOD       => (1.0/ADC_CLOCK_FREQ_G),
-            DLL_FREQUENCY_MODE => "LOW",
-            DESKEW_ADJUST      => "SOURCE_SYNCHRONOUS",
-            CLKOUT_PHASE_SHIFT => "FIXED",
-            PHASE_SHIFT        => 0,
-            STARTUP_WAIT       => FALSE
-         )
-         port map (
-            CLKIN              => adcClk,
-            CLKFB              => chnl0ClkL,
-            CLK0               => dcmOutClk0,
-            CLK180             => dcmOutClk180,
-            LOCKED             => pllLocked,
-            PSDONE             => dcmPSDone,
-            PSCLK              => dcmPSClk,
-            PSEN               => '0',
-            PSINCDEC           => '0',
-            RST                => pllRst
-         );
-
-      U_BUFG_A : BUFG
-         port map (
-            I  => dcmOutClk0,
-            O  => chnl0ClkL
-         );
-
-      U_BUFG_B : BUFG
-         port map (
-            I  => dcmOutClk180,
-            O  => chnl1ClkL
-         );
-
-   end generate GEN_DCM;
-
-   GEN_IDDR_BUFS  : if ( DDR_TYPE_G = "IDDR" ) generate
-      U_BUFIO : BUFIO port map ( I => adcClk, O => iDDRClk );
-      U_BUFG  : BUFG  port map ( I => adcClk, O => memClk  );
-   end generate GEN_IDDR_BUFS;
-
-   GEN_IDDR2_BUFS  : if ( DDR_TYPE_G /= "IDDR" ) generate
-      memClk    <= chnl0ClkL;
-   end generate GEN_IDDR2_BUFS;
-
-   GEN_NO_DCM : if ( USE_PLL_G /= "DCM" ) generate
-
-      chnl0ClkL <= adcClk;
-      chnl1ClkL <= '0';
-
-      pllLocked <= '1';
-
-   end generate GEN_NO_DCM;
-
-      -- The manual doesn't precisely explain timing of the multiplexed mode.
-      -- It just says when the muxed signal is on the B port that B-samples are
-      -- sent "first" and "followed" by A-samples.
-      -- The figure shows (without saying whether this depicts 'port-B' or 'port-A' mode
-      --       ----       -----       -----
-      --     /     \_____/     \_____/
-      --
-      --       X An   X Bn  X An+1 X Bn+1
-      --
-      -- Testing indicates that in 'port-B' mode (muxed signal shipped on port B)
-      -- The timing is
-      --       ----       -----       -----
-      --     /     \_____/     \_____/
-      --
-      --       X Bn   X An  X Bn+1 X An+1
-      --
-      -- I.e., a sample pair is latched by first capturing on the negative
-      -- edge, then on the positive edge.
-      --
-
-      filClk <= memClk;
-
-      GEN_DLY_REF : if ( DDR_TYPE_G = "IDDR" ) generate
-         attribute IODELAY_GROUP of U_DLYREF : label is IODELAY_GROUP_G;
-      begin
-         U_DLYREF : IDELAYCTRL
-            port map (
-               REFCLK => dlyRefClk,
-               RST    => '0',
-               RDY    => open
-            );
-      end generate GEN_DLY_REF;
-
-      -- IDDR2 only supports synchronizing into a single output
-      -- clock domain from differential inputs. Since we are
-      -- single-ended we must run separate channel clocks (180deg.
-      -- out of phase).
-      GEN_IDDR_BITS : for i in adcDataDDR'range generate
-         signal adcDataBuffered : std_logic;
-      begin
-         GEN_IBUF : if ( not TEST_NO_BUF_G ) generate
-         begin
-            U_IBUF : component IBUF
-               generic map (
-                  IBUF_DELAY_VALUE => "0",
-                  IFD_DELAY_VALUE  => "0"
-               )
-               port map (
-                  I             => adcDataDDR(i),
-                  O             => adcDataBuffered
-               );
-         end generate GEN_IBUF;
-
-         GEN_NO_IBUF : if ( TEST_NO_BUF_G ) generate
-            adcDataBuffered <= adcDataDDR(i);
-         end generate GEN_NO_IBUF;
-
-         GEN_IDDR2 : if ( DDR_TYPE_G = "IDDR2" ) generate
-            signal chnl0ClkB : std_logic;
-            attribute DONT_TOUCH of U_IDDR : label is "TRUE";
-         begin
-
-            chnl0ClkB <= not chnl0ClkL;
-
-            U_IDDR : component IDDR2
-               port map (
-                  C0            => chnl0ClkB, --chnl1ClkL,
-                  C1            => chnl0ClkL,
-                  CE            => '1',
-                  Q0            => chnl0Data(i),
-                  Q1            => chnl1Data(i),
-                  D             => adcDataBuffered,
-                  S             => '0',
-                  R             => '0'
-               );
-         end generate GEN_IDDR2;
-
-         GEN_IDDR : if ( DDR_TYPE_G = "IDDR" ) generate
-            attribute DONT_TOUCH     of U_IDDR : label is "TRUE";
-			signal    adcDataDelayed : std_logic;
-            attribute IODELAY_GROUP  of U_IDLY : label is IODELAY_GROUP_G;
-         begin
-
-            U_IDLY : component IDELAYE2
-               generic map (
-                  IDELAY_TYPE   => "FIXED",
-                  DELAY_SRC     => "IDATAIN",
--- test with IDDR only (Most other logic but USB removed)
--- 19; ref 200, speed-1, ADC clock 125MHz    : hold: .05    setup: -0.124
--- 18; ref 200, speed-1, ADC clock 120MHz    : hold: 0.000  setup:  0.092 => PASSED
--- 17; ref 200, speed-1, ADC clock 120MHz    : hold: -.035  setup:  0.184
--- 16; ref 200, speed-1, ADC clock 120MHz    : hold: -.098  setup: -0.124
--- 18; ref 200, speed-2, ADC clock 130MHz    : hold: .248   setup: -0.118
--- 17; ref 200, speed-2, ADC clock 130MHz    : hold: .186   setup: -0.056
--- 16; ref 200, speed-2, ADC clock 130MHz    : hold:+.123   setup: +0.036 => PASSED
-                  IDELAY_VALUE  => IDELAY_TAPS_G,
-                  REFCLK_FREQUENCY => DLY_REF_MHZ_G
-               )
-               port map (
-                  C             => '0',
-                  REGRST        => '0',
-                  LD            => '0',
-                  CE            => '0',
-                  INC           => '0',
-                  CINVCTRL      => '0',
-                  CNTVALUEIN    => (others => '0'),
-                  IDATAIN       => adcDataBuffered,
-                  DATAIN        => '0',
-                  LDPIPEEN      => '0',
-                  DATAOUT       => adcDataDelayed,
-                  CNTVALUEOUT   => open
-               );
-
-            -- mimick IDDR2 plus resync register; chnl0Data is latched on the negedge
-            U_IDDR : component IDDR
-               generic map (
-                  DDR_CLK_EDGE  => "SAME_EDGE"
-               )
-               port map (
-                  C             => iDDRClk,
-                  CE            => '1',
-                  Q1            => chnl1Data(i),
-                  Q2            => chnl0Data(i),
-                  D             => adcDataDelayed,
-                  S             => '0',
-                  R             => '0'
-               );
-         end generate GEN_IDDR;
-
-         GEN_NO_IDDR : if ( DDR_TYPE_G /= "IDDR" and DDR_TYPE_G /= "IDDR2" ) generate
-            chnl0Data(i) <= adcDataBuffered;
-            chnl1Data(i) <= adcDataBuffered;
-         end generate GEN_NO_IDDR;
-
-      end generate GEN_IDDR_BITS;
+   memClk  <= adcClk;
+   filClk  <= memClk;
 
    memFull <= '1' when (rWr.state = HOLD) else '0';
 
@@ -478,21 +248,6 @@ begin
       );
 
    wrEna <= ( ( (not memFull) and wrDecm ) = '1' );
-
-   GEN_RESYNC : if ( DDR_TYPE_G /= "IDDR" ) generate
-
-      P_RESYNC_CH0 : process ( memClk ) is
-      begin
-         if ( rising_edge( memClk ) ) then
-            chnl0DataResynced <= chnl0Data;
-         end if;
-      end process P_RESYNC_CH0;
-
-   end generate GEN_RESYNC;
-
-   GEN_NO_RESYNC : if ( DDR_TYPE_G = "IDDR" ) generate
-      chnl0DataResynced <= chnl0Data;
-   end generate GEN_NO_RESYNC;
 
    GEN_TWOMEM_G : if ( not ONE_MEM_G ) generate
       signal DPRAMA    : RamArray;
@@ -542,37 +297,10 @@ begin
 
    end generate GEN_ONEMEM_G;
 
-   P_MAP : process ( chnl0DataResynced, chnl1Data ) is
-      variable datA : ADCWord;
-      variable datB : ADCWord;
-      variable dorA : std_logic;
-      variable dorB : std_logic;
-   begin
-      if ( DDR_A_FIRST_G ) then
-         datA    := chnl0DataResynced(ADC_BITS_G downto 1);
-         dorA    := chnl0DataResynced(         0);
-         datB    := chnl1Data        (ADC_BITS_G downto 1);
-         dorB    := chnl1Data        (         0);
-      else
-         datA    := chnl1Data        (ADC_BITS_G downto 1);
-         dorA    := chnl1Data        (         0);
-         datB    := chnl0DataResynced(ADC_BITS_G downto 1);
-         dorB    := chnl0DataResynced(         0);
-      end if;
-
-      if ( INVERT_POL_CHA_G ) then
-         datA    := ADCWord( - signed( datA ) );
-      end if;
-
-      if ( INVERT_POL_CHB_G ) then
-         datB    := ADCWord( - signed( datB ) );
-      end if;
-
-      fdatA      <= datA;
-      fdatB      <= datB;
-      fdorA      <= dorA;
-      fdorB      <= dorB;
-   end process P_MAP;
+   fdatA         <= adcDataA(ADC_BITS_G downto 1);
+   fdorA         <= adcDataA(                  0);
+   fdatB         <= adcDataB(ADC_BITS_G downto 1);
+   fdorB         <= adcDataB(                  0);
 
    rWrCC <= rWr;
 
@@ -706,8 +434,8 @@ begin
       U_ILA_MEM : component ILAWrapper
          port map (
             clk  => memClk,
-            trg0 => chnl0DataResynced(ADC_BITS_G downto ADC_BITS_G - 8 + 1),
-            trg1 => chnl1Data(ADC_BITS_G downto ADC_BITS_G - 8 + 1),
+            trg0 => adcDataA(ADC_BITS_G downto ADC_BITS_G - 8 + 1),
+            trg1 => adcDataB(ADC_BITS_G downto ADC_BITS_G - 8 + 1),
             trg2 => x"00",
             trg3 => x"00"
          );
@@ -1399,7 +1127,5 @@ begin
          rst        => busRst,
          datOut     => status
       );
-
-   smplClk <= memClk;
 
 end architecture rtl;

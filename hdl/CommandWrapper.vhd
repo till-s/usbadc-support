@@ -25,11 +25,6 @@ entity CommandWrapper is
       COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
       ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
       DISABLE_DECIMATORS_G     : boolean := false;
-      DLY_REF_MHZ_G            : real    := 0.0;
-      DDR_TYPE_G               : string  := "IDDR2";
-      IDELAY_TAPS_G            : natural := 0;
-      INVERT_POL_CHA_G         : boolean := false;
-      INVERT_POL_CHB_G         : boolean := false;
       GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
       BOARD_VERSION_G          : std_logic_vector( 7 downto 0) := x"00";
       -- may configure specific delays for individual SPI
@@ -63,6 +58,9 @@ entity CommandWrapper is
 
       adcClk       : in  std_logic;
       adcRst       : in  std_logic := '0';
+      -- bit 0 is the DOR (overrange) bit
+      adcDataA     : in  std_logic_vector(ADC_BITS_G downto 0);
+      adcDataB     : in  std_logic_vector(ADC_BITS_G downto 0);
 
       extTrg       : in  std_logic := '0';
 
@@ -73,16 +71,7 @@ entity CommandWrapper is
       regRdnw      : out std_logic;
       regVld       : out std_logic;
       regRdy       : in  std_logic := '1';
-      regErr       : in  std_logic := '1';
-
-      -- bit 0 is the DOR (overrange) bit
-      adcDataDDR   : in  std_logic_vector(ADC_BITS_G downto 0);
-
-      smplClk      : out std_logic;
-
-      adcDcmLocked : out std_logic;
-
-      dlyRefClk    : in  std_logic := '0'
+      regErr       : in  std_logic := '1'
    );
 end entity CommandWrapper;
 
@@ -275,22 +264,15 @@ begin
       U_ADC_BUF : entity work.MaxAdc
          generic map (
             ADC_CLOCK_FREQ_G     => ADC_FREQ_G,
-            DLY_REF_MHZ_G        => DLY_REF_MHZ_G,
-            IDELAY_TAPS_G        => IDELAY_TAPS_G,
-            DDR_TYPE_G           => DDR_TYPE_G,
             MEM_DEPTH_G          => MEM_DEPTH_G,
             ADC_BITS_G           => ADC_BITS_G,
-            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G,
-            INVERT_POL_CHA_G     => INVERT_POL_CHA_G,
-            INVERT_POL_CHB_G     => INVERT_POL_CHB_G
+            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
          )
          port map (
             adcClk       => adcClk,
             adcRst       => adcRst,
-
-            adcDataDDR   => adcDataDDR,
-
-            smplClk      => smplClk,
+            adcDataA     => adcDataA,
+            adcDataB     => adcDataB,
 
             busClk       => clk,
             busRst       => rst,
@@ -306,11 +288,6 @@ begin
             rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
 
             status       => adcStatus,
-
-            pllLocked    => adcDcmLocked,
-            pllRst       => '0',
-
-            dlyRefClk    => dlyRefClk,
 
             extTrg       => extTrg
          );
