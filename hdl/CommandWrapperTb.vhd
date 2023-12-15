@@ -176,9 +176,7 @@ begin
          adcDataA(8 downto 1)   => std_logic_vector(adcDataA),
          adcDataA(         0)   => '0',
          adcDataB(8 downto 1)   => std_logic_vector(adcDataB),
-         adcDataB(         0)   => '0',
-
-         smplClk      => open
+         adcDataB(         0)   => '0'
       );
 
    P_FILL : process ( clk ) is
