@@ -45,16 +45,17 @@ uint8_t buf[128];
 int     i;
 
 	buf[0] = AT25_OP_ID;
-	buf[1] = 0x00;
-	buf[2] = 0x00;
-	buf[3] = 0x00;
-	buf[4] = 0x00;
+	buf[1] = 0xff;
+	buf[2] = 0xff;
+	buf[3] = 0xff;
+	buf[4] = 0xff;
+	buf[5] = 0xff;
 
-	if ( do_xfer( fw, 0, 0, buf, buf + 0x10, 5 ) < 0 ) {
+	if ( do_xfer( fw, 0, 0, buf, buf + 0x10, 6 ) < 0 ) {
 		return -1;
 	}
 
-	for ( i = 0; i < 5; i++ ) {
+	for ( i = 1; i < 6; i++ ) {
 		printf("0x%02x ", *(buf + 0x10 + i));
 	}
 	printf("\n");
