@@ -983,7 +983,6 @@ cdef class FwComm:
     cdef uint16_t  hdr
     if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
       raise ValueError("FwComm.read arg must support buffer protocol")
-    print("itemsize {:d}, len {:d}".format(b.itemsize, b.len));
     if   ( ( b.itemsize == 1 ) or ( b.itemsize == 2 ) ):
       with self._mgr as fw, nogil:
         rv = buf_read( fw, &hdr, <uint8_t*>b.buf, b.len )
