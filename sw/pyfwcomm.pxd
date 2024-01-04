@@ -6,6 +6,8 @@ from libc.math   cimport isnan
 cdef extern from "fwComm.h":
   ctypedef struct FWInfo:
     pass
+
+  uint8_t        FW_BUF_FLG_16B
   
   FWInfo        *fw_open(const char *devn, unsigned speed) nogil
   int            fw_xfer(FWInfo *, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len) nogil
@@ -15,6 +17,7 @@ cdef extern from "fwComm.h":
   uint8_t        fw_get_api_version(FWInfo *) nogil
   uint8_t        fw_get_board_version(FWInfo *) nogil
   unsigned long  buf_get_size(FWInfo *) nogil
+  uint8_t        buf_get_flags(FWInfo *) nogil
   int            buf_flush(FWInfo *) nogil
   int            buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len) nogil
   int            buf_read_flt(FWInfo *, uint16_t *hdr, float *buf, size_t len) nogil

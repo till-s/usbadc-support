@@ -67,6 +67,7 @@ struct FWInfo {
 	int             debug;
 	int             ownFd;
 	unsigned long   memSize;
+	uint8_t         memFlags;
 	uint32_t        gitHash;
 	uint8_t         brdVers;
 	uint8_t         apiVers;
@@ -81,7 +82,7 @@ __bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval);
 
 #define BUF_SIZE_FAILED ((long)-1L)
 static long
-__buf_get_size(FWInfo *fw);
+__buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg);
 
 void
 fw_set_debug(FWInfo *fw, int level)
@@ -194,7 +195,6 @@ FWInfo *
 fw_open_fd(int fd)
 {
 FWInfo *rv;
-long    sz;
 int64_t vers;
 
 	if ( ! (rv = malloc(sizeof(*rv))) ) {
@@ -207,12 +207,8 @@ int64_t vers;
 	rv->debug    = 0;
 	rv->ownFd    = 0;
 	rv->features = 0;
-	sz = __buf_get_size( rv );
-	if ( BUF_SIZE_FAILED == sz ) {
+	if ( BUF_SIZE_FAILED == __buf_get_size( rv, &rv->memSize, &rv->memFlags ) ) {
 		fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
-		rv->memSize = 0;
-	} else {
-		rv->memSize = (unsigned long)sz;
 	}
 
 	if ( ( vers = __fw_get_version( rv ) ) == (int64_t) -1 ) {
@@ -693,24 +689,35 @@ bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val)
 }
 
 static long
-__buf_get_size(FWInfo *fw)
+__buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg)
 {
 uint8_t buf[4];
 long    rval;
+long    ret = BUF_SIZE_FAILED;
 uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
+
+    *psz  = 0;
+    *pflg = 0;
 
 	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 
-	if ( 2 != rval ) {
-		if ( -2 == rval ) {
+	switch ( rval ) {
+		case 3:
+			*pflg = buf[2];
+			/* fall through */
+		case 2: /* older fw version has no flags */
+			*psz = 512UL * ((unsigned long)((buf[1]<<8) | buf[0]) + 1);
+			ret  = 0;
+			break;
+		case -2:
 			fprintf(stderr, "Error: buf_get_size() -- timeout; command unsupported?\n");
-		} else {
+			break;
+		default:
 			fprintf(stderr, "Error: buf_get_size() -- unexpected frame size %ld\n", rval);
-		}
-		return BUF_SIZE_FAILED;
+			break;
 	}
-	rval = 512L * ((long)((buf[1]<<8) | buf[0]) + 1);
-	return rval;
+
+	return ret;
 }
 
 unsigned long
@@ -718,6 +725,13 @@ buf_get_size(FWInfo *fw)
 {
 	return fw->memSize;
 }
+
+uint8_t
+buf_get_flags(FWInfo *fw)
+{
+	return fw->memFlags;
+}
+
 
 int
 buf_flush(FWInfo *fw)
@@ -732,6 +746,11 @@ uint8_t h[2];
 rbufvec v[2];
 size_t  rcnt;
 int     rv;
+int     i;
+const union {
+	uint8_t  b[2];
+	uint16_t s;
+} isLE = { s : 1 };
 
 	v[0].buf = h;
 	v[0].len = sizeof(h);
@@ -748,6 +767,13 @@ int     rv;
 	if ( hdr ) {
 		*hdr = (h[1]<<8) | h[0];
 	}
+	if ( ! isLE.b[0] && !! (buf_get_flags(fw) & FW_BUF_FLG_16B) ) {
+		for ( i = 0; i < (len & ~1); i+=2 ) {
+			uint8_t tmp = buf[i];
+			buf[i  ] = buf[i+1];
+			buf[i+1] = tmp;
+		}
+	}
 	if ( rv >= 2 ) {
 		rv -= 2;
 	}
@@ -757,15 +783,23 @@ int     rv;
 int
 buf_read_flt(FWInfo *fw, uint16_t *hdr, float *buf, size_t nelms)
 {
-int      rv;
-ssize_t  i;
-int8_t  *i_p = (int8_t*)buf;
+int       rv;
+ssize_t   i;
+int8_t   *i8_p  = (int8_t*)buf;
+int16_t  *i16_p = (int16_t*)buf;
+int       elsz  = ( (buf_get_flags( fw ) & FW_BUF_FLG_16B) ? 2 : 1 );
 
 
-	rv = buf_read( fw, hdr, (uint8_t*)buf, nelms );
+	rv = buf_read( fw, hdr, (uint8_t*)buf, nelms*elsz );
 	if ( rv > 0 ) {
-		for ( i = nelms - 1; i >= 0; i-- ) {
-			buf[i] = (float)(i_p[i]);
+		if ( 2 == elsz ) {
+			for ( i = nelms - 1; i >= 0; i-- ) {
+				buf[i] = (float)(i16_p[i]);
+			}
+		} else {
+			for ( i = nelms - 1; i >= 0; i-- ) {
+				buf[i] = (float)(i8_p[i]);
+			}
 		}
 	}
 	return rv;

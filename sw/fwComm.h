@@ -141,6 +141,11 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 unsigned long
 buf_get_size(FWInfo *);
 
+/* buffer uses 16-bit samples */
+#define FW_BUF_FLG_16B (1<<0)
+uint8_t
+buf_get_flags(FWInfo *);
+
 int
 buf_flush(FWInfo *);
 

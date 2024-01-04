@@ -297,6 +297,15 @@ const char *p;
 	return 0;
 }
 
+static void
+printBufInfo(FILE *f, FWInfo *fw)
+{
+unsigned long sz = buf_get_size( fw );
+uint8_t       fl = buf_get_flags( fw );
+unsigned      bs = ( (fl & FW_BUF_FLG_16B) ? 16 : 8 );
+	fprintf(f, "ADC Buffer size: %ld (%d-bit) samples/channel\n", sz, bs);
+}
+
 int main(int argc, char **argv)
 {
 const char        *devn;
@@ -435,7 +444,7 @@ const char        *regOp     = 0;
         printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
         printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
         printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/exp2(ACQ_LD_SCALE_ONE));
-		printf("ADC Buffer size: %ld\n", buf_get_size( fw ));
+		printBufInfo( stdout, fw );
 	}
 
 
@@ -444,7 +453,7 @@ const char        *regOp     = 0;
 		uint16_t hdr;
 		unsigned long nSamples = buf_get_size( fw );
 		size_t        reqBufSz = nSamples * NCHANNELS * sizeof(buf[0]);
-		fprintf(stderr, "ADC Buffer size (# samples): %ld\n", nSamples);
+		printBufInfo( stderr, fw );
 		if ( dumpAdc > 0 ) {
 			if ( buflen < reqBufSz ) {
 				buflen = reqBufSz;

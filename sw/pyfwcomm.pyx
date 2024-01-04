@@ -671,6 +671,7 @@ cdef class FwComm:
   cdef LED             _led
   cdef Max195xxADC     _adc
   cdef int             _bufsz
+  cdef uint8_t         _bufflags
   cdef AcqParams       _parmCache
   cdef Mtx             _syncMtx
   cdef Cond            _asyncEvt
@@ -766,7 +767,8 @@ cdef class FwComm:
       self._led = LED( self._mgr )
 
     with self._mgr as fw, nogil:
-      self._bufsz = buf_get_size( fw )
+      self._bufsz    = buf_get_size( fw )
+      self._bufflags = buf_get_flags( fw )
     self.setBoardInfo()
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
     if ( st != 0 ):
@@ -981,7 +983,8 @@ cdef class FwComm:
     cdef uint16_t  hdr
     if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
       raise ValueError("FwComm.read arg must support buffer protocol")
-    if   ( b.itemsize == 1 ):
+    print("itemsize {:d}, len {:d}".format(b.itemsize, b.len));
+    if   ( ( b.itemsize == 1 ) or ( b.itemsize == 2 ) ):
       with self._mgr as fw, nogil:
         rv = buf_read( fw, &hdr, <uint8_t*>b.buf, b.len )
     elif ( b.itemsize == sizeof(float) ):
@@ -1113,7 +1116,11 @@ cdef class FwComm:
     self._parmCache.scale = iscale
 
   def mkBuf(self):
-    return numpy.zeros( (self._bufsz, 2), dtype = "int8" )
+    if ( 0 != (self._bufflags & FW_BUF_FLG_16B) ):
+      dtype = 'int16'
+    else:
+      dtype = 'int8'
+    return numpy.zeros( (self._bufsz, 2), dtype = dtype )
 
   def mkFltBuf(self):
     return numpy.zeros( (self._bufsz, 2), dtype = "float32" )

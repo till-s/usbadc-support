@@ -10,11 +10,12 @@ use     work.AcqCtlPkg.all;
 
 entity MaxADC is
    generic (
-      ADC_CLOCK_FREQ_G     : real    := 130.0E6;
-      MEM_DEPTH_G          : natural := 1024;
-      ADC_BITS_G           : natural := 8;
-      ONE_MEM_G            : boolean := false;
-      DISABLE_DECIMATORS_G : boolean := false
+      ADC_CLOCK_FREQ_G     : real                  := 130.0E6;
+      MEM_DEPTH_G          : natural               := 1024;
+      ADC_BITS_G           : natural               := 8;
+      ONE_MEM_G            : boolean               := false;
+      DISABLE_DECIMATORS_G : boolean               := false;
+      RAM_BITS_G           : natural range 8 to 16 := 10
    );
    port (
       adcClk      : in  std_logic;
@@ -58,17 +59,16 @@ architecture rtl of MaxADC is
    -- it avoids using multiplexers (until depth 16k). I.e., using all 16 BRAMs of
    -- a 200 device results in 16 parallel 16k x 1 memories!
    -- However, this means that parity bits cannot be used.
-   -- If RAM_BITS_C = 9 is to be used then some manual reconfiguration of the blocks
+   -- If RAM_BITS_G = 9 is to be used then some manual reconfiguration of the blocks
    -- including multiplexers must be implemented either completely manually (instantiating
    -- device macros) or by 'guiding' the inferal. In this case using ONE_MEM_G = false
    -- is preferable since the basic block is then 2kx9 instead of 1kx18, saving a little
    -- bit on the muxes.
-   constant RAM_BITS_C      : natural := 8;
 
    subtype  RamAddr         is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
-   subtype  RamWord         is std_logic_vector(RAM_BITS_C - 1 downto 0);
-   subtype  RamDWord        is std_logic_vector(2*RAM_BITS_C - 1 downto 0);
+   subtype  RamWord         is std_logic_vector(RAM_BITS_G - 1 downto 0);
+   subtype  RamDWord        is std_logic_vector(2*RAM_BITS_G - 1 downto 0);
 
    subtype  ADCWord         is std_logic_vector(ADC_BITS_G - 1 downto 0);
 
@@ -94,7 +94,42 @@ architecture rtl of MaxADC is
       return r;
    end memInfo;
 
+   -- LHS adjusted word
+   function toWord(constant x : RamWord) return std_logic_vector is
+      variable v : std_logic_vector(15 downto 0);
+   begin
+      v                                      := (others => '0');
+      v(v'left downto v'left - x'length + 1) := x;
+      return v;
+   end function toWord;
+
+   function hiByte(constant x : RamWord) return std_logic_vector is
+      variable v : std_logic_vector(15 downto 0);
+   begin
+      v := toWord( x );
+      return v(15 downto 8);
+   end function hiByte;
+
+   function loByte(constant x : RamWord) return std_logic_vector is
+      variable v : std_logic_vector(15 downto 0);
+   begin
+      v := toWord( x );
+      return v( 7 downto 0);
+   end function loByte;
+
    constant MSIZE_INFO_C    : unsigned(15 downto 0) := memInfo;
+
+   constant FLAG_IDX_2B_C   : natural               := 0;
+
+   function MSIZE_FLAGS_F return std_logic_vector is
+      variable v : std_logic_vector(7 downto 0);
+   begin
+      v := (others => '0');
+      v(FLAG_IDX_2B_C) := ite( RAM_BITS_G > 8 );
+      return v;
+   end function MSIZE_FLAGS_F;
+
+   constant LD_BCNT_C       : natural               := ite( RAM_BITS_G > 8, 2, 1 );
 
    type     RamArray        is array (MEM_DEPTH_G - 1 downto 0) of RamWord;
    type     RamDArray       is array (MEM_DEPTH_G - 1 downto 0) of RamDWord;
@@ -135,10 +170,19 @@ architecture rtl of MaxADC is
       rdatA   : RamWord;
       rdatB   : RamWord;
       saddr   : RamAddr;
-      anb     : boolean;
+      byteCnt : unsigned(LD_BCNT_C - 1 downto 0);
       busOb   : SimpleBusMstType;
       rdDon   : std_logic;
    end record RdRegType;
+
+   function SIMPLE_BUS_MST_INIT_F return SimpleBusMstType is
+      variable v : SimpleBusMstType := SIMPLE_BUS_MST_INIT_C;
+   begin
+      v.vld := '1'; -- always valid when muxed to rRd.busOb
+      v.lst := '0';
+      v.dat := (others => '0');
+      return v;
+   end function;
 
    constant RD_REG_INIT_C : RdRegType := (
       state   => ECHO,
@@ -146,8 +190,8 @@ architecture rtl of MaxADC is
       rdatB   => (others => 'X'),
       raddr   => (others => '0'),
       saddr   => (others => '0'),
-      anb     => true,
-      busOb   => SIMPLE_BUS_MST_INIT_C,
+      byteCnt => (others => '0'),
+      busOb   => SIMPLE_BUS_MST_INIT_F,
       rdDon   => '0'
    );
 
@@ -305,13 +349,13 @@ begin
    fdatB         <= adcDataB(ADC_BITS_G downto 1);
    fdorB         <= adcDataB(                  0);
 
-   rWrCC <= rWr;
+   rWrCC         <= rWr;
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
-   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWrCC, parms, parmsTgl) is
-      variable v      : RdRegType;
-   begin
+   P_RD_COMB : process (rRd, rRd.busOb, busIb, rdyOb, rdatA, rdatB, wrDon, wdorA, wdorB, rWrCC) is
+      variable v       : RdRegType;
+  begin
       v          := rRd;
 
       rdyIb      <= '1'; -- drop anything extra;
@@ -323,7 +367,7 @@ begin
       end if;
 
       -- increment read address; this covers all relevant states
-      if ( (rdyOb = '1') and rRd.anb ) then
+      if ( (rdyOb = '1') and (rRd.byteCnt = 0) ) then
          if ( rRd.raddr = END_ADDR_C ) then
             v.raddr := to_unsigned( 0, v.raddr'length );
          else
@@ -331,9 +375,14 @@ begin
          end if;
       end if;
 
+      -- compute byteCnt; covers all relevant states
+      if ( rdyOb = '1' ) then
+         v.byteCnt := rRd.byteCnt - 1;
+      end if;
+
       case ( rRd.state ) is
          when ECHO =>
-            v.anb   := true;
+            v.byteCnt := (others => '0');
 
             busOb     <= busIb;
             busOb.lst <= '0';
@@ -344,7 +393,6 @@ begin
                   v.state     := MSIZE;
                   v.busOb.dat := std_logic_vector( MSIZE_INFO_C(7 downto 0) );
                   v.busOb.lst := '0';
-                  v.busOb.vld := '1';
                elsif ( ( wrDon = '1' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state     := HDR;
                   -- seed the start address for reading
@@ -357,7 +405,6 @@ begin
                   v.busOb.dat    := (others => '0');
                   v.busOb.dat(0) := toSl(rWrCC.ovrA /= 0);
                   v.busOb.dat(1) := toSl(rWrCC.ovrB /= 0);
-                  v.busOb.vld    := '1';
                   v.busOb.lst    := '0';
                else
                   busOb.lst <= '1';
@@ -369,35 +416,30 @@ begin
 
          when MSIZE =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
-               v.anb := not rRd.anb;
-               if ( rRd.anb ) then
+               if ( rRd.byteCnt = 0 ) then
                   v.busOb.dat := std_logic_vector( MSIZE_INFO_C(15 downto 8) );
-                  v.busOb.lst := '1';
-               else
-                  v.busOb.vld := '0';
+               elsif ( rRd.busOb.lst = '1' ) then
                   v.state     := ECHO;
+               else
+                  v.busOb.dat := MSIZE_FLAGS_F;
+                  v.busOb.lst := '1';
                end if;
             end if;
 
          when HDR  =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
-               v.anb := not rRd.anb;
-               if ( rRd.anb ) then
-                  v.busOb.dat := (others => '0');
-                  -- prefetch/register (raddr is incremented; see above)
-                  v.rdatA := rdatA;
-                  v.rdatB := rdatB;
-               else
-                  v.busOb.dat := rRd.rdatA(rRd.rdatA'left downto rRd.rdatA'left - v.busOb.dat'length + 1);
-                  v.state     := READ;
-               end if;
+               -- rRd.byteCnt is 0 here
+               v.busOb.dat := (others => '0');
+               -- prefetch/register (raddr is incremented; see above)
+               v.rdatA := rdatA;
+               v.rdatB := rdatB;
+               v.state := READ;
             end if;
 
          when READ =>
             if ( rdyOb = '1' ) then -- busOb.vld  is '1' at this point
-               v.anb := not rRd.anb;
-               if ( rRd.anb ) then
-                  v.busOb.dat := rRd.rdatB(rRd.rdatB'left downto rRd.rdatB'left - v.busOb.dat'length + 1);
+               if ( rRd.byteCnt = 0 ) then
+                  v.busOb.dat := hiByte( rRd.rdatB );
                   -- prefetch/register (raddr is incremented; see above)
                   v.rdatA     := rdatA;
                   v.rdatB     := rdatB;
@@ -412,7 +454,13 @@ begin
                      v.state := ECHO;
                      v.rdDon := '1';
                   end if;
-                  v.busOb.dat := rRd.rdatA(rRd.rdatA'left downto rRd.rdatA'left - v.busOb.dat'length + 1);
+                  if ( ( rRd.byteCnt'length /= 2 ) or ( rRd.byteCnt(0) = '0' ) ) then
+                     v.busOb.dat := hiByte( rRd.rdatA );
+                  elsif ( rRd.byteCnt(rRd.byteCnt'left) = '1' ) then
+                     v.busOb.dat := loByte( rRd.rdatA );
+                  else -- byteCnt = "01"
+                     v.busOb.dat := loByte( rRd.rdatB );
+                  end if;
                end if;
             end if;
 
@@ -615,17 +663,17 @@ begin
    GEN_BUS_ILA : if ( false ) generate
       signal bTrg3 : std_logic_vector(7 downto 0);
    begin
-      bTrg3(0)          <= '1' when rRd.anb else '0';
+      bTrg3(0)          <= rRd.byteCnt(rRd.byteCnt'left);
       bTrg3(1)          <= rdyOb;
-      bTrg3(2)          <= rRd.busOb.vld;
+      bTrg3(2)          <= '0';
       bTrg3(4 downto 3) <= std_logic_vector( to_unsigned( RdStateType'pos( rRd.state ), 2 ) );
       bTrg3(7 downto 5) <= rRd.busOb.dat(7 downto 5);
 
       U_ILA_REG : component ILAWrapper
          port map (
             clk  => busClk,
-            trg0 => rRd.rdatA(7 downto 0),
-            trg1 => rRd.rdatB(7 downto 0),
+            trg0 => hiByte( rRd.rdatA ),
+            trg1 => hiByte( rRd.rdatB ),
             trg2 => std_logic_vector( rRd.raddr(7 downto 0) ),
             trg3 => bTrg3
          );
@@ -637,7 +685,7 @@ begin
 
       -- at least one extra bit; because we cannot scale
       -- precisely with just a right-shift.
-      constant STG0_OBITS_C         : natural := RAM_BITS_C + 1;
+      constant STG0_OBITS_C         : natural := RAM_BITS_G + 1;
 
       constant STG0_STGS_C          : natural := 4;
       constant STG0_LD_MAX_DCM_C    : natural := 4;
@@ -915,8 +963,8 @@ begin
             auxvOut(0)     => stg0ShfDorB
          );
 
-      stg0DatA <= resize( shift_right( stg0ShfDatA, STG0_SCL_LD_ONE_C + ADC_BITS_G - RAM_BITS_C ), stg0DatA'length );
-      stg0DatB <= resize( shift_right( stg0ShfDatB, STG0_SCL_LD_ONE_C + ADC_BITS_G - RAM_BITS_C ), stg0DatB'length );
+      stg0DatA <= resize( shift_right( stg0ShfDatA, STG0_SCL_LD_ONE_C + ADC_BITS_G - RAM_BITS_G ), stg0DatA'length );
+      stg0DatB <= resize( shift_right( stg0ShfDatB, STG0_SCL_LD_ONE_C + ADC_BITS_G - RAM_BITS_G ), stg0DatB'length );
 
       U_CIC1_A : entity work.CicFilter
          generic map (
@@ -1114,11 +1162,11 @@ begin
          cenCic1 <= '1';
    end generate G_NO_DECIMATORS;
 
-   statusLoc(ACQ_STA_OVR_A_C) <= toSl(rWrCC.ovrA /= 0);
-   statusLoc(ACQ_STA_OVR_B_C) <= toSl(rWrCC.ovrB /= 0);
+   statusLoc(ACQ_STA_OVR_A_C) <= toSl( rWr.ovrA /= 0 );
+   statusLoc(ACQ_STA_OVR_B_C) <= toSl( rWr.ovrB /= 0 );
    statusLoc(ACQ_STA_HALTD_C) <= memFull;
-   statusLoc(ACQ_STA_SRC_A_C) <= '1' when rWr.parms.src = CHA else '0';
-   statusLoc(ACQ_STA_SRC_B_C) <= '1' when rWr.parms.src = CHB else '0';
+   statusLoc(ACQ_STA_SRC_A_C) <= toSl( rWr.parms.src = CHA );
+   statusLoc(ACQ_STA_SRC_B_C) <= toSl( rWr.parms.src = CHB );
 
    U_STATUS_SYNC : entity work.SynchronizerBit
       generic map (

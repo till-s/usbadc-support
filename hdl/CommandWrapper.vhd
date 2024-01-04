@@ -21,6 +21,7 @@ entity CommandWrapper is
       SPI_CSHI_DELAY_NS_G      : real    := 0.0;
       ADC_FREQ_G               : real    := 130.0E6;
       ADC_BITS_G               : natural := 8;
+      RAM_BITS_G               : natural := 8;
       MEM_DEPTH_G              : natural := 1024;
       COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
       ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
@@ -266,6 +267,7 @@ begin
             ADC_CLOCK_FREQ_G     => ADC_FREQ_G,
             MEM_DEPTH_G          => MEM_DEPTH_G,
             ADC_BITS_G           => ADC_BITS_G,
+            RAM_BITS_G           => RAM_BITS_G,
             DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
          )
          port map (
