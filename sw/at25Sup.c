@@ -362,11 +362,16 @@ bail:
 static int
 do_xfer(FWInfo *fw, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
 {
+int st;
 	if ( !! ( FW_FEATURE_SPI_CONTROLLER & fw_get_features( fw ) ) ) {
-		return do_xfer_spi(fw, hdr, hlen, tbuf, rbuf, buflen);
+		st = do_xfer_spi(fw, hdr, hlen, tbuf, rbuf, buflen);
 	} else {
-		return do_xfer_bb(fw, hdr, hlen, tbuf, rbuf, buflen);
+		st = do_xfer_bb(fw, hdr, hlen, tbuf, rbuf, buflen);
 	}
+	if ( FIFO_ERR_TIMEOUT == st ) {
+		fprintf(stderr, "Error: transfer timed out\n");
+	}
+	return st;
 }
 
 
