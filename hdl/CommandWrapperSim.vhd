@@ -10,8 +10,8 @@ end entity CommandWrapperSim;
 
 architecture sim of CommandWrapperSim is
 
-   constant ADC_W_C       : natural := 8;
-
+   constant ADC_W_C       : natural :=  8;
+   constant RAM_BITS_C    : natural := 10;
 
    constant MEM_DEPTH_C : natural := 1024;
    constant ADC_FIRST_C : unsigned(ADC_W_C - 1 downto 0)  := (others => '1');
@@ -110,6 +110,7 @@ begin
          FIFO_FREQ_G    => 4.0E5,
          SPI_FREQ_G     => 1.0E5,
          ADC_BITS_G     => ADC_W_C,
+         RAM_BITS_G     => RAM_BITS_C,
          MEM_DEPTH_G    => MEM_DEPTH_C,
          HAVE_SPI_CMD_G => true
       )
