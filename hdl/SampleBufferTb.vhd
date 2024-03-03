@@ -137,22 +137,24 @@ architecture sim of SampleBufferTb is
    end procedure snd;
 
    procedure rcv(
-      signal   e   : out std_logic;
-      constant pre : in  natural;
-      constant fil : in  natural;
-      constant nrd : in  natural
+      signal   e   : inout std_logic;
+      constant pre : in    natural;
+      constant fil : in    natural;
+      constant nrd : in    natural
    ) is
    begin
       e <= '1';
       rtick;
       for i in fil - nrd + 1 to fil loop
-         while ( rdEmp = '1' ) loop
+         while ( ( rdEmp = '1' ) or ( e = '0' ) ) loop
            rtick;
+           e <= '1';
          end loop;
          assert to_integer( unsigned( rdDat(19 downto 0) ) )  = pre + i report "readback mismatch" severity failure;
          -- xor tests last flag in all cases
          assert ( i < fil ) xor ( rdDat(rdDat'left) = '1' ) report "LAST flag missing" severity failure;
          rtick;
+         e <= '0';
       end loop;
       e  <= '0';
       rtick;
