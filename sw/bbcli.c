@@ -472,7 +472,7 @@ const char        *regOp     = 0;
 			i = buf_flush( fw );
 		}
 		if ( i > 0 ) {
-			printf("ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
+			fprintf(stderr, "ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
 			if ( (fl & FW_BUF_FLG_16B) ) {
 				if ( ( i & 1 ) ) {
 					i -= 1;
