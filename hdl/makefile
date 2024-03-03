@@ -10,7 +10,7 @@ GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
-all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb spishadowregtb
+all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb spishadowregtb samplebuffertb
 
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
@@ -21,6 +21,7 @@ OBJS+=CommandSpi.o SpiBitShifter.o
 OBJS+=SpiFlashSim.o SpiChecker.o
 OBJS+=Flicker.o
 OBJS+=CommandReg.o
+OBJS+=SampleBufferBRAM.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -43,6 +44,10 @@ pipelinedrshiftertb: PipelinedRShifterTb.o $(OBJS)
 
 spiregtb: SpiRegTb.o SpiReg.o
 	$(GHDL) -e $(GHDLFLAGS)  $@
+
+samplebuffertb: SampleBufferTb.o SampleBufferBRAM.o SynchronizerBit.o
+	$(GHDL) -e $(GHDLFLAGS)  $@
+
 
 # Run target
 run: commandwrappertb
@@ -127,6 +132,10 @@ ComandReg.o: CommandMuxPkg.o BasicPkg.o
 
 SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
+SampleBufferBRAM.o: SynchronizerBit.o
+
+SampleBufferTb.o: SampleBufferBRAM.o
+
 MulShifter.o PipelinedRShifter.o SpiBitShifter.o CommandBitBang.o SpiShadowReg.o: BasicPkg.o
 
 CicFilterTb.o: CicFilter.o
@@ -139,7 +148,7 @@ BRDVERSION:=01
 .PHONY: .FORCE
 
 clean:
-	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb
+	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb samplebuffertb
 	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
 	$(RM) spiregtb SpiRegTb.o
 	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o spishadowregtb
