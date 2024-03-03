@@ -452,7 +452,11 @@ const char        *regOp     = 0;
 		int      j;
 		uint16_t hdr;
 		unsigned long nSamples = buf_get_size( fw );
+		uint8_t       fl       = buf_get_flags( fw );
 		size_t        reqBufSz = nSamples * NCHANNELS * sizeof(buf[0]);
+		if ( (fl & FW_BUF_FLG_16B) ) {
+			reqBufSz *= 2;
+		}
 		printBufInfo( stderr, fw );
 		if ( dumpAdc > 0 ) {
 			if ( buflen < reqBufSz ) {
@@ -469,10 +473,23 @@ const char        *regOp     = 0;
 		}
 		if ( i > 0 ) {
 			printf("ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
-			for ( j = 0; j < i; j++ ) {
-				printf("0x%02" PRIx8 " ", buf[j]);
-				if ( 0xf == ( j & 0xf) ) {
-					printf("\n");
+			if ( (fl & FW_BUF_FLG_16B) ) {
+				if ( ( i & 1 ) ) {
+					i -= 1;
+				}
+				for ( j = 0; j < i; j += 2 ) {
+					uint16_t w = ( (uint16_t) buf[j+1] << 8 ) | (uint16_t) buf[j];
+					printf("0x%04" PRIx16 " ", w);
+					if ( 0xe == ( j & 0xf ) ) {
+						printf("\n");
+					}
+				}
+			} else {
+				for ( j = 0; j < i; j++ ) {
+					printf("0x%02" PRIx8 " ", buf[j]);
+					if ( 0xf == ( j & 0xf) ) {
+						printf("\n");
+					}
 				}
 			}
 			if ( (j & 0xf) ) {
