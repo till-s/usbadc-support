@@ -189,7 +189,12 @@ architecture rtl of MaxADC is
    signal rWr       : WrRegType    := WR_REG_INIT_C;
    signal rinWr     : WrRegType;
 
-   signal rWrCC     : WrRegType;
+   type   WrCCRegType is record
+      ovrA    : std_logic;
+      ovrB    : std_logic;
+   end record WrCCRegType;
+
+   signal rWrCC     : WrCCRegType;
 
    -- helps writing constraints
    attribute KEEP         of rWrCC   : signal is "TRUE";
@@ -287,7 +292,8 @@ begin
    fdatB         <= adcDataB(ADC_BITS_G downto 1);
    fdorB         <= adcDataB(                  0);
 
-   rWrCC         <= rWr;
+   rWrCC.ovrA    <= toSl(rWrCC.ovrA /= 0);
+   rWrCC.ovrB    <= toSl(rWrCC.ovrB /= 0);
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
@@ -332,8 +338,8 @@ begin
                elsif ( ( rdEmp = '0' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state        := HDR;
                   v.busOb.dat    := (others => '0');
-                  v.busOb.dat(0) := toSl(rWrCC.ovrA /= 0);
-                  v.busOb.dat(1) := toSl(rWrCC.ovrB /= 0);
+                  v.busOb.dat(0) := rWrCC.ovrA;
+                  v.busOb.dat(1) := rWrCC.ovrB;
                   v.busOb.lst    := '0';
                else
                   busOb.lst <= '1';
