@@ -10,7 +10,7 @@ end entity CommandWrapperSim;
 
 architecture sim of CommandWrapperSim is
 
-   constant ADC_W_C       : natural := 10;
+   constant ADC_W_C       : natural :=  8;
 
 
    constant MEM_DEPTH_C : natural := 1024;

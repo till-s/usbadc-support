@@ -34,7 +34,8 @@ entity SampleBuffer is
       rdClk         : in  std_logic;
       rdEna         : in  std_logic;
       rdDat         : out std_logic_vector(D_WIDTH_G     downto 0);
-      rdEmp         : out std_logic
+      rdEmp         : out std_logic;
+      rdFlush       : in  std_logic
    );
 end entity SampleBuffer;
 
@@ -172,7 +173,7 @@ begin
    nsmplCC <= rWr.nsmpl;
    waddrCC <= waddr;
 
-   P_COMB_RD : process ( rRd, rdEna, nsmplCC, waddrCC, wrTglSync, rdata ) is
+   P_COMB_RD : process ( rRd, rdEna, nsmplCC, waddrCC, wrTglSync, rdata, rdFlush ) is
       variable v : RdRegType;
    begin
       v        := rRd;
@@ -207,8 +208,8 @@ begin
 
          when READ  =>
             rdEmp   <= '0';
-            if ( rdEna = '1' ) then
-               if ( rRd.raddr = waddrCC ) then
+            if ( (rdFlush or rdEna) = '1' ) then
+               if ( (rRd.raddr = waddrCC) or (rdFlush = '1') ) then
                   -- done (doesn't matter if we read the next item)
                   v.state := WAITRD;
                   v.tgl   := not rRd.tgl;

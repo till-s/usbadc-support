@@ -90,7 +90,7 @@ CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-MaxAdc.o: MaxAdc.vhd
+MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapper.o: CommandWrapper.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<

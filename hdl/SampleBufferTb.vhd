@@ -262,7 +262,8 @@ begin
          rdClk         => rdClk,
          rdEna         => rdEna,
          rdDat         => rdDat,
-         rdEmp         => rdEmp
+         rdEmp         => rdEmp,
+         rdFlush       => '0'
       );
   
 end architecture sim;
