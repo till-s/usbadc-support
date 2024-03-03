@@ -330,7 +330,11 @@ class Scope(QtCore.QObject):
     self.clrOvrLed()
 
   def updateYAxis(self):
-    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -128, 127 )
+    if ( 2 == self._fw.getSampleSize() ):
+      sc = 32767
+    else:
+      sc = 127
+    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -sc - 1, sc )
     self._zoom.setZoomBase()
 
   def updateXAxis(self):
