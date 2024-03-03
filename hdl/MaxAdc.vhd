@@ -132,7 +132,6 @@ architecture rtl of MaxADC is
 
    type     WrRegType       is record
       state   : WrStateType;
-      taddr   : RamAddr;
       lstTrg  : std_logic;
       wasTrg  : boolean;
       nsmpls  : RamAddr;
@@ -146,7 +145,6 @@ architecture rtl of MaxADC is
 
    constant WR_REG_INIT_C   : WrRegType := (
       state   => FILL,
-      taddr   => (others => '0'),
       lstTrg  => '0',
       wasTrg  => false,
       ovrA    => (others => '0'),
