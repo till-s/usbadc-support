@@ -150,5 +150,5 @@ BRDVERSION:=01
 clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb samplebuffertb
 	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
-	$(RM) spiregtb SpiRegTb.o
+	$(RM) spiregtb SpiRegTb.o SampleBufferTb.o
 	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o spishadowregtb
