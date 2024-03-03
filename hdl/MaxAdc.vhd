@@ -292,8 +292,8 @@ begin
    fdatB         <= adcDataB(ADC_BITS_G downto 1);
    fdorB         <= adcDataB(                  0);
 
-   rWrCC.ovrA    <= toSl(rWrCC.ovrA /= 0);
-   rWrCC.ovrB    <= toSl(rWrCC.ovrB /= 0);
+   rWrCC.ovrA    <= toSl(rWr.ovrA /= 0);
+   rWrCC.ovrB    <= toSl(rWr.ovrB /= 0);
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
