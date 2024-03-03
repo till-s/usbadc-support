@@ -971,6 +971,12 @@ cdef class FwComm:
   def getBufSize(self):
     return self._bufsz
 
+  def getSampleSize(self):
+    if ( 0 != (self._bufflags & FW_BUF_FLG_16B) ):
+      return 2
+    else:
+      return 1
+
   def flush(self):
     cdef int st
     with self._mgr as fw, nogil:
@@ -1115,7 +1121,7 @@ cdef class FwComm:
     self._parmCache.scale = iscale
 
   def mkBuf(self):
-    if ( 0 != (self._bufflags & FW_BUF_FLG_16B) ):
+    if ( 2 == self.getSampleSize() ):
       dtype = 'int16'
     else:
       dtype = 'int8'
