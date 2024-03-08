@@ -226,9 +226,6 @@ begin
                else 
                   v.state := WAI;
                end if;
-            elsif ( abrt = '1' ) then
-               -- inbound transfer is aborted (see above)
-               v.state := WAI;
             end if;
 
          when WAI => -- wait for outgoing frame to pass
