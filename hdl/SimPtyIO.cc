@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstdint>
+#include <errno.h>
+#include <termios.h>
 
 int
 simPtyCreate(void)
@@ -48,6 +50,9 @@ char               nam[200];
 	}
 	nam[sizeof(nam)-1] = 0;
 	printf("Opened PTY as: %s\n", nam);
+	printf("My PID: %d, F_GETOWN %d\n", getpid(), fcntl( fd, F_GETOWN ));
+	fcntl(fd, F_SETOWN, getpid());
+	printf("My PID: %d, F_GETOWN %d\n", getpid(), fcntl( fd, F_GETOWN ));
 
 	return fd;
 
@@ -67,20 +72,33 @@ extern "C" {
 void readPtyPoll_C(int *valid, int *data)
 {
 uint8_t oct;
-	if ( 1 == read( theFD, &oct, 1 ) ) {
+int     st;
+	st = read( theFD, &oct, 1 );
+	if ( 1 == st ) {
 		*valid = 1;
 		*data  = oct;
 printf("READ %x\n", oct);
+	} else if ( st < 0 && EAGAIN != errno  ) {
+		*valid = -1;
+		close( theFD );
+		theFD = simPtyCreate();
+//		*valid = 0;
+// if communication is interrupted we get EIO; this is a flag
+// permanently set (checked in linux' pty driver) until close/reopen :-(
+//		perror("readPtyPoll");
 	} else {
-		*valid = 0;
+		*valid =  0;
 	}
 }
 
-void writePty_C(int data)
+void writePty_C(int *valid, int data)
 {
 uint8_t oct = (uint8_t) data;
 int     put;
-	if ( 1 != (put = write( theFD, &oct, 1 )) ) {
+	if ( 1 == (put = write( theFD, &oct, 1 )) ) {
+		*valid = 1;
+	} else {
+		*valid = -1;
 		perror("WARNING: writePty_C failed to write");
 	}
 }
@@ -100,10 +118,11 @@ struct timeval t;
 	st = select( theFD + 1, 0, &fds, 0, &t );
 
 	if ( st <= 0 ) {
+		*rdy = 0;
 		if ( st < 0 ) {
 			perror("WARNING: writePtyPoll_C failed to select");
+			*rdy = -1;
 		}
-		*rdy = 0;
 	} else {
 		*rdy = 1;
 	}

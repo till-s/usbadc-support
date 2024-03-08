@@ -38,6 +38,9 @@ architecture sim of CommandWrapperSim is
    signal vldObi  : std_logic;
    signal rdyObi  : std_logic;
 
+   signal abrt    : std_logic;
+   signal abrtDon : std_logic;
+
    signal run     : boolean      := true;
 
    signal bbi     : std_logic_vector(7 downto 0) := x"FF";
@@ -147,7 +150,10 @@ begin
 
          vldIb        => vldObi,
          datIb        => datObi,
-         rdyIb        => rdyObi
+         rdyIb        => rdyObi,
+
+         abrt         => abrt,
+         abrtDon      => abrtDon
       );
 
    U_RAM : component RamEmul
@@ -187,6 +193,9 @@ begin
          datOb        => datObi,
          vldOb        => vldObi,
          rdyOb        => rdyObi,
+
+         abrt         => abrt,
+         abrtDon      => abrtDon,
 
          bbo          => bbo,
          bbi          => bbi,

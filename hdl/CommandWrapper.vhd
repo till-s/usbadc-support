@@ -49,6 +49,9 @@ entity CommandWrapper is
       vldOb        : out std_logic;
       rdyOb        : in  std_logic;
 
+      abrt         : in  std_logic := '0';
+      abrtDon      : out std_logic := '0';
+
       bbo          : out std_logic_vector(7 downto 0);
       bbi          : in  std_logic_vector(7 downto 0) := (others => '0');
       subCmdBB     : out SubCommandBBType;
@@ -135,8 +138,11 @@ architecture rtl of CommandWrapper is
    signal verAddr     : integer range -1 to VERSION_C'high := -1;
    signal verAddrIn   : integer range -1 to VERSION_C'high;
 
+   signal stuffRst    : std_logic;
+
 begin
 
+   stuffRst <= ( rst or abrt );
 
    U_DESTUFFER : entity work.ByteDeStuffer
       generic map (
@@ -145,7 +151,7 @@ begin
       )
       port map (
          clk         => clk,
-         rst         => rst,
+         rst         => stuffRst,
 
          datOut      => unstuffedBusIb.dat,
          vldOut      => unstuffedBusIb.vld,
@@ -166,7 +172,7 @@ begin
       )
       port map (
          clk         => clk,
-         rst         => rst,
+         rst         => stuffRst,
 
          datInp      => unstuffedBusOb.dat,
          vldInp      => unstuffedBusOb.vld,
@@ -192,6 +198,9 @@ begin
 
          busOb        => unstuffedBusOb,
          rdyOb        => unstuffedRdyOb,
+
+         abrt         => abrt,
+         abrtDon      => abrtDon,
 
          busMuxedIb   => bussesIb,
          rdyMuxedIb   => readysIb,

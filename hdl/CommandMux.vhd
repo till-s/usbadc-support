@@ -22,7 +22,10 @@ entity CommandMux is
       rdyMuxedIb   : in  std_logic_vector (CMDS_SUPPORTED_G'length - 1 downto 0);
 
       busMuxedOb   : in  SimpleBusMstArray(CMDS_SUPPORTED_G'length - 1 downto 0);
-      rdyMuxedOb   : out std_logic_vector (CMDS_SUPPORTED_G'length - 1 downto 0)
+      rdyMuxedOb   : out std_logic_vector (CMDS_SUPPORTED_G'length - 1 downto 0);
+
+      abrt         : in  std_logic := '0';
+      abrtDon      : out std_logic
    );
 end entity CommandMux;
 
@@ -37,12 +40,14 @@ architecture rtl of CommandMux is
       state     : StateType;
       cmd       : SimpleBusMstType;
       obLstSeen : boolean;
+      abrtDon   : std_logic;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
       state     => IDLE,
       cmd       => SIMPLE_BUS_MST_INIT_C,
-      obLstSeen => false
+      obLstSeen => false,
+      abrtDon   => '0'
    );
 
    signal     r               : RegType := REG_INIT_C;
@@ -95,7 +100,7 @@ begin
 
    -- ise doesn't seem to handle nested records.
    -- (Got warnings about r.cmd missing from sensitivity list)
-   P_COMB : process ( r, r.cmd, busIb, rdyMuxedIb, busMuxedOb, rdyOb ) is
+   P_COMB : process ( r, r.cmd, busIb, rdyMuxedIb, busMuxedOb, rdyOb, abrt ) is
       variable v     : RegType;
       variable sel   : SelType;
       variable selOK : boolean;
@@ -109,11 +114,17 @@ begin
          busMuxedIb(i) <= SIMPLE_BUS_MST_INIT_C;
       end loop;
 
-      rdy   := '0';
+      rdy          := '0';
 
-      sel   := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0)));
-      selOK := ( sel < NUM_CMDS_C ) and CMDS_SUPPORTED_G( sel ) ;
-      
+      if ( r.abrtDon = '1' ) then
+         v.abrtDon := '0';
+      elsif ( r.state = IDLE ) then
+         -- once we are back IDLE we ack the abort
+         v.abrtDon := abrt;
+      end if;
+
+      sel          := to_integer(unsigned(r.cmd.dat(NUM_CMD_BITS_C - 1 downto 0)));
+      selOK        := ( sel < NUM_CMDS_C ) and CMDS_SUPPORTED_G( sel ) ;
 
       -- drain unselected channels
       rdyMuxedOb   <= (others => '1');
@@ -125,40 +136,44 @@ begin
          when IDLE =>
             rdy         := '1';
             v.obLstSeen := false;
-            if ( busIb.vld = '1' ) then
+            if ( ( not abrt and busIb.vld ) = '1' ) then
                v.state     := CMD;
                v.cmd       := busIb;
             end if;
 
          when CMD  =>
+            if ( abrt = '1' ) then
+               -- nothing selected yet; can just go back
+               v.state     := IDLE;
+            else
+               if ( selOK ) then
+                  busObLoc        <= busMuxedOb(sel);
+                  rdyMuxedOb(sel) <= rdyOb;
 
-            if ( selOK ) then
-               busObLoc        <= busMuxedOb(sel);
-               rdyMuxedOb(sel) <= rdyOb;
-
-               if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
-                  v.obLstSeen := true;
+                  if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
+                     v.obLstSeen := true;
+                  end if;
                end if;
-            end if;
 
-            if ( r.cmd.lst = '1' ) then
-               if ( v.obLstSeen ) then
-                  ns := IDLE;
+               if ( r.cmd.lst = '1' ) then
+                  if ( v.obLstSeen ) then
+                     ns := IDLE;
+                  else
+                     ns := WAI;
+                  end if;
                else
-                  ns := WAI;
+                  ns := FWD;
                end if;
-            else
-               ns := FWD;
-            end if;
 
-            if ( selOK ) then
-               busMuxedIb(sel) <= r.cmd;
-               -- we know 'vld' is asserted
-               if ( rdyMuxedIb(sel) = '1' ) then
-                  v.state := ns;
+               if ( selOK ) then
+                  busMuxedIb(sel) <= r.cmd;
+                  -- we know 'vld' is asserted
+                  if ( rdyMuxedIb(sel) = '1' ) then
+                     v.state := ns;
+                  end if;
+               else
+                  v.state := ERR;
                end if;
-            else
-               v.state := ERR;
             end if;
 
          when ERR  =>
@@ -181,36 +196,47 @@ begin
                -- input dumped and reply sent
                v.state := IDLE;
             end if;
+            if ( abrt = '1' ) then
+               -- nothing selected by mux, can just go back
+               v.state := IDLE;
+            end if;
 
          when FWD  =>
             busMuxedIb(sel) <= busIb;
             rdy             := rdyMuxedIb(sel);
+            if ( abrt = '1' ) then
+               busMuxedIb(sel).vld <= '1';
+               busMuxedIb(sel).lst <= '1';
+            end if;
 
             -- in FWD state we always forward inbound traffic (otherwise we'd be in WAI); however, we
             -- must stop outbound traffic after outbound 'lst' was seen
             if ( not r.obLstSeen ) then
-               rdyMuxedOb(sel) <= rdyOb;
+               rdyMuxedOb(sel) <= (rdyOb or abrt);
                busObLoc        <= busMuxedOb(sel);
 
-               if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
+               if ( ((rdyOb or abrt) and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
                   v.obLstSeen := true;
                end if;
             end if;
 
-            if ( (busIb.vld = '1') and (rdy = '1') and (busIb.lst = '1') ) then
+            if ( ( rdy and ( (busIb.lst and busIb.vld) or abrt ) ) = '1' ) then
                if ( v.obLstSeen ) then
                   v.state := IDLE;
                else 
                   v.state := WAI;
                end if;
+            elsif ( abrt = '1' ) then
+               -- inbound transfer is aborted (see above)
+               v.state := WAI;
             end if;
 
          when WAI => -- wait for outgoing frame to pass
             -- WAI can only be entered if sel < NUM_CMDS_C aka selOK
-            rdyMuxedOb(sel) <= rdyOb;
+            rdyMuxedOb(sel) <= rdyOb or abrt;
             busObLoc        <= busMuxedOb(sel);
-            if ( (rdyOb and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
-               v.state := IDLE;
+            if ( (( abrt or rdyOb ) and busMuxedOb(sel).vld and busMuxedOb(sel).lst) = '1' ) then
+               v.state   := IDLE;
             end if;
                
       end case;
@@ -231,7 +257,8 @@ begin
       end if;
    end process P_SEQ;
 
-   rdyIb <= rdyLoc;
-   busOb <= busObLoc;
+   rdyIb   <= rdyLoc;
+   busOb   <= busObLoc;
+   abrtDon <= r.abrtDon;
 
 end architecture rtl;
