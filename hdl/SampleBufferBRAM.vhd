@@ -3,6 +3,7 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
 use     work.BasicPkg.all;
+use     work.SDRAMPkg.all;
 
 entity SampleBuffer is
    generic (
@@ -21,14 +22,9 @@ entity SampleBuffer is
       wrFul         : out std_logic := '0'; -- diagnostic signal (unused)
 
       -- UNUSED - for compatibility with SDRAM architecture only
-      sdramClk      : in  std_logic := '0';
-      sdramReq      : out std_logic := '0';
-      sdramAck      : in  std_logic := '0';
-      sdramAddr     : out std_logic_vector(A_WIDTH_G - 1  downto 0) := (others => '0');
-      sdramRdnwr    : out std_logic := '0';
-      sdramWDat     : out std_logic_vector(15 downto 0) := (others => '0');
-      sdramRDat     : in  std_logic_vector(15 downto 0) := (others => '0');
-      sdramRVld     : in  std_logic := '0';
+      sdramClk      : in  std_logic    := '0';
+      sdramReq      : out SDRAMReqType := SDRAM_REQ_INIT_C;
+      sdramRep      : in  SDRAMRepType := SDRAM_REP_INIT_C;
 
       -- read side
       rdClk         : in  std_logic;
