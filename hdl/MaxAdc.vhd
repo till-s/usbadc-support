@@ -17,7 +17,10 @@ entity MaxADC is
       ONE_MEM_G            : boolean               := false;
       DISABLE_DECIMATORS_G : boolean               := false;
       RAM_BITS_G           : natural range 8 to 16 := 10;
-      SDRAM_ADDR_WIDTH_G   : natural               := 0
+      SDRAM_ADDR_WIDTH_G   : natural               := 0;
+      -- set to opposite of initial value of 'parmsTgl'
+      -- this will start an initial acquistion
+      INIT_ACQ_POL_G       : std_logic             := '1'
    );
    port (
       adcClk      : in  std_logic;
@@ -35,6 +38,7 @@ entity MaxADC is
       busClk      : in  std_logic;
       busRst      : in  std_logic;
 
+      -- validity of parameters must be checked by provider
       parms       : in  AcqCtlParmType;
       -- toggling 'parmsTgl' initiates a new acquisition (aborting a pending one)
       parmsTgl    : in  std_logic;
@@ -58,7 +62,7 @@ architecture rtl of MaxADC is
    attribute DONT_TOUCH     : string;
    attribute SYN_PRESERVE   : boolean; -- efinity for 'keep'
 
-   constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G - 1);
+   constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G);
 
    constant MS_TICK_PERIOD_C: natural := natural( round( ADC_CLOCK_FREQ_G / 1000.0 ) );
 
@@ -136,7 +140,7 @@ architecture rtl of MaxADC is
 
    constant LD_BCNT_C       : natural               := ite( RAM_BITS_G > 8, 2, 1 );
 
-   type     WrStateType     is (FILL, RUN, STOP1, STOP2, HOLD);
+   type     WrStateType     is (INIT, FILL, RUN, STOP1, STOP2, HOLD);
 
    type     WrRegType       is record
       state   : WrStateType;
@@ -153,7 +157,7 @@ architecture rtl of MaxADC is
    end record WrRegType;
 
    constant WR_REG_INIT_C   : WrRegType := (
-      state   => FILL,
+      state   => INIT,
       lstTrg  => '0',
       wasTrg  => false,
       ovrA    => (others => '0'),
@@ -165,6 +169,15 @@ architecture rtl of MaxADC is
       tmrStrt => '0',
       fifoFul => '0'
    );
+
+   function WR_REG_START_F
+   return WrRegType is
+      variable v : WrRegType;
+   begin
+      v       := WR_REG_INIT_C;
+      v.state := FILL;
+      return v;
+   end function WR_REG_START_F;
 
    type     RdStateType     is (ECHO, MSIZE, HDR, READ);
 
@@ -253,7 +266,7 @@ architecture rtl of MaxADC is
    signal startAcq          : std_logic := '0';
 
    signal acqTglIb          : std_logic;
-   signal acqTglOb          : std_logic := '0';
+   signal acqTglOb          : std_logic := INIT_ACQ_POL_G;
 
    signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
    signal msTimer           : unsigned( 15 downto 0 )                 := AUTO_TIME_STOP_C;
@@ -526,12 +539,14 @@ begin
          v.nsmpls  := rWr.nsmpls + 1;
          -- remember overrange 'seen' during the last MEM_DEPTH_G samples
          if ( wdorA = '1' ) then
-            v.ovrA := to_unsigned( MEM_DEPTH_G - 1, v.ovrA'length );
+            -- ASSUME: validity of nsamples has been checked against MEM_DEPTH_G
+            v.ovrA := resize( lparms.nsamples, v.ovrA'length );
          elsif ( rWr.ovrA /= 0 ) then
             v.ovrA := rWr.ovrA - 1;
          end if;
          if ( wdorB = '1' ) then
-            v.ovrB := to_unsigned( MEM_DEPTH_G - 1, v.ovrB'length );
+            -- ASSUME: validity of nsamples has been checked against MEM_DEPTH_G
+            v.ovrB := resize( lparms.nsamples, v.ovrB'length );
          elsif ( rWr.ovrB /= 0 ) then
             v.ovrB := rWr.ovrB - 1;
          end if;
@@ -541,6 +556,7 @@ begin
       end if;
 
       case ( rWr.state ) is
+         when INIT       =>
 
          when FILL       =>
             if ( rWr.nsmpls >= lparms.nprets ) then
@@ -555,9 +571,10 @@ begin
                v.wasTrg := true;
             end if;
             if ( v.wasTrg ) then
-               -- compare to MEM_DEPTH_G - 1; this last sample still
-               -- is stored and in 'STOP1/2/HOLD' state rWr.nsmpls = MEM_DEPTH_G
-               if ( MEM_DEPTH_G - 1 = rWr.nsmpls ) then
+               -- lparms.nsamples is the actual number of samples - 1
+               -- comparison is ok, this last sample still
+               -- is stored and in 'STOP1/2/HOLD' state rWr.nsmpls = nsamples + 1
+               if ( lparms.nsamples = rWr.nsmpls ) then
                   v.state := STOP1;
                end if;
             else
@@ -597,6 +614,9 @@ begin
    end process P_WR_COMB;
 
    U_WR_SYNC_ACQ : entity work.SynchronizerBit
+      generic map (
+         RSTPOL_G  => INIT_ACQ_POL_G
+      )
       port map (
          clk       => memClk,
          rst       => '0',
@@ -605,6 +625,9 @@ begin
       );
 
    U_RD_SYNC_ACQ : entity work.SynchronizerBit
+      generic map (
+         RSTPOL_G  => INIT_ACQ_POL_G
+      )
       port map (
          clk       => busClk,
          rst       => '0',
@@ -619,13 +642,12 @@ begin
       if ( rising_edge( memClk ) ) then
          acqTglOb <= acqTglIb;
          if ( startAcq = '1' ) then
-            rWr         <= WR_REG_INIT_C;
+            -- assume validity of parameters has been checked
+            -- by the provider!
+            rWr         <= WR_REG_START_F;
             rWr.parms   <= parms;
             rWr.decmIs1 <= (parms.decm0 = 0);
-            if ( parms.nprets > MEM_DEPTH_G - 1 ) then
-               rWr.parms.nprets <= to_unsigned( MEM_DEPTH_G - 1, rWr.parms.nprets'length );
-            end if;
-         elsif ( wrDecm = '1' ) then
+         elsif ( ( wrDecm = '1' ) and ( rWr.state /= INIT ) ) then
             rWr <= rinWr;
          end if;
       end if;

@@ -10,7 +10,7 @@ end entity CommandWrapperTb;
 architecture sim of CommandWrapperTb is
 
    constant MEM_DEPTH_C : natural := 16;
-   constant ADC_FIRST_C : unsigned(7 downto 0) := x"A0";
+   constant ADC_FIRST_C : unsigned(9 downto 0) := "00" & x"A0";
 
    signal clk     : std_logic := '0';
    signal rst     : std_logic := '0';
@@ -39,8 +39,8 @@ architecture sim of CommandWrapperTb is
    signal bbi     : std_logic_vector(7 downto 0) := x"FF";
    signal bbo     : std_logic_vector(7 downto 0) := x"FF";
 
-   signal adcDataA : unsigned(7 downto 0) := ADC_FIRST_C + 1;
-   signal adcDataB : unsigned(7 downto 0) := ADC_FIRST_C;
+   signal adcDataA : unsigned(9 downto 0) := ADC_FIRST_C + 1;
+   signal adcDataB : unsigned(9 downto 0) := ADC_FIRST_C;
 
    procedure x(
       signal   mst : inout SimpleBusMstType;
@@ -153,7 +153,9 @@ begin
    U_DUT : entity work.CommandWrapper
       generic map (
          FIFO_FREQ_G  => 4.0E5,
-         MEM_DEPTH_G  => MEM_DEPTH_C
+         MEM_DEPTH_G  => MEM_DEPTH_C,
+         ADC_BITS_G   => adcDataA'length,
+         RAM_BITS_G   => adcDataA'length
       )
       port map (
          clk          => clk,
@@ -173,10 +175,10 @@ begin
          adcClk       => clk,
          adcRst       => rst,
 
-         adcDataA(8 downto 1)   => std_logic_vector(adcDataA),
-         adcDataA(         0)   => '0',
-         adcDataB(8 downto 1)   => std_logic_vector(adcDataB),
-         adcDataB(         0)   => '0'
+         adcDataA(adcDataA'left+1 downto 1)   => std_logic_vector(adcDataA),
+         adcDataA(                       0)   => '0',
+         adcDataB(adcDataB'left+1 downto 1)   => std_logic_vector(adcDataB),
+         adcDataB(                       0)   => '0'
       );
 
    P_FILL : process ( clk ) is
