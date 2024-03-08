@@ -8,7 +8,8 @@ use work.AcqCtlPkg.all;
 
 entity CommandAcqParm is
    generic (
-      CLOCK_FREQ_G : real
+      CLOCK_FREQ_G : real;
+      MEM_DEPTH_G  : natural
    );
    port (
       clk          : in  std_logic;
@@ -38,12 +39,23 @@ architecture rtl of CommandAcqParm is
    constant M_SET_AUT_BIT_C : natural  := 4;
    constant M_SET_DCM_BIT_C : natural  := 5;
    constant M_SET_SCL_BIT_C : natural  := 6;
+   constant M_SET_NSM_BIT_C : natural  := 7;
 
-   constant CMD_LEN_C   : natural := acqCtlParmSizeBytes;
+   constant CMD_LEN_C       : natural := acqCtlParmSizeBytes;
 
    type MaskBitArray is array ( natural range 0 to CMD_LEN_C - 1 ) of natural range 0 to MaskType'length - 1;
 
-   type StateType is (ECHO, MASK, PROC, TRIG);
+   type StateType is (ECHO, MASK, PROC, VALID, TRIG);
+
+   function ACQ_CTL_PARM_INIT_F
+      return AcqCtlParmType
+   is
+      variable v : AcqCtlParmType;
+   begin
+      v          := ACQ_CTL_PARM_INIT_C;
+      v.nsamples := to_unsigned( MEM_DEPTH_G - 1, v.nsamples'length );
+      return v;
+   end function ACQ_CTL_PARM_INIT_F;
 
    type RegType is record
       state         : StateType;
@@ -58,7 +70,7 @@ architecture rtl of CommandAcqParm is
       state         => ECHO,
       mask          => M_GET_C,
       subCmd        => (others => '0'),
-      p             => ACQ_CTL_PARM_INIT_C,
+      p             => ACQ_CTL_PARM_INIT_F,
       count         => 0,
       trg           => '0'
    );
@@ -69,7 +81,7 @@ architecture rtl of CommandAcqParm is
 begin
 
    P_COMB : process ( r, r.p, mIb, rOb, ackIb ) is
-      constant FOO_C   : std_logic_vector := toSlv( ACQ_CTL_PARM_INIT_C ); -- just to get the length/range
+      constant FOO_C   : std_logic_vector := toSlv( ACQ_CTL_PARM_INIT_F ); -- just to get the length/range
       variable v       : RegType;
       variable rb      : std_logic_vector(FOO_C'range);
    begin
@@ -94,6 +106,9 @@ begin
                v.mask  := mIb.dat;
                mOb.dat <= r.mask;
                v.state := PROC;
+               if ( mIb.lst = '1' ) then
+                  v.state := ECHO;
+               end if;
             end if;
 
          when PROC  =>
@@ -116,6 +131,9 @@ begin
                if ( r.mask( M_SET_NPT_BIT_C ) = '0' ) then
                   v.p.nprets     := r.p.nprets;
                end if;
+               if ( r.mask( M_SET_NSM_BIT_C ) = '0' ) then
+                  v.p.nsamples   := r.p.nsamples;
+               end if;
                if ( r.mask( M_SET_AUT_BIT_C ) = '0' ) then
                   v.p.autoTimeMs := r.p.autoTimeMs;
                end if;
@@ -128,15 +146,10 @@ begin
                   v.p.shift1     := r.p.shift1;
                   v.p.scale      := r.p.scale;
                end if;
-               if ( r.count = CMD_LEN_C - 1 ) then
-                  if ( ( r.mask /= M_GET_C ) and ( mIb.lst = '1' ) ) then
-                     if ( r.mask( M_SET_DCM_BIT_C ) = '1' ) then
-                        if ( v.p.decm0 = 0 ) then
-                           v.p.decm1      := (others => '0');
-                        end if;
-                     end if;
-                     v.trg    := not r.trg;
-                     v.state  := TRIG;
+               if ( ( r.count = CMD_LEN_C - 1 ) or ( mIb.lst = '1' ) ) then
+                  if ( r.mask /= M_GET_C ) then
+                     v.state  := VALID;
+                     -- validate settings
                      -- hold off sending last byte until trigger is acked
                      mOb.vld  <= '0';
                   else
@@ -148,6 +161,23 @@ begin
                end if;
             end if;
 
+         when VALID =>
+            -- validate settings
+            -- hold off sending last byte until trigger is acked
+            mOb.vld  <= '0';
+            if ( r.p.decm0 = 0 ) then
+               v.p.decm1      := (others => '0');
+            end if;
+            if ( r.p.nsamples >= MEM_DEPTH_G ) then
+               v.p.nsamples := to_unsigned( MEM_DEPTH_G - 1, v.p.nsamples'length );
+            end if;
+            if ( r.p.nprets > v.p.nsamples ) then
+               v.p.nprets   := v.p.nsamples;
+            end if;
+
+            v.trg    := not r.trg;
+            v.state  := TRIG;
+
          when TRIG =>
             mOb.vld <= '0';
             if ( ackIb = r.trg ) then
@@ -157,11 +187,6 @@ begin
                v.state := ECHO;
             end if;
       end case;
-
-      -- check for early termination (short input)
-      if ( ( v.state /= TRIG ) and ( rOb and mIb.vld and mIb.lst ) = '1' ) then
-         v.state := ECHO;      
-      end if;
 
       rin     <= v;
    end process P_COMB;

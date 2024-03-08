@@ -40,6 +40,7 @@ uint8_t
 fw_get_board_version(FWInfo *fw);
 
 #define FW_API_VERSION_1 (1)
+#define FW_API_VERSION_2 (2)
 
 uint8_t
 fw_get_api_version(FWInfo *fw);
@@ -167,13 +168,15 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
  * setting the auto-timeout to 0
  */
 
-#define ACQ_PARAM_MSK_SRC (1<<0)
-#define ACQ_PARAM_MSK_EDG (1<<1)
-#define ACQ_PARAM_MSK_LVL (1<<2)
-#define ACQ_PARAM_MSK_NPT (1<<3)
-#define ACQ_PARAM_MSK_AUT (1<<4)
-#define ACQ_PARAM_MSK_DCM (1<<5)
-#define ACQ_PARAM_MSK_SCL (1<<6)
+#define ACQ_PARAM_MSK_SRC (1<<0) /* trigger source                */
+#define ACQ_PARAM_MSK_EDG (1<<1) /* trigger edge                  */
+#define ACQ_PARAM_MSK_LVL (1<<2) /* trigger level                 */
+#define ACQ_PARAM_MSK_NPT (1<<3) /* number of pre-trigger samples */
+#define ACQ_PARAM_MSK_AUT (1<<4) /* auto timeout                  */
+#define ACQ_PARAM_MSK_DCM (1<<5) /* decimation                    */
+#define ACQ_PARAM_MSK_SCL (1<<6) /* scale                         */
+/* number of samples requires firmware V2 */
+#define ACQ_PARAM_MSK_NSM (1<<7) /* number of samples to acquire  */
 
 #define ACQ_LD_SCALE_ONE 30
 #define ACQ_SCALE_ONE (1L<<ACQ_LD_SCALE_ONE)
@@ -190,6 +193,7 @@ typedef struct AcqParams {
 	int           rising;
 	int16_t       level;
 	uint32_t      npts;
+	uint32_t      nsamples;
 	uint32_t      autoTimeoutMS;
 	uint8_t       cic0Decimation;
 	uint32_t      cic1Decimation;
@@ -218,6 +222,9 @@ acq_set_level(FWInfo *, int16_t level);
 
 int
 acq_set_npts(FWInfo *, uint32_t npts);
+
+int
+acq_set_nsamples(FWInfo *, uint32_t nsamples);
 
 int32_t
 acq_default_cic1Scale(uint32_t cic1Decimation);

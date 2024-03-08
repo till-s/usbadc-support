@@ -298,7 +298,8 @@ begin
    G_PARM : if ( CMDS_SUPPORTED_C( CMD_ACQ_PRM_IDX_C ) ) generate
       U_ACQ_PARMS : entity work.CommandAcqParm
          generic map (
-            CLOCK_FREQ_G => FIFO_FREQ_G
+            CLOCK_FREQ_G => FIFO_FREQ_G,
+            MEM_DEPTH_G  => MEM_DEPTH_G
          )
          port map (
             clk          => clk,

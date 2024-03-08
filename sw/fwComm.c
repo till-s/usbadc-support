@@ -7,8 +7,6 @@
 #include "cmdXfer.h"
 #include "fwComm.h"
 
-#define FWCOMM_API_VERSION_1  1
-
 #define CS_SHFT   0
 #define SCLK_SHFT 1
 #define MOSI_SHFT 2
@@ -47,15 +45,22 @@
 #define BITS_FW_CMD_ACQ_SHF_SRC  0
 #define BITS_FW_CMD_ACQ_SHF_EDG  3
 
-#define BITS_FW_CMD_ACQ_IDX_MSK  0
+#define BITS_FW_CMD_ACQ_IDX_MSK     0
+#define BITS_FW_CMD_ACQ_LEN_MSK     1
 #define BITS_FW_CMD_ACQ_IDX_SRC  (BITS_FW_CMD_ACQ_IDX_MSK + sizeof( uint8_t))
+#define BITS_FW_CMD_ACQ_LEN_SRC     1
 #define BITS_FW_CMD_ACQ_IDX_LVL  (BITS_FW_CMD_ACQ_IDX_SRC + sizeof( uint8_t))
-#define BITS_FW_CMD_ACQ_IDX_NPT  (BITS_FW_CMD_ACQ_IDX_LVL + sizeof( int16_t))
-#define BITS_FW_CMD_ACQ_IDX_AUT  (BITS_FW_CMD_ACQ_IDX_NPT + sizeof(uint16_t))
-#define BITS_FW_CMD_ACQ_IDX_DCM  (BITS_FW_CMD_ACQ_IDX_AUT + sizeof(uint16_t))
-#define BITS_FW_CMD_ACQ_IDX_SCL  (BITS_FW_CMD_ACQ_IDX_DCM + 3*sizeof(uint8_t))
+#define BITS_FW_CMD_ACQ_LEN_LVL     2
+#define BITS_FW_CMD_ACQ_LEN_NPT_V1  2
+#define BITS_FW_CMD_ACQ_LEN_NPT_V2  3
+#define BITS_FW_CMD_ACQ_LEN_NSM_V1  0
+#define BITS_FW_CMD_ACQ_LEN_NSM_V2  3
+#define BITS_FW_CMD_ACQ_LEN_AUT     2
+#define BITS_FW_CMD_ACQ_LEN_DCM     3
+#define BITS_FW_CMD_ACQ_LEN_SCL     4
 
-#define BITS_FW_CMD_ACQ_IDX_LEN  (BITS_FW_CMD_ACQ_IDX_SCL + 4*sizeof(uint8_t))
+#define BITS_FW_CMD_ACQ_TOT_LEN_V1 15
+#define BITS_FW_CMD_ACQ_TOT_LEN_V2 19
 
 #define BITS_FW_CMD_ACQ_DCM0_SHFT 20
 
@@ -72,6 +77,7 @@ struct FWInfo {
 	uint8_t         brdVers;
 	uint8_t         apiVers;
 	uint64_t        features;
+	AcqParams       acqParams;
 };
 
 static int
@@ -196,6 +202,7 @@ fw_open_fd(int fd)
 {
 FWInfo *rv;
 int64_t vers;
+int     st;
 
 	if ( ! (rv = malloc(sizeof(*rv))) ) {
 		perror("fw_open(): no memory");
@@ -224,6 +231,12 @@ int64_t vers;
 	/* avoid a timeout on old fw */
 	if ( rv->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( rv, BITS_FW_CMD_SPI, 0, 0, 0 ) ) {
 		rv->features |= FW_FEATURE_SPI_CONTROLLER;
+	}
+
+	/* abiVers etc. valid after this point */
+
+	if ( (st = acq_set_params( rv, NULL, &rv->acqParams )) ) {
+		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
 	}
 
 	return rv;
@@ -824,6 +837,33 @@ fw_get_version(FWInfo *fw)
 	return fw->gitHash;
 }
 
+static void
+putBuf(uint8_t **bufp, uint32_t val, int len)
+{
+int i;
+
+	for ( i = 0; i < len; i++ ) {
+		**bufp  = (val & 0xff);
+		val   >>= 8;
+		(*bufp)++;
+	}
+}
+
+static uint32_t
+getBuf(uint8_t **bufp, int len)
+{
+int      i;
+uint32_t rv = 0;
+
+	for ( i = len - 1; i >= 0; i-- ) {
+		rv = (rv << 8 ) | (*bufp)[ i ];
+	}
+	(*bufp) += len;
+
+	return rv;
+}
+
+
 /* Set new parameters and obtain previous parameters.
  * A new acquisition is started if any mask bit is set.
  *
@@ -835,16 +875,27 @@ acq_set_params(FWInfo *fw, AcqParams *set, AcqParams *get)
 {
 AcqParams p;
 uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
-uint8_t   buf[BITS_FW_CMD_ACQ_IDX_LEN];
-uint16_t  v16;
+uint8_t   buf[BITS_FW_CMD_ACQ_TOT_LEN_V2];
+uint8_t  *bufp;
 uint32_t  v24;
 uint32_t  v32;
+uint32_t  nsamples;
 int       got;
+int       len;
 
 	p.mask = ACQ_PARAM_MSK_GET;
 
 	if ( ! set ) {
 		set = &p;
+	}
+
+	/* parameter validation and updating of cache */
+	if ( ( set->mask & ACQ_PARAM_MSK_SRC ) ) {
+		fw->acqParams.src    = set->src;
+	}
+
+	if ( ( set->mask & ACQ_PARAM_MSK_EDG ) ) {
+		fw->acqParams.rising = set->rising;
 	}
 
 	if ( ( set->mask & ACQ_PARAM_MSK_DCM ) ) {
@@ -863,33 +914,64 @@ printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
 			set->scale     = acq_default_cic1Scale( set->cic1Decimation );
 printf("Default scale %d\n", set->scale);
 		}
+		fw->acqParams.cic0Decimation = set->cic0Decimation;
+		fw->acqParams.cic1Decimation = set->cic1Decimation;
+	}
+
+	nsamples = fw->acqParams.nsamples;
+
+	if ( ( set->mask & ACQ_PARAM_MSK_NSM ) ) {
+		if ( fw->apiVers < FW_API_VERSION_2 ) {
+			return FW_CMD_ERR_NOTSUP;
+		}
+		if ( set->nsamples > fw->memSize ) {
+			set->nsamples = fw->memSize;
+printf("Forcing nsamples to %ld\n", fw->memSize);
+		}
+		if ( set->nsamples < 1 ) {
+			set->nsamples = 1;
+printf("Forcing nsamples to 1\n");
+		}
+		nsamples = set->nsamples;
+        fw->acqParams.nsamples = set->nsamples;
 	}
 
 	buf[BITS_FW_CMD_ACQ_IDX_MSK +  0]  = set->mask;
 	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0]  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
 	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
 
-	buf[BITS_FW_CMD_ACQ_IDX_LVL +  0]  =  set->level       & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]  = (set->level >> 8) & 0xff;
-
-	if ( (set->mask & ACQ_PARAM_MSK_NPT) && (set->npts > fw->memSize - 1) ) {
-		v16 = fw->memSize - 1;
-		fprintf(stderr, "acq_set_params: WARNING npts > target memory size requested; clipping to %" PRId16 "\n", v16);
-	} else {
-		v16 = set->npts;
+	if ( ( set->mask & ACQ_PARAM_MSK_LVL ) ) {
+		fw->acqParams.level  = set->level;
 	}
 
-	buf[BITS_FW_CMD_ACQ_IDX_NPT +  0]  =  v16       & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_NPT +  1]  = (v16 >> 8) & 0xff;
+    bufp = buf + BITS_FW_CMD_ACQ_IDX_LVL;
 
-	if ( set->autoTimeoutMS > (1<<sizeof(uint16_t)*8) - 1 ) {
-		v16 = (1<<sizeof(uint16_t)*8) - 1;
-	} else {
-		v16 = set->autoTimeoutMS;
+	putBuf( &bufp, set->level, BITS_FW_CMD_ACQ_LEN_LVL );
+
+	if ( ( set->mask & ACQ_PARAM_MSK_NPT ) ) {
+		if ( (set->npts >= nsamples ) ) {
+			set->npts = nsamples - 1;
+			fprintf(stderr, "acq_set_params: WARNING npts >= nsamples requested; clipping to %" PRId32 "\n", set->npts);
+		}
+		fw->acqParams.npts = set->npts;
 	}
 
-	buf[BITS_FW_CMD_ACQ_IDX_AUT +  0]  =  v16       & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]  = (v16 >> 8) & 0xff;
+	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_NPT_V2 : BITS_FW_CMD_ACQ_LEN_NPT_V1;
+	putBuf( &bufp, set->npts, len );
+
+	/* this implicitly does nothing for V1 */
+	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_NSM_V2 : BITS_FW_CMD_ACQ_LEN_NSM_V1;
+	/* firmware uses nsamples - 1 */
+	putBuf( &bufp, nsamples - 1, len );
+
+	if ( ( set->mask & ACQ_PARAM_MSK_AUT ) ) {
+		if ( set->autoTimeoutMS > (1<<sizeof(uint16_t)*8) - 1 ) {
+			set->autoTimeoutMS = (1<<sizeof(uint16_t)*8) - 1;
+		}
+		fw->acqParams.autoTimeoutMS = set->autoTimeoutMS;
+	}
+
+	putBuf( &bufp, set->autoTimeoutMS, BITS_FW_CMD_ACQ_LEN_AUT );
 
 	if ( set->cic0Decimation > 16 ) {
 		v24 = 15;
@@ -910,9 +992,7 @@ printf("Default scale %d\n", set->scale);
 		}
 	}
 
-	buf[BITS_FW_CMD_ACQ_IDX_DCM +  0]  =  v24        & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]  = (v24 >>  8) & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]  = (v24 >> 16) & 0xff;
+	putBuf( &bufp, v24, BITS_FW_CMD_ACQ_LEN_DCM );
 
 	v32 = set->cic0Shift;
     if ( v32 > 15 ) {
@@ -928,11 +1008,13 @@ printf("Default scale %d\n", set->scale);
 
 	v32 |= ( (set->scale >> (32 - 18)) & ( (1<<18) - 1 ) );
 
-	buf[BITS_FW_CMD_ACQ_IDX_SCL +  0]  =  v32        & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_SCL +  1]  = (v32 >>  8) & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_SCL +  2]  = (v32 >> 16) & 0xff;
-	buf[BITS_FW_CMD_ACQ_IDX_SCL +  3]  = (v32 >> 24) & 0xff;
+	if ( ( set->mask & ACQ_PARAM_MSK_SCL ) ) {
+			fw->acqParams.cic0Shift = set->cic0Shift;
+			fw->acqParams.cic1Shift = set->cic1Shift;
+			fw->acqParams.scale     = set->scale;
+	}
 
+	putBuf( &bufp, v32, BITS_FW_CMD_ACQ_LEN_SCL );
 
 	got = fw_xfer( fw, cmd, buf, buf, sizeof(buf) );
 
@@ -941,8 +1023,10 @@ printf("Default scale %d\n", set->scale);
 		return -1;
 	}
 
-	if ( got < BITS_FW_CMD_ACQ_IDX_LEN ) {
-		fprintf(stderr, "Error: acq_set_params(); fifo transfer short?\n");
+	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_TOT_LEN_V2 : BITS_FW_CMD_ACQ_TOT_LEN_V1;
+
+	if ( got < len ) {
+		fprintf(stderr, "Error: acq_set_params(); fifo transfer short\n");
 		return -1;
 	}
 
@@ -960,25 +1044,29 @@ printf("Default scale %d\n", set->scale);
 
 	get->rising  = !! ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
 
-	get->level   = (int16_t)(    (((uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  1]) << 8)
-                               | (uint16_t)buf[BITS_FW_CMD_ACQ_IDX_LVL +  0] );
+	
+    bufp = buf + BITS_FW_CMD_ACQ_IDX_LVL;
 
-	get->npts           =   (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  1]) << 8)
-                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_NPT +  0] );
+	get->level          = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_LVL );
 
-	get->autoTimeoutMS  =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  1]) << 8)
-                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_AUT +  0] );
+	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_NPT_V2 : BITS_FW_CMD_ACQ_LEN_NPT_V1;
+	get->npts           = getBuf( &bufp, len );
 
-	v32                 =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  2]) << 16)
-	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  1]) <<  8)
-                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_DCM +  0] );
+	if ( fw->apiVers < FW_API_VERSION_2 ) {
+		get->nsamples   = fw->memSize;
+	} else {
+		/* firmware uses nsamples - 1 */
+		get->nsamples   = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_NSM_V2 ) + 1;
+	}
+
+	get->autoTimeoutMS  = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_AUT );
+
+	v32                 = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_DCM );
+
     get->cic0Decimation = ((v32 >> BITS_FW_CMD_ACQ_DCM0_SHFT) & 0xf   ) + 1; /* zero-based */
     get->cic1Decimation = ((v32 >>                         0) & 0xffff) + 1; /* zero-based */
 
-	v32                 =    (    (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  3]) << 24)
-	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  2]) << 16)
-	                           | (((uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  1]) <<  8)
-                               | (uint32_t)buf[BITS_FW_CMD_ACQ_IDX_SCL +  0] );
+	v32                 = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SCL );
 
 	get->cic0Shift      = ( v32 >> (20 + 7) ) & 0x1f;
 	get->cic1Shift      = ( v32 >> (20    ) ) & 0x7f;
@@ -1012,6 +1100,20 @@ AcqParams p;
 	p.npts          = npts;
 	return acq_set_params( fw, &p, 0 );
 }
+
+int
+acq_set_nsamples(FWInfo *fw, uint32_t nsamples)
+{
+AcqParams p;
+
+	if ( fw->apiVers < FW_API_VERSION_2 ) {
+		return FW_CMD_ERR_NOTSUP;
+	}
+	p.mask          = ACQ_PARAM_MSK_NSM;
+	p.nsamples      = nsamples;
+	return acq_set_params( fw, &p, 0 );
+}
+
 
 #define CIC1_SHF_STRIDE  8
 #define CIC1_STAGES      4

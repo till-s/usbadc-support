@@ -7,7 +7,7 @@ use work.BasicPkg.all;
 
 package CommandMuxPkg is
 
-   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"01";
+   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"02";
 
    type SimpleBusMstType is record
       vld : std_logic;
@@ -17,8 +17,8 @@ package CommandMuxPkg is
 
    constant SIMPLE_BUS_MST_INIT_C : SimpleBusMstType := (
       vld => '0',
-      lst => 'X',
-      dat => (others => 'X')
+      lst => '0',
+      dat => (others => '0')
    );
 
    type SimpleBusMstArray is array (natural range <>) of SimpleBusMstType;

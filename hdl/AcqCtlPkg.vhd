@@ -15,7 +15,8 @@ package AcqCtlPkg is
       src          : TriggerSrcType;
       rising       : boolean;
       lvl          : signed  (15 downto 0);
-      nprets       : unsigned(15 downto 0);
+      nprets       : unsigned(23 downto 0);
+      nsamples     : unsigned(23 downto 0);
       autoTimeMs   : unsigned(15 downto 0);
       decm0        : unsigned( 3 downto 0);
       decm1        : unsigned(19 downto 0);
@@ -33,6 +34,7 @@ package AcqCtlPkg is
       lvl         => (others => '0'),
       rising      => true,
       nprets      => (others => '0'),
+      nsamples    => (others => '0'),
       autoTimeMs  => to_unsigned( 200, 16 ),
       decm0       => (others => '0'),
       decm1       => (others => '0'),
@@ -63,6 +65,7 @@ package body AcqCtlPkg is
       v := v + 1; -- src + 'rising' flag
       v := v + ( x.lvl'length + 7) / 8;
       v := v + ( x.nprets'length + 7) / 8;
+      v := v + ( x.nsamples'length + 7) / 8;
       v := v + ( x.autoTimeMs'length + 7) / 8;
       v := v + ( x.decm0'length  + x.decm1'length  + 7) / 8;
       v := v + ( x.shift0'length + x.shift1'length + x.scale'length + 7) / 8;
@@ -84,6 +87,7 @@ package body AcqCtlPkg is
               & std_logic_vector( x.decm0      )
               & std_logic_vector( x.decm1      )
               & std_logic_vector( x.autoTimeMs )
+              & std_logic_vector( x.nsamples   )
               & std_logic_vector( x.nprets     )
               & std_logic_vector( x.lvl        )
               & x"0" & e & std_logic_vector( to_unsigned( TriggerSrcType'pos( x.src ), 3 ) ) );
@@ -94,7 +98,35 @@ package body AcqCtlPkg is
    end function toSlv;
 
    function toAcqCtlParmType(constant x : std_logic_vector) return AcqCtlParmType is
+
+      procedure lr(
+         constant f : in    std_logic_vector;
+         variable l : inout integer;
+         variable r : inout integer;
+         variable t : inout signed
+      )
+      is begin
+         r := l;
+         l := r + t'length;
+         t := signed( f(l - 1 downto r) );
+      end procedure lr;
+
+      procedure lr(
+         constant f : in    std_logic_vector;
+         variable l : inout integer;
+         variable r : inout integer;
+         variable t : inout unsigned
+      )
+      is begin
+         r := l;
+         l := r + t'length;
+         t := unsigned( f(l - 1 downto r) );
+      end procedure lr;
+
       variable v : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
+      variable r : natural;
+      variable l : natural;
+
    begin
       if    ( x(2 downto 0) = "000" ) then
          v.src := CHA;
@@ -103,15 +135,16 @@ package body AcqCtlPkg is
       else
          v.src := EXT;
       end if;
-      v.rising     := (x(3) = '1');
-      v.lvl        :=   signed( x( 23 downto   8) );
-      v.nprets     := unsigned( x( 39 downto  24) );
-      v.autoTimeMs := unsigned( x( 55 downto  40) );
-      v.decm1      := unsigned( x( 75 downto  56) );
-      v.decm0      := unsigned( x( 79 downto  76) );
-      v.scale      :=   signed( x( 97 downto  80) );
-      v.shift1     := unsigned( x(106 downto 100) );
-      v.shift0     := unsigned( x(111 downto 107) );
+      l            := 8;
+      lr( x, l, r, v.lvl        );
+      lr( x, l, r, v.nprets     );
+      lr( x, l, r, v.nsamples   );
+      lr( x, l, r, v.autoTimeMs );
+      lr( x, l, r, v.decm1      );
+      lr( x, l, r, v.decm0      );
+      lr( x, l, r, v.scale      );
+      lr( x, l, r, v.shift1     );
+      lr( x, l, r, v.shift0     );
       return v;
    end function toAcqCtlParmType;
 end package body AcqCtlPkg;
