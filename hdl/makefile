@@ -12,6 +12,9 @@ HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 # Default target
 all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb spishadowregtb samplebuffertb
 
+# BRAM or SDRAM
+SAMPLEBUFFER_TYPE=SDRAM
+
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
 OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
@@ -21,7 +24,9 @@ OBJS+=CommandSpi.o SpiBitShifter.o
 OBJS+=SpiFlashSim.o SpiChecker.o
 OBJS+=Flicker.o
 OBJS+=CommandReg.o
-OBJS+=SampleBufferBRAM.o
+OBJS+=SampleBuffer$(SAMPLEBUFFER_TYPE).o
+OBJS+=SDRAMPkg.o
+OBJS+=GenericFifoAsync.o
 
 # Elaboration target
 commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
@@ -45,7 +50,7 @@ pipelinedrshiftertb: PipelinedRShifterTb.o $(OBJS)
 spiregtb: SpiRegTb.o SpiReg.o
 	$(GHDL) -e $(GHDLFLAGS)  $@
 
-samplebuffertb: SampleBufferTb.o SampleBufferBRAM.o SynchronizerBit.o
+samplebuffertb: SampleBufferTb.o SampleBuffer$(SAMPLEBUFFER_TYPE).o SynchronizerBit.o
 	$(GHDL) -e $(GHDLFLAGS)  $@
 
 
@@ -90,13 +95,15 @@ CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o
+MaxAdc.o: MaxAdc.vhd SampleBuffer$(SAMPLEBUFFER_TYPE).o SDRAMPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
-CommandWrapper.o: CommandWrapper.vhd
+CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperSim.o: CommandWrapperSim.vhd $(OBJS) SimPty.o SimPtyIO.o
+	$(GHDL) -a $(GHDLFLAGS) $<
+SDRAMPkg.o: SDRAMPkg.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 
 %.o: %.vhd
@@ -132,9 +139,13 @@ ComandReg.o: CommandMuxPkg.o BasicPkg.o
 
 SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
-SampleBufferBRAM.o: SynchronizerBit.o
+SampleBufferBRAM.o: SynchronizerBit.o SDRAMPkg.o
 
-SampleBufferTb.o: SampleBufferBRAM.o
+SampleBufferSDRAM.o: SynchronizerBit.o SDRAMPkg.o GenericFifoAsync.o
+
+CommandReg.o: CommandMuxPkg.o
+
+SampleBufferTb.o: SampleBuffer$(SAMPLEBUFFER_TYPE).o
 
 MulShifter.o PipelinedRShifter.o SpiBitShifter.o CommandBitBang.o SpiShadowReg.o: BasicPkg.o
 

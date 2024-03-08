@@ -5,6 +5,7 @@ use ieee.numeric_std.all;
 use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.AcqCtlPkg.all;
+use work.SDRAMPkg.all;
 
 entity CommandWrapper is
    generic (
@@ -23,6 +24,7 @@ entity CommandWrapper is
       ADC_BITS_G               : natural := 8;
       RAM_BITS_G               : natural := 8;
       MEM_DEPTH_G              : natural := 1024;
+      SDRAM_ADDR_WIDTH_G       : natural := 0;
       COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
       ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
       DISABLE_DECIMATORS_G     : boolean := false;
@@ -51,6 +53,17 @@ entity CommandWrapper is
       subCmdBB     : out SubCommandBBType;
 
       adcStatus    : out std_logic_vector(7 downto 0) := (others => '0');
+      err          : out std_logic_vector(1 downto 0);
+
+      -- register interface
+      regRDat      : in  std_logic_vector(7 downto 0) := (others => '0');
+      regWDat      : out std_logic_vector(7 downto 0) := (others => '0');
+      regAddr      : out unsigned(7 downto 0)         := (others => '0');
+      regRdnw      : out std_logic := '1';
+      regVld       : out std_logic := '0';
+      regRdy       : in  std_logic := '1';
+      regErr       : in  std_logic := '1';
+
 
       spiSClk      : out std_logic;
       spiMOSI      : out std_logic;
@@ -65,14 +78,10 @@ entity CommandWrapper is
 
       extTrg       : in  std_logic := '0';
 
-      -- register interface
-      regRDat      : in  std_logic_vector(7 downto 0) := (others => '0');
-      regWDat      : out std_logic_vector(7 downto 0);
-      regAddr      : out unsigned(7 downto 0);
-      regRdnw      : out std_logic;
-      regVld       : out std_logic;
-      regRdy       : in  std_logic := '1';
-      regErr       : in  std_logic := '1'
+      -- SDRAM interface (if SDRAM sample buffer is used)
+      sdramClk    : in  std_logic := '0';
+      sdramReq    : out SDRAMReqType := SDRAM_REQ_INIT_C;
+      sdramRep    : in  SDRAMRepType := SDRAM_REP_INIT_C
    );
 end entity CommandWrapper;
 
@@ -91,7 +100,7 @@ architecture rtl of CommandWrapper is
       CMD_ADC_MEM_IDX_C       => true,
       CMD_ACQ_PRM_IDX_C       => true,
       CMD_SPI_IDX_C           => HAVE_SPI_CMD_G,
-      CMD_REG_IDX_C           => true
+      CMD_REG_IDX_C           => false
    );
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
@@ -268,13 +277,18 @@ begin
             MEM_DEPTH_G          => MEM_DEPTH_G,
             ADC_BITS_G           => ADC_BITS_G,
             RAM_BITS_G           => RAM_BITS_G,
-            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G
+            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G,
+            SDRAM_ADDR_WIDTH_G   => SDRAM_ADDR_WIDTH_G
          )
          port map (
             adcClk       => adcClk,
             adcRst       => adcRst,
             adcDataA     => adcDataA,
             adcDataB     => adcDataB,
+
+            sdramClk     => sdramClk,
+            sdramReq     => sdramReq,
+            sdramRep     => sdramRep,
 
             busClk       => clk,
             busRst       => rst,
@@ -289,6 +303,7 @@ begin
             busOb        => bussesOb(CMD_ADC_MEM_IDX_C),
             rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
 
+            err          => err,
             status       => adcStatus,
 
             extTrg       => extTrg

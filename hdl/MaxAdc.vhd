@@ -7,6 +7,7 @@ use     work.BasicPkg.all;
 use     work.CommandMuxPkg.all;
 use     work.ILAWrapperPkg.all;
 use     work.AcqCtlPkg.all;
+use     work.SDRAMPkg.all;
 
 entity MaxADC is
    generic (
@@ -15,7 +16,8 @@ entity MaxADC is
       ADC_BITS_G           : natural               := 8;
       ONE_MEM_G            : boolean               := false;
       DISABLE_DECIMATORS_G : boolean               := false;
-      RAM_BITS_G           : natural range 8 to 16 := 10
+      RAM_BITS_G           : natural range 8 to 16 := 10;
+      SDRAM_ADDR_WIDTH_G   : natural               := 0
    );
    port (
       adcClk      : in  std_logic;
@@ -24,6 +26,11 @@ entity MaxADC is
       -- bit 0 is the DOR (overrange) bit
       adcDataA    : in  std_logic_vector(ADC_BITS_G downto 0);
       adcDataB    : in  std_logic_vector(ADC_BITS_G downto 0);
+
+      -- SDRAM interface (if SDRAM sample buffer is used)
+      sdramClk    : in  std_logic := '0';
+      sdramReq    : out SDRAMReqType := SDRAM_REQ_INIT_C;
+      sdramRep    : in  SDRAMRepType := SDRAM_REP_INIT_C;
 
       busClk      : in  std_logic;
       busRst      : in  std_logic;
@@ -40,6 +47,7 @@ entity MaxADC is
       rdyOb       : in  std_logic;
 
       status      : out std_logic_vector(7 downto 0);
+      err         : out std_logic_vector(1 downto 0);
 
       extTrg      : in  std_logic := '0'
    );
@@ -141,6 +149,7 @@ architecture rtl of MaxADC is
       decmIs1 : boolean;
       tgl     : std_logic;
       tmrStrt : std_logic;
+      fifoFul : std_logic;
    end record WrRegType;
 
    constant WR_REG_INIT_C   : WrRegType := (
@@ -153,7 +162,8 @@ architecture rtl of MaxADC is
       parms   => ACQ_CTL_PARM_INIT_C,
       decmIs1 => true,
       tgl     => '0',
-      tmrStrt => '0'
+      tmrStrt => '0',
+      fifoFul => '0'
    );
 
    type     RdStateType     is (ECHO, MSIZE, HDR, READ);
@@ -164,6 +174,7 @@ architecture rtl of MaxADC is
       busOb   : SimpleBusMstType;
       tgl     : std_logic;
       flush   : std_logic;
+      fifoEmp : std_logic;
    end record RdRegType;
 
    function SIMPLE_BUS_MST_INIT_F return SimpleBusMstType is
@@ -180,7 +191,8 @@ architecture rtl of MaxADC is
       byteCnt => (others => '0'),
       busOb   => SIMPLE_BUS_MST_INIT_F,
       tgl     => '0',
-      flush   => '0'
+      flush   => '0',
+      fifoEmp => '0'
    );
 
    signal rRd       : RdRegType    := RD_REG_INIT_C;
@@ -217,7 +229,7 @@ architecture rtl of MaxADC is
    signal wdatB     : RamWord;
    signal wdorA     : std_logic;
    signal wdorB     : std_logic;
-   signal trg       : std_logic;
+   signal trg       : std_logic := '0';
    -- keep data in sync with registered trigger
    signal wdatAin   : RamWord;
    signal wdatBin   : RamWord;
@@ -227,6 +239,7 @@ architecture rtl of MaxADC is
 
    signal wrDon             : std_logic;
    signal wrEna             : std_logic;
+   signal wrFul             : std_logic;
    signal wrDat             : std_logic_vector(2*RamWord'length downto 0);
    signal rdDat             : std_logic_vector(2*RamWord'length downto 0);
    signal rdEmp             : std_logic;
@@ -247,7 +260,7 @@ architecture rtl of MaxADC is
    signal msTimerExpired    : boolean   := false;
    signal msTimerStartDly   : std_logic;
 
-   signal lparms            : AcqCtlParmType;
+   signal lparms            : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
 
    signal statusLoc         : std_logic_vector(status'range) := (others => '0');
 
@@ -319,17 +332,19 @@ begin
 
       -- compute byteCnt; covers all relevant states
       if ( rdyOb = '1' ) then
-         v.byteCnt := rRd.byteCnt - 1;
+         v.byteCnt   := rRd.byteCnt - 1;
+         v.busOb.vld := '0';
       end if;
 
       case ( rRd.state ) is
          when ECHO =>
-            v.byteCnt := (others => '0');
+            v.byteCnt   := (others => '0');
 
-            busOb     <= busIb;
-            busOb.lst <= '0';
+            busOb       <= busIb;
+            busOb.lst   <= '0';
+            rdyIb       <= rdyOb;
+            v.busOb.vld := '1';
 
-            rdyIb   <= rdyOb;
             if ( (rdyOb and busIb.vld) = '1' ) then
                if ( CMD_ACQ_MSIZE_C = subCommandAcqGet( busIb.dat ) ) then
                   v.state     := MSIZE;
@@ -352,6 +367,7 @@ begin
 
          when MSIZE =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
+               v.busOb.vld := '1';
                if ( rRd.byteCnt = 0 ) then
                   v.busOb.dat := std_logic_vector( MSIZE_INFO_C(15 downto 8) );
                elsif ( rRd.busOb.lst = '1' ) then
@@ -367,12 +383,22 @@ begin
                -- rRd.byteCnt is 0 here
                v.busOb.dat := (others => '0');
                v.state     := READ;
+               v.busOb.vld := '1';
             end if;
 
          when READ =>
+            if ( rdEmp = '1' ) then
+               -- if there is nothing to read when byteCnt must not advance
+               v.byteCnt := rRd.byteCnt;
+            end if;
             if ( rdyOb = '1' ) then -- busOb.vld  is '1' at this point
+               v.busOb.vld    := not rdEmp;
                if ( rRd.byteCnt = 0 ) then
                   -- consume
+                  -- note: we can never get here when rdEmp is '1'
+                  --         a) first time we enter rdEmp is '0' since ECHO state
+                  --         b) while 'rdEmp' busOb.vld is deasserted and byteCnt 
+                  --            does not make progress
                   rdEna       <= '1';
                   v.busOb.dat := hiByte( rdatB );
                   -- is the end reached 
@@ -391,7 +417,6 @@ begin
                   end if;
                end if;
             end if;
-
       end case;
 
       rinRd <= v;
@@ -487,7 +512,7 @@ begin
       end if;
    end process P_TICK;
 
-   P_WR_COMB : process ( rWr, lparms, trg, rdTgl, wdatA, wdorA, wdatB, wdorB, msTimerExpired ) is
+   P_WR_COMB : process ( rWr, lparms, trg, rdTgl, wrFul, wdatA, wdorA, wdatB, wdorB, msTimerExpired ) is
       variable v : WrRegType;
    begin
 
@@ -509,6 +534,9 @@ begin
             v.ovrB := to_unsigned( MEM_DEPTH_G - 1, v.ovrB'length );
          elsif ( rWr.ovrB /= 0 ) then
             v.ovrB := rWr.ovrB - 1;
+         end if;
+         if ( wrFul = '1' ) then
+            v.fifoFul := '1';
          end if;
       end if;
 
@@ -1126,6 +1154,7 @@ begin
 
    U_BRAMBUF    : entity work.SampleBuffer
       generic map (
+         A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
          MEM_DEPTH_G => MEM_DEPTH_G,
          D_WIDTH_G   => (2*RAM_BITS_G)
       )
@@ -1133,7 +1162,11 @@ begin
          wrClk       => memClk,
          wrEna       => wrEna,
          wrDat       => wrDat,
-         wrFul       => open,
+         wrFul       => wrFul,
+
+         sdramClk    => sdramClk,
+         sdramReq    => sdramReq,
+         sdramRep    => sdramRep,
 
          rdClk       => busClk,
          rdEna       => rdEna,
@@ -1141,5 +1174,8 @@ begin
          rdEmp       => rdEmp,
          rdFlush     => rRd.flush
       );
+
+   err(1) <= rWr.fifoFul;
+   err(0) <= rRd.fifoEmp;
 
 end architecture rtl;

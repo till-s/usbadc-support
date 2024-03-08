@@ -75,6 +75,8 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
+use     work.SDRAMPkg.all;
+
 entity SampleBufferTb is
 end entity SampleBufferTb;
 
@@ -82,13 +84,8 @@ architecture sim of SampleBufferTb is
    constant AW_C : natural := 4;
 
    signal   ramClk   : std_logic := '0';
-   signal   ramAddr  : std_logic_vector(AW_C - 1 downto 0);
-   signal   ramWDat  : std_logic_vector(15 downto 0);
-   signal   ramRDat  : std_logic_vector(15 downto 0);
-   signal   ramRdnw  : std_logic;
-   signal   ramAck   : std_logic;
-   signal   ramReq   : std_logic;
-   signal   ramVld   : std_logic;
+   signal   ramReq   : SDRAMReqType := SDRAM_REQ_INIT_C;
+   signal   ramRep   : SDRAMRepType := SDRAM_REP_INIT_C;
 
    signal   wrClk    : std_logic := '0';
    signal   wrEna    : std_logic := '0';
@@ -160,6 +157,23 @@ architecture sim of SampleBufferTb is
       rtick;
    end procedure rcv;
 
+
+   component RamEmul is
+      generic (
+         A_WIDTH_G : natural
+      );
+      port (
+         clk       : in  std_logic;
+         req       : in  std_logic;
+         rdnwr     : in  std_logic;
+         addr      : in  std_logic_vector(A_WIDTH_G - 1 downto 0);
+         ack       : out std_logic;
+         vld       : out std_logic;
+         wdat      : in  std_logic_vector(15 downto 0);
+         rdat      : out std_logic_vector(15 downto 0)
+      );
+   end component RamEmul;
+
 begin
 
    process is
@@ -223,19 +237,19 @@ begin
    end process P_RD;
 
 
-   U_RAM : entity work.RamEmul
+   U_RAM : component RamEmul
       generic map (
          A_WIDTH_G => AW_C
       )
       port map (
          clk       => ramClk,
-         req       => ramReq,
-         rdnwr     => ramRdnw,
-         addr      => ramAddr,
-         ack       => ramAck,
-         vld       => ramVld,
-         wdat      => ramWDat,
-         rdat      => ramRDat
+         req       => ramReq.req,
+         rdnwr     => ramReq.rdnwr,
+         addr      => ramReq.addr(AW_C - 1 downto 0),
+         ack       => ramRep.ack,
+         vld       => ramRep.vld,
+         wdat      => ramReq.wdat,
+         rdat      => ramRep.rdat
       );
 
    U_DUT : entity work.SampleBuffer
@@ -251,12 +265,7 @@ begin
          -- sdram interface
          sdramClk      => ramClk,
          sdramReq      => ramReq,
-         sdramAck      => ramAck,
-         sdramAddr     => ramAddr,
-         sdramRdnwr    => ramRdnw,
-         sdramWDat     => ramWDat,
-         sdramRDat     => ramRDat,
-         sdramRVld     => ramVld,
+         sdramRep      => ramRep,
 
          -- read side
          rdClk         => rdClk,

@@ -4,6 +4,7 @@ use ieee.numeric_std.all;
 use ieee.math_real.all;
 
 use work.CommandMuxPkg.all;
+use work.SDRAMPkg.all;
 
 entity CommandWrapperSim is
 end entity CommandWrapperSim;
@@ -13,8 +14,9 @@ architecture sim of CommandWrapperSim is
    constant ADC_W_C       : natural :=  8;
    constant RAM_BITS_C    : natural := 10;
 
-   constant MEM_DEPTH_C : natural := 1024;
-   constant ADC_FIRST_C : unsigned(ADC_W_C - 1 downto 0)  := (others => '1');
+   constant RAM_A_WIDTH_C : natural := 12; -- >= log2(MEM_DEPTH_C)
+   constant MEM_DEPTH_C   : natural := 2048;
+   constant ADC_FIRST_C   : unsigned(ADC_W_C - 1 downto 0)  := (others => '1');
 
    constant BB_SPI_CSb_C  : natural := 0;
    constant BB_SPI_SCK_C  : natural := 1;
@@ -24,6 +26,8 @@ architecture sim of CommandWrapperSim is
 
 
    signal clk     : std_logic := '0';
+   signal adcClk  : std_logic := '0';
+   signal ramClk  : std_logic := '0';
    signal rst     : std_logic_vector(4 downto 0) := (others => '1');
 
    signal datIbo  : std_logic_vector(7 downto 0);
@@ -56,6 +60,9 @@ architecture sim of CommandWrapperSim is
    signal memSClk : std_logic;
    signal memMosi : std_logic;
 
+   signal ramReq  : SDRAMReqType := SDRAM_REQ_INIT_C;
+   signal ramRep  : SDRAMRepType := SDRAM_REP_INIT_C;
+
    signal sclk    : std_logic;
    signal mosi    : std_logic;
    signal scsb    : std_logic;
@@ -79,18 +86,56 @@ architecture sim of CommandWrapperSim is
    signal regRdy   : std_logic := '0';
    signal regErr   : std_logic := '1';
 
+   component RamEmul is
+      generic (
+         A_WIDTH_G : natural;
+         REF_BRK_G : natural
+      );
+      port (
+         clk       : in  std_logic;
+         req       : in  std_logic;
+         rdnwr     : in  std_logic;
+         addr      : in  std_logic_vector(A_WIDTH_G - 1 downto 0);
+         ack       : out std_logic;
+         vld       : out std_logic;
+         wdat      : in  std_logic_vector(15 downto 0);
+         rdat      : out std_logic_vector(15 downto 0)
+      );
+   end component RamEmul;
+
 
 begin
 
    P_CLK : process is
    begin
       if ( run ) then
-         wait for 10 us;
+         wait for 8.33 ns;
          clk <= not clk;
       else
          wait;
       end if;
    end process P_CLK;
+
+   P_ADC_CLK : process is
+   begin
+      if ( run ) then
+         wait for 4 ns;
+         adcClk <= not adcClk;
+      else
+         wait;
+      end if;
+   end process P_ADC_CLK;
+
+   P_RAM_CLK : process is
+   begin
+      if ( run ) then
+         wait for 3 ns;
+         ramClk <= not ramClk;
+      else
+         wait;
+      end if;
+   end process P_RAM_CLK;
+
 
    U_DRV : entity work.SimPty
       port map (
@@ -105,14 +150,31 @@ begin
          rdyIb        => rdyObi
       );
 
+   U_RAM : component RamEmul
+      generic map (
+         A_WIDTH_G    => RAM_A_WIDTH_C,
+         REF_BRK_G    => 1000
+      )
+      port map (
+         clk          => ramClk,
+         req          => ramReq.req,
+         rdnwr        => ramReq.rdnwr,
+         addr         => ramReq.addr(RAM_A_WIDTH_C - 1 downto 0),
+         ack          => ramRep.ack,
+         vld          => ramRep.vld,
+         wdat         => ramReq.wdat,
+         rdat         => ramRep.rdat
+      );
+
    U_DUT : entity work.CommandWrapper
       generic map (
-         FIFO_FREQ_G    => 4.0E5,
-         SPI_FREQ_G     => 1.0E5,
-         ADC_BITS_G     => ADC_W_C,
-         RAM_BITS_G     => RAM_BITS_C,
-         MEM_DEPTH_G    => MEM_DEPTH_C,
-         HAVE_SPI_CMD_G => true
+         FIFO_FREQ_G         => 4.0E5,
+         SPI_FREQ_G          => 1.0E5,
+         ADC_BITS_G          => ADC_W_C,
+         RAM_BITS_G          => RAM_BITS_C,
+         MEM_DEPTH_G         => MEM_DEPTH_C,
+         SDRAM_ADDR_WIDTH_G  => RAM_A_WIDTH_C,
+         HAVE_SPI_CMD_G      => true
       )
       port map (
          clk          => clk,
@@ -138,7 +200,7 @@ begin
          regRdy       => regRdy,
          regErr       => regErr,
 
-         adcClk       => clk,
+         adcClk       => adcClk,
          adcRst       => rst(rst'left),
 
          adcDataA(ADC_W_C downto 1)  => std_logic_vector(adcA),
@@ -151,7 +213,11 @@ begin
          spiSClk      => spiSClk,
          spiMOSI      => spiMOSI,
          spiMISO      => spiMISO,
-         spiCSb       => spiCSb
+         spiCSb       => spiCSb,
+
+         sdramClk     => ramClk,
+         sdramReq     => ramReq,
+         sdramRep     => ramRep
       );
 
    P_RST  : process ( clk ) is
@@ -161,20 +227,21 @@ begin
       end if;
    end process P_RST;
 
-   P_FILL_A : process ( clk ) is
+   P_FILL_A : process ( adcClk ) is
    begin
-      if ( rising_edge( clk ) ) then
+      if ( rising_edge( adcClk ) ) then
          adcA <= to_unsigned(113, adcA'length); --adcA + 1;
       end if;
    end process P_FILL_A;
 
-   P_FILL_B : process ( clk ) is
+   P_FILL_B : process ( adcClk ) is
       variable i   : natural := 0;
       constant P_C : natural := 1000;
       constant A   : real    := 2.0**real(ADC_W_C - 1) - 1.0;
    begin
-      if ( falling_edge( clk ) ) then
+      if ( falling_edge( adcClk ) ) then
          adcB <= unsigned( to_signed( integer( round( A * sin(MATH_2_PI*real(i)/real(P_C)) ) ), adcB'length ) );
+         adcB <= adcB + 1;
          i := i + 1;
          dorB <= '0';
          if ( i = P_C ) then
