@@ -34,7 +34,8 @@ entity CommandWrapper is
       -- devices (indexed by BB subCmd)
       BB_DELAY_ARRAY_G         : NaturalArray := NATURAL_ARRAY_EMPTY_C;
       -- dedicated SPI interface for faster flash operations;
-      HAVE_SPI_CMD_G           : boolean := false
+      HAVE_SPI_CMD_G           : boolean := false;
+      HAVE_REG_CMD_G           : boolean := true
    );
    port (
       clk          : in  std_logic;
@@ -100,7 +101,7 @@ architecture rtl of CommandWrapper is
       CMD_ADC_MEM_IDX_C       => true,
       CMD_ACQ_PRM_IDX_C       => true,
       CMD_SPI_IDX_C           => HAVE_SPI_CMD_G,
-      CMD_REG_IDX_C           => false
+      CMD_REG_IDX_C           => HAVE_REG_CMD_G
    );
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
