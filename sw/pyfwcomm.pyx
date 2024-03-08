@@ -1025,7 +1025,7 @@ cdef class FwComm:
 
   def acqSetNPreTriggerSamples(self, int n):
     cdef int st
-    if ( n < 0 or n > self._bufsz - 1 ):
+    if ( n < 0 or n >= self.nsamples ):
       raise ValueError("acqSetNPreTriggerSamples(): # pre-trigger samples out of range")
     if ( self._parmCache.npts == n ):
       return
@@ -1034,6 +1034,24 @@ cdef class FwComm:
     if ( st < 0 ):
       raise IOError("acqSetNPreTriggerSamples()")
     self._parmCache.npts = n
+
+  def acqSetNSamples(self, int n):
+    cdef int st
+    if ( n < 1 or n > self._bufsz ):
+      raise ValueError("acqSetNSamples(): # samples out of range")
+    if ( self._parmCache.nsamples == n ):
+      return
+    with self._mgr as fw, nogil:
+      st = acq_set_nsamples( fw, n )
+    if ( st < 0 ):
+      raise IOError("acqSetNSamples()")
+    # fw clips pts; update cache
+    if ( self._parmCache.npts >= n ):
+      self._parmCache.npts = n - 1;
+    self._parmCache.nsamples = n
+
+  def acqGetNSamples(self):
+    return self._parmCache.nsamples
 
   def acqGetDecimation(self):
     return self._parmCache.cic0Decimation, self._parmCache.cic1Decimation

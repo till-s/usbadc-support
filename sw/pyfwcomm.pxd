@@ -23,6 +23,7 @@ cdef extern from "fwComm.h":
   int            buf_read_flt(FWInfo *, uint16_t *hdr, float *buf, size_t len) nogil
   int            acq_set_level(FWInfo *, int16_t level) nogil
   int            acq_set_npts(FWInfo *, int32_t npts) nogil
+  int            acq_set_nsamples(FWInfo *, int32_t nsamples) nogil
   int            acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation) nogil
   int            acq_set_source(FWInfo *, TriggerSource src, int rising) nogil
   int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout) nogil
@@ -37,6 +38,7 @@ cdef extern from "fwComm.h":
     int           rising
     int16_t       level
     uint32_t      npts
+    uint32_t      nsamples
     uint32_t      autoTimeoutMS
     uint8_t       cic0Decimation
     uint32_t      cic1Decimation
