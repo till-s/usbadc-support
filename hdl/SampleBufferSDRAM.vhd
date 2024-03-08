@@ -2,10 +2,13 @@ library ieee;
 use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
+use     work.SDRAMPkg.all;
+
 entity SampleBuffer is
    generic (
       -- SDRAM address width
       A_WIDTH_G     : natural := 12;
+      MEM_DEPTH_G   : natural := 0; -- unused; compatibility with BRAM version
       D_WIDTH_G     : natural := 20 -- currently only 20 bits supported
    );
    port (
@@ -18,27 +21,30 @@ entity SampleBuffer is
 
       -- sdram interface
       sdramClk      : in  std_logic;
-      sdramReq      : out std_logic;
-      sdramAck      : in  std_logic;
-      sdramAddr     : out std_logic_vector(A_WIDTH_G - 1  downto 0);
-      sdramRdnwr    : out std_logic;
-      sdramWDat     : out std_logic_vector(15 downto 0);
-      sdramRDat     : in  std_logic_vector(15 downto 0);
-      sdramRVld     : in  std_logic;
+      sdramReq      : out SDRAMReqType;
+      sdramRep      : in  SDRAMRepType;
 
       -- read side
       rdClk         : in  std_logic;
       rdEna         : in  std_logic;
       rdDat         : out std_logic_vector(D_WIDTH_G     downto 0);
-      rdEmp         : out std_logic
+      rdEmp         : out std_logic;
+      rdFlush       : in  std_logic
    );
 end entity SampleBuffer;
 
 architecture SDRAM of SampleBuffer is
 
    -- TODO fix fifo depths
+
+   -- The write fifo must be deep enough to buffer incoming data during SDRAM page switches
+   -- and refresh cycles (the worst case has these back-to-back).
    constant  LD_WR_FIFO_DEPTH_C : natural := 5;
-   constant  LD_RD_FIFO_DEPTH_C : natural := 5;
+   -- The read fifo must be deep enough to buffer SDRAM read pipeline (from request -> read data valid)
+   -- plus the 1 cycle to store the first of the readback values (which is when the fifo is not empty
+   -- anymore and issuing SDRAM read cycles stops). All values still in flight must be buffered!
+   -- A depth of 8 is probably OK.
+   constant  LD_RD_FIFO_DEPTH_C : natural := 4;
 
    attribute ASYNC_REG   : string;
 
@@ -64,7 +70,6 @@ architecture SDRAM of SampleBuffer is
       rdReg       : std_logic_vector(15 downto 0);
       rdPipeCnt   : signed(4 downto 0);
       preload     : boolean;
-      rdDon       : boolean;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
@@ -80,8 +85,7 @@ architecture SDRAM of SampleBuffer is
       wrReg       => (others => '0'),
       rdReg       => (others => '0'),
       rdPipeCnt   => (others => '1'),
-      preload     => false,
-      rdDon       => false
+      preload     => false
    );
 
    -- function relies on 20-bit data width and 16-bit RAM width
@@ -116,6 +120,7 @@ architecture SDRAM of SampleBuffer is
    signal rdFifoWEn      :  std_logic;
 
    signal rdEnable       :  std_logic;
+   signal sdramFlush     :  std_logic;
 
 begin
 
@@ -137,10 +142,16 @@ begin
          rdEmp      => wrFifoEmpty
       );
 
+   -- use output register as a buffer;
+   -- the 'wrEmp' indicator then works
+   -- as an 'almost empty' flag with 1
+   -- value being (potentially) held 
+   -- in the output register.
    U_RD_FIFO : entity work.GenericFifoAsync
       generic map (
          LD_DEPTH_G => LD_RD_FIFO_DEPTH_C,
-         D_WIDTH_G  => rdFifoIDat'length
+         D_WIDTH_G  => rdFifoIDat'length,
+         OUT_REG_G  => true
       )
       port map (
          wrClk      => sdramClk,
@@ -148,8 +159,10 @@ begin
          wrDat      => rdFifoIDat,
          wrFul      => open, -- must never fill;
          wrEmp      => rdEnable,
+         wrRstOut   => sdramFlush,
 
          rdClk      => rdClk,
+         rdRst      => rdFlush,
          rdEna      => rdEna,
          rdDat      => rdDat,
          rdEmp      => rdEmp
@@ -157,21 +170,21 @@ begin
 
    P_COMB : process (
       r,
-      sdramAck, sdramRDat, sdramRVld,
+      sdramRep,
       wrFifoEmpty, wrFifoODat,
-      rdEnable
+      rdEnable,
+      sdramFlush
    ) is
       variable v     : RegType;
       variable rdDon : boolean;
    begin
       v          := r;
 
-      sdramAddr  <= std_logic_vector( r.ramPtr );
       wrFifoREn  <= '0';
       rdFifoWEn  <= '0';
-      rdFifoIDat <= '0' & sdramRDat & r.rdReg(3 downto 0);
+      rdFifoIDat <= '0' & sdramRep.rdat & r.rdReg(3 downto 0);
 
-      if ( ( r.sdramReq and sdramAck ) = '1' ) then
+      if ( ( r.sdramReq and sdramRep.ack ) = '1' ) then
          v.sdramReq := '0';
          v.ramPtr   := r.ramPtr + 1;
          v.wrCnt    := r.wrCnt  - 1;
@@ -258,7 +271,7 @@ begin
             v.wrCnt            := '0' & signed( RamPtrType(r.wrCnt(RamPtrType'range)) - r.ramPtr );
             v.state            := READ;
             v.preload          := true;
-            v.rdDon            := false;
+            v.rdPipeCnt        := (others => '1');
 
          when READ  =>
             v.nxtState         := READ;
@@ -271,16 +284,16 @@ begin
             
 
             -- next word out of ram
-            if ( sdramRVld = '1' ) then
+            if ( sdramRep.vld = '1' ) then
 
                if    ( r.rdOff = 0 ) then
-                  v.rdReg(15 downto 0)  := sdramRDat;
+                  v.rdReg(15 downto 0)  := sdramRep.rdat;
                elsif ( r.rdOff = 1 ) then
-                  v.rdReg(11 downto 0)  := sdramRDat(15 downto  4);
+                  v.rdReg(11 downto 0)  := sdramRep.rdat(15 downto  4);
                elsif ( r.rdOff = 2 ) then
-                  v.rdReg( 7 downto 0)  := sdramRDat(15 downto  8);
+                  v.rdReg( 7 downto 0)  := sdramRep.rdat(15 downto  8);
                elsif ( r.rdOff = 3 ) then
-                  v.rdReg( 3 downto 0)  := sdramRDat(15 downto 12);
+                  v.rdReg( 3 downto 0)  := sdramRep.rdat(15 downto 12);
                end if;
 
                v.preload   := false;
@@ -288,15 +301,15 @@ begin
                v.rdPipeCnt := v.rdPipeCnt - 1; -- use v on RHS; might have been incremented above
 
                if ( not r.preload ) then
-                  rdFifoWen <= '1';
+                  rdFifoWEn <= '1';
                   if    ( r.rdOff = 1 ) then
-                     rdFifoIDat            <= '0' & sdramRDat( 3 downto  0) & r.rdReg(15 downto  0);
+                     rdFifoIDat            <= '0' & sdramRep.rdat( 3 downto  0) & r.rdReg(15 downto  0);
                   elsif ( r.rdOff = 2 ) then
-                     rdFifoIDat            <= '0' & sdramRDat( 7 downto  0) & r.rdReg(11 downto 0);
+                     rdFifoIDat            <= '0' & sdramRep.rdat( 7 downto  0) & r.rdReg(11 downto 0);
                   elsif ( r.rdOff = 3 ) then
-                     rdFifoIDat            <= '0' & sdramRDat(11 downto  0) & r.rdReg( 7 downto 0);
+                     rdFifoIDat            <= '0' & sdramRep.rdat(11 downto  0) & r.rdReg( 7 downto 0);
                   elsif ( r.rdOff = 0 ) then
-                     rdFifoIDat            <= '0' & sdramRDat(15 downto  0) & r.rdReg( 3 downto 0);
+                     rdFifoIDat            <= '0' & sdramRep.rdat(15 downto  0) & r.rdReg( 3 downto 0);
                      -- preload the next word (nothing to output then)
                      v.preload             := true;
                      v.rdOff               := r.rdOff;
@@ -317,8 +330,13 @@ begin
                end if;
             end if;
 
+            if ( sdramFlush = '1' ) then
+               v.state    := WRITE;
+               v.nxtState := WRITE;
+            end if;
+
          when LST => -- last bits of incomplete word are still in 'wrReg'
-            rdFifoWen <= '1';
+            rdFifoWEn <= '1';
             if    ( r.rdOff = 1 ) then
                rdFifoIDat            <= '1' & r.wrReg( 3 downto  0) & r.rdReg(15 downto  0);
             elsif ( r.rdOff = 2 ) then
@@ -342,8 +360,9 @@ begin
       end if;
    end process P_SEQ;
 
-   sdramReq   <= r.sdramReq;
-   sdramRdnwr <= r.sdramRdnwr;
-   sdramWDat  <= r.sdramWDat;
+   sdramReq.req   <= r.sdramReq;
+   sdramReq.rdnwr <= r.sdramRdnwr;
+   sdramReq.wdat  <= r.sdramWDat;
+   sdramReq.addr  <= std_logic_vector( resize( r.ramPtr, sdramReq.addr'length ) );
  
 end architecture SDRAM;
