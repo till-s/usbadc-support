@@ -170,7 +170,7 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 
 #define ACQ_PARAM_MSK_SRC (1<<0) /* trigger source                */
 #define ACQ_PARAM_MSK_EDG (1<<1) /* trigger edge                  */
-#define ACQ_PARAM_MSK_LVL (1<<2) /* trigger level                 */
+#define ACQ_PARAM_MSK_LVL (1<<2) /* trigger level and hysteresis  */
 #define ACQ_PARAM_MSK_NPT (1<<3) /* number of pre-trigger samples */
 #define ACQ_PARAM_MSK_AUT (1<<4) /* auto timeout                  */
 #define ACQ_PARAM_MSK_DCM (1<<5) /* decimation                    */
@@ -183,15 +183,16 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 
 
 #define ACQ_PARAM_MSK_GET (0)
-#define ACQ_PARAM_MSK_ALL (0x3f)
+#define ACQ_PARAM_MSK_ALL (0xff)
 
 #define ACQ_PARAM_TIMEOUT_INF (0xffff)
 
 typedef struct AcqParams {
-    unsigned      mask;
+    uint32_t      mask;
 	TriggerSource src;
 	int           rising;
 	int16_t       level;
+    uint16_t      hysteresis;
 	uint32_t      npts;
 	uint32_t      nsamples;
 	uint32_t      autoTimeoutMS;
@@ -218,7 +219,7 @@ int
 acq_manual(FWInfo *);
 
 int
-acq_set_level(FWInfo *, int16_t level);
+acq_set_level(FWInfo *, int16_t level, uint16_t hysteresis);
 
 int
 acq_set_npts(FWInfo *, uint32_t npts);

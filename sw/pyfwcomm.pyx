@@ -1015,7 +1015,7 @@ cdef class FwComm:
     if ( self._parmCache.level == l ):
       return
     with self._mgr as fw, nogil:
-      st = acq_set_level( fw, l )
+      st = acq_set_level( fw, l, 1000 )
     if ( st < 0 ):
       raise IOError("acqSetTriggerLevelPercent()")
     self._parmCache.level = l

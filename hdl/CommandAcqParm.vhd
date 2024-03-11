@@ -29,7 +29,7 @@ end entity CommandAcqParm;
 
 architecture rtl of CommandAcqParm is
 
-   subtype  MaskType    is std_logic_vector(7 downto 0);
+   subtype  MaskType    is std_logic_vector(31 downto 0);
 
    constant M_GET_C     : Masktype := MaskType( to_unsigned(  0, MaskType'length ) );
    constant M_SET_SRC_BIT_C : natural  := 0;
@@ -42,8 +42,6 @@ architecture rtl of CommandAcqParm is
    constant M_SET_NSM_BIT_C : natural  := 7;
 
    constant CMD_LEN_C       : natural := acqCtlParmSizeBytes;
-
-   type MaskBitArray is array ( natural range 0 to CMD_LEN_C - 1 ) of natural range 0 to MaskType'length - 1;
 
    type StateType is (ECHO, MASK, PROC, VALID, TRIG);
 
@@ -85,27 +83,30 @@ begin
       variable v       : RegType;
       variable rb      : std_logic_vector(FOO_C'range);
    begin
-      v := r;
+      v       := r;
 
       rb      := toSlv( r.p );
 
       mOb     <= mIb;
-
       rIb     <= rOb;
 
       case ( r.state ) is
          when ECHO =>
             if ( (rOb and mIb.vld) = '1' ) then
                v.subCmd := subCommandAcqParmGet( mIb.dat );
-               v.state := MASK;
-               v.count := 0;
+               v.state  := MASK;
+               v.count  := 0;
             end if;
 
          when MASK  =>
             if ( (rOb and mIb.vld) = '1' ) then
-               v.mask  := mIb.dat;
-               mOb.dat <= r.mask;
-               v.state := PROC;
+               v.mask(7 + 8*r.count downto 8*r.count) := mIb.dat;
+               mOb.dat                                <= r.mask(7 + 8*r.count downto 8*r.count);
+               v.count                                := r.count + 1;
+               if ( r.count = r.mask'length/8 - 1 ) then
+                  v.state := PROC;
+                  v.count := 0;
+               end if;
                if ( mIb.lst = '1' ) then
                   v.state := ECHO;
                end if;
@@ -127,6 +128,7 @@ begin
                end if;
                if ( r.mask( M_SET_LVL_BIT_C ) = '0' ) then
                   v.p.lvl        := r.p.lvl;
+                  v.p.hyst       := r.p.hyst;
                end if;
                if ( r.mask( M_SET_NPT_BIT_C ) = '0' ) then
                   v.p.nprets     := r.p.nprets;

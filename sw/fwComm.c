@@ -46,10 +46,9 @@
 #define BITS_FW_CMD_ACQ_SHF_EDG  3
 
 #define BITS_FW_CMD_ACQ_IDX_MSK     0
-#define BITS_FW_CMD_ACQ_LEN_MSK     1
-#define BITS_FW_CMD_ACQ_IDX_SRC  (BITS_FW_CMD_ACQ_IDX_MSK + sizeof( uint8_t))
+#define BITS_FW_CMD_ACQ_LEN_MSK_V1  sizeof(uint8_t)
+#define BITS_FW_CMD_ACQ_LEN_MSK_V2  sizeof(uint32_t)
 #define BITS_FW_CMD_ACQ_LEN_SRC     1
-#define BITS_FW_CMD_ACQ_IDX_LVL  (BITS_FW_CMD_ACQ_IDX_SRC + sizeof( uint8_t))
 #define BITS_FW_CMD_ACQ_LEN_LVL     2
 #define BITS_FW_CMD_ACQ_LEN_NPT_V1  2
 #define BITS_FW_CMD_ACQ_LEN_NPT_V2  3
@@ -58,9 +57,10 @@
 #define BITS_FW_CMD_ACQ_LEN_AUT     2
 #define BITS_FW_CMD_ACQ_LEN_DCM     3
 #define BITS_FW_CMD_ACQ_LEN_SCL     4
+#define BITS_FW_CMD_ACQ_LEN_HYS     2
 
 #define BITS_FW_CMD_ACQ_TOT_LEN_V1 15
-#define BITS_FW_CMD_ACQ_TOT_LEN_V2 19
+#define BITS_FW_CMD_ACQ_TOT_LEN_V2 24
 
 #define BITS_FW_CMD_ACQ_DCM0_SHFT 20
 
@@ -877,6 +877,7 @@ AcqParams p;
 uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
 uint8_t   buf[BITS_FW_CMD_ACQ_TOT_LEN_V2];
 uint8_t  *bufp;
+uint8_t   v8;
 uint32_t  v24;
 uint32_t  v32;
 uint32_t  nsamples;
@@ -936,15 +937,18 @@ printf("Forcing nsamples to 1\n");
         fw->acqParams.nsamples = set->nsamples;
 	}
 
-	buf[BITS_FW_CMD_ACQ_IDX_MSK +  0]  = set->mask;
-	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0]  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
-	buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
+    bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK;
+	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
+    putBuf( &bufp, set->mask, len );
+
+	v8  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
+	v8 |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
+    putBuf( &bufp, set->mask, BITS_FW_CMD_ACQ_LEN_SRC );
 
 	if ( ( set->mask & ACQ_PARAM_MSK_LVL ) ) {
-		fw->acqParams.level  = set->level;
+		fw->acqParams.level      = set->level;
+        fw->acqParams.hysteresis = set->hysteresis;
 	}
-
-    bufp = buf + BITS_FW_CMD_ACQ_IDX_LVL;
 
 	putBuf( &bufp, set->level, BITS_FW_CMD_ACQ_LEN_LVL );
 
@@ -1016,6 +1020,10 @@ printf("Forcing nsamples to 1\n");
 
 	putBuf( &bufp, v32, BITS_FW_CMD_ACQ_LEN_SCL );
 
+	if ( fw->apiVers >= FW_API_VERSION_2 ) {
+		putBuf( &bufp, set->hysteresis, BITS_FW_CMD_ACQ_LEN_HYS );
+	}
+
 	got = fw_xfer( fw, cmd, buf, buf, sizeof(buf) );
 
 	if ( got < 0 ) {
@@ -1036,16 +1044,17 @@ printf("Forcing nsamples to 1\n");
 
 	get->mask = ACQ_PARAM_MSK_ALL;
 
-	switch ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_SRC) & BITS_FW_CMD_ACQ_MSK_SRC) {
+	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
+    bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK + len;
+    v8   = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SRC );
+
+	switch ( (v8 >> BITS_FW_CMD_ACQ_SHF_SRC) & BITS_FW_CMD_ACQ_MSK_SRC) {
 		case 0:  get->src = CHA; break;
 		case 1:  get->src = CHB; break;
 		default: get->src = EXT; break;
 	}
 
-	get->rising  = !! ( (buf[BITS_FW_CMD_ACQ_IDX_SRC +  0] >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
-
-	
-    bufp = buf + BITS_FW_CMD_ACQ_IDX_LVL;
+	get->rising  = !! ( (v8 >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
 
 	get->level          = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_LVL );
 
@@ -1071,6 +1080,12 @@ printf("Forcing nsamples to 1\n");
 	get->cic0Shift      = ( v32 >> (20 + 7) ) & 0x1f;
 	get->cic1Shift      = ( v32 >> (20    ) ) & 0x7f;
 	get->scale          = ( v32 & ((1<<20) - 1)) << (32 - 18);
+
+	if ( fw->apiVers >= FW_API_VERSION_2 ) {
+		get->hysteresis     = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_HYS );
+	} else {
+		get->hysteresis     = 0;
+	}
 	return 0;
 }
 
@@ -1084,11 +1099,12 @@ acq_manual(FWInfo *fw)
 }
 
 int
-acq_set_level(FWInfo *fw, int16_t level)
+acq_set_level(FWInfo *fw, int16_t level, uint16_t hyst)
 {
 AcqParams p;
 	p.mask          = ACQ_PARAM_MSK_LVL;
 	p.level         = level;
+    p.hysteresis    = hyst;
 	return acq_set_params( fw, &p, 0 );
 }
 

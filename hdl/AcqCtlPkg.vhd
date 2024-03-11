@@ -23,6 +23,7 @@ package AcqCtlPkg is
       shift0       : unsigned( 4 downto 0);
       shift1       : unsigned( 6 downto 0);
       scale        : signed  (17 downto 0);
+      hyst         : unsigned(15 downto 0);
    end record AcqCtlParmType;
 
    function toSlv(constant x : in AcqCtlParmType) return std_logic_vector;
@@ -31,8 +32,8 @@ package AcqCtlPkg is
 
    constant ACQ_CTL_PARM_INIT_C : AcqCtlParmType := (
       src         => CHA,
-      lvl         => (others => '0'),
       rising      => true,
+      lvl         => (others => '0'),
       nprets      => (others => '0'),
       nsamples    => (others => '0'),
       autoTimeMs  => to_unsigned( 200, 16 ),
@@ -40,7 +41,8 @@ package AcqCtlPkg is
       decm1       => (others => '0'),
       shift0      => (others => '0'),
       shift1      => (others => '0'),
-      scale       => (16 => '1', others => '0')
+      scale       => (16 => '1', others => '0'),
+      hyst        => (others => '1')
    );
 
    function acqCtlParmSizeBytes return natural;
@@ -69,6 +71,7 @@ package body AcqCtlPkg is
       v := v + ( x.autoTimeMs'length + 7) / 8;
       v := v + ( x.decm0'length  + x.decm1'length  + 7) / 8;
       v := v + ( x.shift0'length + x.shift1'length + x.scale'length + 7) / 8;
+      v := v + ( x.hyst'length + 7) / 8;
       return v;
    end function acqCtlParmSizeBytes;
 
@@ -81,7 +84,8 @@ package body AcqCtlPkg is
       constant e : std_logic        := ite( x.rising );
       constant v : std_logic_vector :=
              (
-                std_logic_vector( x.shift0     )   --  5
+                std_logic_vector( x.hyst       )
+              & std_logic_vector( x.shift0     )   --  5
               & std_logic_vector( x.shift1     )   --  7
               & "00" & std_logic_vector( x.scale ) -- 20
               & std_logic_vector( x.decm0      )
@@ -143,8 +147,10 @@ package body AcqCtlPkg is
       lr( x, l, r, v.decm1      );
       lr( x, l, r, v.decm0      );
       lr( x, l, r, v.scale      );
+      l := l + 2; -- padding bits
       lr( x, l, r, v.shift1     );
       lr( x, l, r, v.shift0     );
+      lr( x, l, r, v.hyst       );
       return v;
    end function toAcqCtlParmType;
 end package body AcqCtlPkg;

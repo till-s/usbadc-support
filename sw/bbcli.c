@@ -39,6 +39,8 @@ static void usage(const char *nm)
 	printf("   -B                 : dump ADC buffer (raw).\n");
     printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor').\n");
     printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", ACQ_LD_SCALE_ONE);
+    printf("                              and may be appended with ':hysteresis'\n");
+    printf("                              (hysteresis always positive)\n");
 	printf("   -p                 : dump acquisition parameters.\n");
 	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : access PGA registers.\n");
@@ -143,6 +145,7 @@ char *str = strdup( ops );
 char *ctx;
 char *tok;
 char *eq;
+char *col;
 char *val;
 int   rval = -1;
 long  v[4];
@@ -199,7 +202,12 @@ long  v[4];
 				break;
 			case 'L':
 				if ( scanl( tok, eq, &v[0] ) ) goto bail;
-				pp->level = (int16_t) v[0];
+				pp->level      = (int16_t) v[0];
+				v[0] = 0;
+				if ( (col = strchr( eq, ':')) ) {
+					if ( scanl( tok, col, &v[0] ) ) goto bail;
+				}
+                pp->hysteresis = (int16_t)v[0];
 				pp->mask |= ACQ_PARAM_MSK_LVL;
 				break;
 			case 'N':
@@ -439,6 +447,7 @@ const char        *regOp     = 0;
 			CHA == p.src ? "Channel A" : (CHB == p.src ? "Channel B" : "External"));
 		printf("Edge               : %s\n", p.rising ? "rising" : "falling");
 		printf("Trigger Level      : %" PRId16 "\n", p.level );
+		printf("Trigger Hysteresis : %" PRId16 "\n", p.hysteresis );
 		printf(" NOTE: Trigger level is int16_t, ADC numbers are normalized to\n");
 		printf("       this range!\n");
 		printf("N Samples          : %" PRIu32 "\n", p.nsamples  );

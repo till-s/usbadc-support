@@ -152,6 +152,7 @@ architecture rtl of MaxADC is
       parms   : AcqCtlParmType;
       decmIs1 : boolean;
       tgl     : std_logic;
+      armLvl  : signed(RamWord'range);
       tmrStrt : std_logic;
       fifoFul : std_logic;
    end record WrRegType;
@@ -166,6 +167,7 @@ architecture rtl of MaxADC is
       parms   => ACQ_CTL_PARM_INIT_C,
       decmIs1 => true,
       tgl     => '0',
+      armLvl  => (others => '0'),
       tmrStrt => '0',
       fifoFul => '0'
    );
@@ -243,12 +245,14 @@ architecture rtl of MaxADC is
    signal wdorA     : std_logic;
    signal wdorB     : std_logic;
    signal trg       : std_logic := '0';
+   signal armed     : boolean   := false;
    -- keep data in sync with registered trigger
    signal wdatAin   : RamWord;
    signal wdatBin   : RamWord;
    signal wdorAin   : std_logic;
    signal wdorBin   : std_logic;
    signal trgin     : std_logic;
+   signal armin     : boolean;
 
    signal wrDon             : std_logic;
    signal wrEna             : std_logic;
@@ -460,19 +464,29 @@ begin
 
    -- compare the un-delayed wdatAin/wdatBin to produce the registered
    -- trigger 'trg'...
-   P_TRG : process ( rWr, lparms, wdatAin, wdatBin, extTrgSynDelayed ) is
+   P_TRG : process ( rWr, lparms, wdatAin, wdatBin, extTrgSynDelayed, armed ) is
       variable v      : std_logic;
       variable l      : signed(wdatAin'range);
+      variable a      : signed(wdatAin'range);
+      variable x      : signed(wdatAin'range);
    begin
+      armin <= armed;
       l := lparms.lvl(lparms.lvl'left downto lparms.lvl'left - wdatAin'length + 1);
+
+      if ( lparms.src = CHB ) then
+         x := signed(wdatBin);
+      else
+         x := signed(wdatAin);
+      end if;
+
+      if ( ( x < rWr.armLvl ) = lparms.rising ) then
+         armin <= true;
+      end if;
+
       v := '0';
       case ( lparms.src ) is
-         when CHA =>
-            if ( signed(wdatAin) >= l ) then
-               v := '1';
-            end if;
-         when CHB =>
-            if ( signed(wdatBin) >= l ) then
+         when CHA | CHB =>
+            if ( x >= l and armed ) then
                v := '1';
             end if;
          when EXT =>
@@ -480,6 +494,7 @@ begin
          when others => -- manual
             -- handle separately
       end case;
+
       if ( not lparms.rising ) then
          v :=  not v;
       end if;
@@ -491,8 +506,12 @@ begin
    P_TRG_SEQ : process ( filClk ) is
    begin
       if ( rising_edge( filClk ) ) then
-         if ( wrDecm = '1' ) then
+         if    ( startAcq = '1' ) then
+            trg   <= '0';
+            armed <= false;
+         elsif ( wrDecm = '1' ) then
             trg   <= trgin;
+            armed <= armin;
             wdatA <= wdatAin;
             wdatB <= wdatBin;
             wdorA <= wdorAin;
@@ -527,12 +546,27 @@ begin
 
    P_WR_COMB : process ( rWr, lparms, trg, rdTgl, wrFul, wdatA, wdorA, wdatB, wdorB, msTimerExpired ) is
       variable v : WrRegType;
+      variable a : signed( lparms.lvl'length downto 0 );
+      variable s : std_logic;
    begin
 
       v         := rWr;
       v.tmrStrt := '0';
 
       wrDat     <= '0' & wdatB & wdatA;
+
+      if ( lparms.rising ) then
+         a := resize( lparms.lvl, a'length ) - signed( resize( lparms.hyst, a'length ) );
+      else
+         a := resize( lparms.lvl, a'length ) + signed( resize( lparms.hyst, a'length ) );
+      end if;
+      s := a(a'left);
+      if ( s /= a(a'left - 1) ) then
+         -- overflow
+         a := ( a'left => s, a'left - 1 => s, others => (not s) );
+      end if;
+
+      v.armLvl := resize( shift_right(a, a'length - v.armLvl'length), v.armLvl'length );
 
       if ( rWr.state = FILL or rWr.state = RUN ) then
          v.lstTrg  := trg;
