@@ -943,7 +943,7 @@ printf("Forcing nsamples to 1\n");
 
 	v8  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
 	v8 |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
-    putBuf( &bufp, set->mask, BITS_FW_CMD_ACQ_LEN_SRC );
+    putBuf( &bufp, v8, BITS_FW_CMD_ACQ_LEN_SRC );
 
 	if ( ( set->mask & ACQ_PARAM_MSK_LVL ) ) {
 		fw->acqParams.level      = set->level;
