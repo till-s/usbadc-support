@@ -566,7 +566,8 @@ begin
          a := ( a'left => s, a'left - 1 => s, others => (not s) );
       end if;
 
-      v.armLvl := resize( shift_right(a, a'length - v.armLvl'length), v.armLvl'length );
+      -- throw away the carry/overflow bit
+      v.armLvl := a( a'left - 1 downto a'left - 1 - v.armLvl'length + 1 );
 
       if ( rWr.state = FILL or rWr.state = RUN ) then
          v.lstTrg  := trg;
