@@ -1025,7 +1025,7 @@ cdef class FwComm:
 
   def acqSetNPreTriggerSamples(self, int n):
     cdef int st
-    if ( n < 0 or n >= self.nsamples ):
+    if ( n < 0 or n >= self._parmCache.nsamples ):
       raise ValueError("acqSetNPreTriggerSamples(): # pre-trigger samples out of range")
     if ( self._parmCache.npts == n ):
       return
