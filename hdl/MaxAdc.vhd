@@ -61,6 +61,7 @@ architecture rtl of MaxADC is
    attribute KEEP           : string;
    attribute DONT_TOUCH     : string;
    attribute SYN_PRESERVE   : boolean; -- efinity for 'keep'
+   attribute MARK_DEBUG     : string;
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G);
 
@@ -172,11 +173,12 @@ architecture rtl of MaxADC is
       fifoFul => '0'
    );
 
-   function WR_REG_START_F
+   function WR_REG_START_F(constant r : in WrRegType)
    return WrRegType is
       variable v : WrRegType;
    begin
       v       := WR_REG_INIT_C;
+      v.tgl   := r.tgl;
       v.state := FILL;
       return v;
    end function WR_REG_START_F;
@@ -679,7 +681,7 @@ begin
          if ( startAcq = '1' ) then
             -- assume validity of parameters has been checked
             -- by the provider!
-            rWr         <= WR_REG_START_F;
+            rWr         <= WR_REG_START_F( rWr );
             rWr.parms   <= parms;
             rWr.decmIs1 <= (parms.decm0 = 0);
          elsif ( ( wrDecm = '1' ) and ( rWr.state /= INIT ) ) then
