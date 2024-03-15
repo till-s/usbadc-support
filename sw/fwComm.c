@@ -1192,7 +1192,7 @@ AcqParams p;
 	p.src           = src;
 	if ( rising ) {
 		p.mask   |= ACQ_PARAM_MSK_EDG;
-		p.rising  = !!rising;
+		p.rising  = rising > 0 ? 1 : 0;
 	}
 	return acq_set_params( fw, &p, 0 );
 }
