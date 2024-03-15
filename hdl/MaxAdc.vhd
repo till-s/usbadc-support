@@ -269,7 +269,6 @@ architecture rtl of MaxADC is
    signal wrTgl             : std_logic;
    signal wrDecm            : std_logic := '1';
    signal extTrgSynDelayed  : std_logic := '0'; -- must be delayed by decimation filter group delay
-   signal startAcq          : std_logic := '0';
 
    signal acqTglIb          : std_logic;
    signal acqTglOb          : std_logic := INIT_ACQ_POL_G;
@@ -488,39 +487,42 @@ begin
       v := '0';
       case ( lparms.src ) is
          when CHA | CHB =>
-            if ( x >= l and armed ) then
+            if ( ( ( x >= l ) = lparms.rising ) and armed ) then
                v := '1';
+               -- if this happens in the FILL stage then
+               -- the trigger is ignored and we must reset 'armed'
+               if ( rWr.state = FILL ) then
+                  v     := '0';
+                  armin <= false;
+               end if;
             end if;
          when EXT =>
-            v := extTrgSynDelayed;
+            v := extTrgSynDelayed xnor toSl( lparms.rising );
          when others => -- manual
             -- handle separately
       end case;
 
-      if ( not lparms.rising ) then
-         v :=  not v;
-      end if;
-
       trgin <= v;
    end process P_TRG;
 
-   -- register trigger and delay data to remain in-sync
-   P_TRG_SEQ : process ( filClk ) is
+   GEN_TRG_ILA : if ( false ) generate
    begin
-      if ( rising_edge( filClk ) ) then
-         if    ( startAcq = '1' ) then
-            trg   <= '0';
-            armed <= false;
-         elsif ( wrDecm = '1' ) then
-            trg   <= trgin;
-            armed <= armin;
-            wdatA <= wdatAin;
-            wdatB <= wdatBin;
-            wdorA <= wdorAin;
-            wdorB <= wdorBin;
-         end if;
-      end if;
-   end process P_TRG_SEQ;
+      U_ILA_TRG : component ILAWrapper
+         port map (
+            clk  => filClk,
+            trg0 => wdatAin(wdatAin'left downto wdatAin'left - 7),
+            trg1 => std_logic_vector( lparms.lvl(lparms.lvl'left downto lparms.lvl'left - 7) ),
+            trg2 => std_logic_vector( rWr.armLvl( rWr.armLvl'left downto rWr.armLvl'left - 7) ),
+            trg3(0) => trgin,
+            trg3(1) => toSl( armin ),
+            trg3(2) => acqTglIb,
+            trg3(3) => toSl( armed ),
+            trg3(4) => trg,
+            trg3(5) => toSl( lparms.rising ),
+            trg3(6) => acqTglOb,
+            trg3(7) => '0'
+         );
+   end generate GEN_TRG_ILA;
 
 
    P_TICK : process ( memClk ) is
@@ -672,20 +674,39 @@ begin
          datOut(0) => parmsAck
       );
 
-   startAcq <= acqTglIb xor acqTglOb;
-
    P_WR_SEQ : process ( memClk ) is
    begin
       if ( rising_edge( memClk ) ) then
-         acqTglOb <= acqTglIb;
-         if ( startAcq = '1' ) then
+         if ( ( acqTglOb /= acqTglIb ) and ( rWr.state /= STOP1 ) and ( rWr.state /= STOP2 ) ) then
+            -- sit out STOP states; let proceed into HOLD (
             -- assume validity of parameters has been checked
             -- by the provider!
-            rWr         <= WR_REG_START_F( rWr );
+            acqTglOb    <= acqTglIb;
+
+            if ( rWr.state /= HOLD ) then
+               -- if we are already in HOLD state then we can't reset
+               -- the state machine - the reader owns the buffer and
+               -- we may only restart writing once the reader releases.
+               -- Since we are not writing ATM it is OK to just update
+               -- the parameters, though.
+               rWr      <= WR_REG_START_F( rWr );
+            end if;
+
             rWr.parms   <= parms;
             rWr.decmIs1 <= (parms.decm0 = 0);
          elsif ( ( wrDecm = '1' ) and ( rWr.state /= INIT ) ) then
-            rWr <= rinWr;
+            rWr         <= rinWr;
+           -- register trigger and delay data to remain in-sync
+            armed       <= armin;
+            trg         <= trgin;
+            wdatA       <= wdatAin;
+            wdatB       <= wdatBin;
+            wdorA       <= wdorAin;
+            wdorB       <= wdorBin;
+         end if;
+         if ( ( rWr.state = HOLD ) or ( acqTglOb /= acqTglIb ) ) then
+            armed       <= false;
+            trg         <= '0';
          end if;
       end if;
    end process P_WR_SEQ;
@@ -1211,7 +1232,7 @@ begin
          datOut     => status
       );
 
-   U_BRAMBUF    : entity work.SampleBuffer
+   U_RAMBUF    : entity work.SampleBuffer
       generic map (
          A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
          MEM_DEPTH_G => MEM_DEPTH_G,
