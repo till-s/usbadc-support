@@ -42,7 +42,7 @@ package AcqCtlPkg is
       shift0      => (others => '0'),
       shift1      => (others => '0'),
       scale       => (16 => '1', others => '0'),
-      hyst        => (others => '1')
+      hyst        => to_unsigned( 1024, 16 )
    );
 
    function acqCtlParmSizeBytes return natural;
@@ -153,4 +153,5 @@ package body AcqCtlPkg is
       lr( x, l, r, v.hyst       );
       return v;
    end function toAcqCtlParmType;
+
 end package body AcqCtlPkg;
