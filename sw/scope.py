@@ -112,6 +112,17 @@ class Scope(QtCore.QObject):
     self._zoom          = Qwt.QwtPlotZoomer( self._plot.canvas() )
     self._zoom.setKeyPattern( Qwt.QwtEventPattern.KeyRedo, Qt.Qt.Key_I )
     self._zoom.setKeyPattern( Qwt.QwtEventPattern.KeyUndo, Qt.Qt.Key_O )
+    self._trigMarker    = Qwt.QwtPlotMarker()
+    self._levlMarker    = Qwt.QwtPlotMarker()
+    self._trigMarker.setLineStyle( Qwt.QwtPlotMarker.VLine )
+    self._levlMarker.setLineStyle( Qwt.QwtPlotMarker.HLine )
+    self._trigMarker.attach( self._plot )
+    self._levlMarker.attach( self._plot )
+    self._trgLvlPercent = self._fw.acqGetTriggerLevelPercent()
+    if ( 2 == self._fw.getSampleSize() ):
+      self._yScale = 32767
+    else:
+      self._yScale = 127
     self.updateYAxis()
     self.updateXAxis()
     hlay.addWidget( self._plot, stretch = 2 )
@@ -124,11 +135,14 @@ class Scope(QtCore.QObject):
     self._channelNames  = [ "A", "B" ]
     self._trgArm        = "Continuous"
     self.clrOvrLed()
+    self._reader = Reader( self )
     def g():
       rv = self._fw.acqGetTriggerLevelPercent()
       return "{:.0f}".format(rv)
     def s(s):
-      self._fw.acqSetTriggerLevelPercent( float(s) )
+      self._trgLvlPercent = float(s)
+      self._fw.acqSetTriggerLevelPercent( self._trgLvlPercent )
+      self.updateLevlMarker()
     createValidator( edt, g, s, QtGui.QDoubleValidator, -100.0, +100.0, 1 )
     frm.addRow( QtWidgets.QLabel("Trigger Level [%]"), edt )
     class TrgSrcMenu(MenuButton):
@@ -192,6 +206,7 @@ class Scope(QtCore.QObject):
       def __init__(mb, parent = None):
         val = self._trgArm
         self.clrTrgLed()
+        self._reader.postTrgMode( self._trgArm )
         MenuButton.__init__(mb, [val, "Off", "Single", "Continuous"], parent )
 
       def activated(mb, act):
@@ -199,6 +214,7 @@ class Scope(QtCore.QObject):
         self.clrTrgLed()
         txt     = act.text()
         self._trgArm = txt
+        self._reader.postTrgMode( self._trgArm )
 
     self._trgArmMenu = TrgArmMenu()
     frm.addRow( QtWidgets.QLabel("Arm Trigger"), self._trgArmMenu )
@@ -316,7 +332,6 @@ class Scope(QtCore.QObject):
     fileMenu.addAction( "SaveData" ).triggered.connect( saveDataAction )
     fileMenu.addAction( "Quit" ).triggered.connect( quitAction )
 
-    self._reader = Reader( self )
     self._reader.setParms( npts = self._fw.acqGetNPreTriggerSamples(), scalX = self._decimation / self._adcClkFreq )
     self.haveData.connect( self.updateData, QtCore.Qt.QueuedConnection )
     self._reader.start()
@@ -329,12 +344,12 @@ class Scope(QtCore.QObject):
     self._fw.ledSet('Trig', 0)
     self.clrOvrLed()
 
+  def updateLevlMarker(self):
+    self._levlMarker.setValue( 0, self._yScale * self._trgLvlPercent/100.0 )
+
   def updateYAxis(self):
-    if ( 2 == self._fw.getSampleSize() ):
-      sc = 32767
-    else:
-      sc = 127
-    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -sc - 1, sc )
+    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -self._yScale - 1, self._yScale )
+    self.updateLevlMarker()
     self._zoom.setZoomBase()
 
   def updateXAxis(self):
@@ -346,6 +361,7 @@ class Scope(QtCore.QObject):
     xmax *= self._decimation / self._adcClkFreq
     self._plot.setAxisScale( Qwt.QwtPlot.xBottom, xmin, xmax )
     self._zoom.setZoomBase()
+    self._trigMarker.setValue(0,0)
 
   def saveData(self):
     # hold a reference - while the filename dialog is spinning
@@ -379,9 +395,6 @@ class Scope(QtCore.QObject):
     d = self._reader.getData()
     if d is None:
       return
-    if ( self._trgArm == "Off" ):
-      d.put()
-      return
     if not self._data is None:
       self._data.put()
     self._data = d
@@ -395,6 +408,7 @@ class Scope(QtCore.QObject):
       self._stdLbls[i].setText ("{:>7.2f}".format( d._std[i]  ))
     self._fw.ledSet('Trig', 1)
     if ( self._trgArm == "Single" ):
+      # dont postTrgMode: the reader resets to Off when it is done
       self._trgArm = "Off"
       self._trgArmMenu.setText("Off")
 
@@ -465,7 +479,10 @@ class Reader(QtCore.QThread):
     super().__init__(*args, **kwargs)
     self._lck            = Lock()
     self._bufAvail       = Condition( Lock() )
-    self._readDone       = Semaphore( 0 )
+    self._trgChanged     = Condition( Lock() )
+    self._trgMode        = "Off"
+    self._readDone       = Condition( Lock() )
+    self._readResult     = -1
     self._scope          = scope
     self._fw             = self._scope.getFw()
     sz                   = self._fw.getBufSize()
@@ -480,15 +497,21 @@ class Reader(QtCore.QThread):
     self._processedBuf   = None
 
   def __call__(self, rv, hdr, buf):
-    if ( rv <= 0):
-      raise RuntimeError("indefinited async read returned ", rv)
-    self._bufhdr[ self._ridx ] = hdr
-    self._readDone.release()
+    if ( rv < 0):
+      raise RuntimeError("async read returned ", rv)
+    if rv > 0:
+      self._bufhdr[ self._ridx ] = hdr
+      with self._trgChanged:
+        if ( self._trgMode == "Single" ):
+          self._trgMode = "Off"
+    with self._readDone:
+      self._readResult = rv;
+      self._readDone.notify()
 
   def readAsync(self):
     rv          = self._ridx
     self._ridx ^= 1
-    if not self._fw.readAsync( self._rbuf[ self._ridx ], self ):
+    if not self._fw.readAsync( self._rbuf[ self._ridx ], self, 1.0 ):
       raise RuntimeError("Unable to schedule async read")
     return rv
 
@@ -496,21 +519,50 @@ class Reader(QtCore.QThread):
     then = time.monotonic()
     lp   = 0
     self.readAsync()
+    b    = None
     while True:
-      b    = self.getBuf()
-      self._readDone.acquire()
-      # flip buffer
-      ridx        = self.readAsync()
-      b.updateY( self._rbuf[ ridx ], self._bufhdr[ ridx ] )
-      with self._lck:
-        npts = self._npts
-        scal = self._scal
-      b.updateX( npts, scal )
-      with self._lck:
-        if (not self._processedBuf is None):
-          self._processedBuf.put()
-        self._processedBuf = b
-      self._scope.notify()
+
+      if b is None:
+        b = self.getBuf()
+
+      # block for result of previous read
+      with self._readDone:
+        while ( self._readResult < 0 ):
+          # block for async read
+          self._readDone.wait()
+        # read result
+        readOk = (self._readResult > 0)
+        # prepare for next readAsync
+        self._readResult = -1
+
+      # now check if the trigger is enabled
+      trgRunning = self.isTrgRunning()
+      if trgRunning:
+        # flip buffer and schedule next read
+        ridx = self.readAsync()
+      elif readOk:
+        # get currently full buffer
+        ridx = self._ridx
+
+      if readOk:
+        b.updateY( self._rbuf[ ridx ], self._bufhdr[ ridx ] )
+        with self._lck:
+          npts = self._npts
+          scal = self._scal
+        b.updateX( npts, scal )
+        with self._lck:
+          if (not self._processedBuf is None):
+            self._processedBuf.put()
+          self._processedBuf = b
+          b = None
+        self._scope.notify()
+
+      if not trgRunning:
+        wasOff = self.waitTrgRunning()
+        if ( wasOff ):
+          self._fw.flush()
+        self.readAsync()
+
       now   = time.monotonic()
       delta = self._pollInterval - (now - then)
       then  = now
@@ -525,6 +577,24 @@ class Reader(QtCore.QThread):
         #if ( not sys.flags.interactive ):
         #  print("Nosleep ", delta)
         pass
+
+  def waitTrgRunning(self):
+    wasOff = False
+    with self._trgChanged:
+      while self._trgMode == "Off":
+         wasOff = True
+         self._trgChanged.wait()
+    return wasOff
+
+  def isTrgRunning(self):
+    with self._trgChanged:
+       return self._trgMode != "Off"
+
+  def postTrgMode(self, mode):
+    with self._trgChanged:
+       self._trgMode = mode
+       if mode != "Off":
+         self._trgChanged.notify()
 
   def getData(self):
     with self._lck:
