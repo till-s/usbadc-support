@@ -139,6 +139,7 @@ package body AcqCtlPkg is
       else
          v.src := EXT;
       end if;
+      v.rising := (x(3) = '1');
       l            := 8;
       lr( x, l, r, v.lvl        );
       lr( x, l, r, v.nprets     );
