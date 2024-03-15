@@ -718,17 +718,21 @@ cdef class FwComm:
         if ( 0 == numIter ):
           numIter = 1
       rv = 0
-      while ( 0 != numIter and 0 == rv ):
+      while ( True ):
         try:
           rv, hdr = self.read( pyb )
         except Exception as e:
           print("Exception in read (ignoring): ", e)
           rv = 0
-        if ( rv == 0 ):
+        if ( rv != 0 ):
+          break
+        else:
+          if ( numIter > 0 ):
+            numIter -= 1
+          if ( numIter == 0 ):
+            break
           # avoid busy polling if there is no data
           sleep(0.01)
-        if ( numIter > 0 ):
-          numIter -= 1
       callback( rv, hdr, pyb )
     return NULL
 
