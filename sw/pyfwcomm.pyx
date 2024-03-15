@@ -1097,7 +1097,10 @@ cdef class FwComm:
     cdef int irising
     if ( TriggerSource(self._parmCache.src) == src and bool(self._parmCache.rising) == rising ):
       return
-    irising = rising
+    if ( rising ):
+      irising = 1
+    else:
+      irising = -1
     with self._mgr as fw, nogil:
       st = acq_set_source( fw, src, irising )
     if ( st < 0 ):
