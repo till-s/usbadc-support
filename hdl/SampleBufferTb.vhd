@@ -252,7 +252,7 @@ begin
          rdat      => ramRep.rdat
       );
 
-   U_DUT : entity work.SampleBuffer
+   U_DUT : entity work.SampleBufferSDRAM
       generic map (
          A_WIDTH_G => AW_C
       )

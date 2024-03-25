@@ -26,7 +26,8 @@ OBJS+=CommandSpi.o SpiBitShifter.o
 OBJS+=SpiFlashSim.o SpiChecker.o
 OBJS+=Flicker.o
 OBJS+=CommandReg.o
-OBJS+=SampleBuffer$(SAMPLEBUFFER_TYPE).o
+OBJS+=SampleBufferBRAM.o
+OBJS+=SampleBufferSDRAM.o
 OBJS+=SDRAMPkg.o
 OBJS+=GenericFifoAsync.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
@@ -98,7 +99,7 @@ CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-MaxAdc.o: MaxAdc.vhd SampleBuffer$(SAMPLEBUFFER_TYPE).o SDRAMPkg.o
+MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<

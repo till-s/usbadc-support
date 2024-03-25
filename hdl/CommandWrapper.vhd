@@ -25,6 +25,7 @@ entity CommandWrapper is
       RAM_BITS_G               : natural := 8;
       MEM_DEPTH_G              : natural := 1024;
       SDRAM_ADDR_WIDTH_G       : natural := 0;
+      USE_SDRAM_BUF_G          : boolean := false;
       COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
       ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
       DISABLE_DECIMATORS_G     : boolean := false;
@@ -34,7 +35,8 @@ entity CommandWrapper is
       -- devices (indexed by BB subCmd)
       BB_DELAY_ARRAY_G         : NaturalArray := NATURAL_ARRAY_EMPTY_C;
       -- dedicated SPI interface for faster flash operations;
-      HAVE_SPI_CMD_G           : boolean := false;
+      HAVE_SPI_CMD_G           : boolean := true;
+      HAVE_BB_CMD_G            : boolean := true;
       HAVE_REG_CMD_G           : boolean := true
    );
    port (
@@ -100,7 +102,7 @@ architecture rtl of CommandWrapper is
 
    constant CMDS_SUPPORTED_C  : CmdsSupportedType := (
       CMD_VER_IDX_C           => true,
-      CMD_BB_IDX_C            => true,
+      CMD_BB_IDX_C            => HAVE_BB_CMD_G,
       CMD_ADC_MEM_IDX_C       => true,
       CMD_ACQ_PRM_IDX_C       => true,
       CMD_SPI_IDX_C           => HAVE_SPI_CMD_G,
@@ -288,7 +290,8 @@ begin
             ADC_BITS_G           => ADC_BITS_G,
             RAM_BITS_G           => RAM_BITS_G,
             DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G,
-            SDRAM_ADDR_WIDTH_G   => SDRAM_ADDR_WIDTH_G
+            SDRAM_ADDR_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
+            USE_SDRAM_BUF_G      => USE_SDRAM_BUF_G
          )
          port map (
             adcClk       => adcClk,

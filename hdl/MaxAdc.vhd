@@ -18,6 +18,7 @@ entity MaxADC is
       DISABLE_DECIMATORS_G : boolean               := false;
       RAM_BITS_G           : natural range 8 to 16 := 10;
       SDRAM_ADDR_WIDTH_G   : natural               := 0;
+      USE_SDRAM_BUF_G      : boolean               := false;
       -- set to opposite of initial value of 'parmsTgl'
       -- this will start an initial acquistion
       INIT_ACQ_POL_G       : std_logic             := '1'
@@ -954,11 +955,18 @@ begin
 
       -- STG0_W_C : ADC_BITS_G + ld(max_gain)
       -- LD_PRE_SCALE = STG0_W_C - FACT_WIDTH = ADC_BITS_G + ld(max_gain) - FACT_WIDTH
-      -- in order to avoid (significant) truncation: ld_breakpoint_gain > LD_PRE_SCALE
+      -- in order to avoid (significant) truncation:
+      --     once prescaling kicks in, i.e., for decim = breakpoint_decm + 1
+      --     the shift should not erase bits; ld( (bkpt_decm + 1)**STG0_STGS_C ) > LD_PRE_SCALE
       -- ld_brkpt_gain + adc_bits_g = FACT_WIDTH
       -- FACT_WIDTH - ADC_BITS_G > ADC_BITS_G + ld_max_gain - FACT_WIDTH
       -- 2*FACT_WIDTH > 2*ADC_BITS_G + ld_max_gain
       -- If FACT_WIDTH = 18 , ld_max_gain = 16 => ADC_BITS_G < 10
+      -- but this is a bit too conservative; the real equation is
+      --   ld( (bkpt_decm + 1)**STG0_STGS_C ) > ADC_BITS_G - FACT_WIDTH_G + ld_max_gain
+      -- which for FACT_WIDTH = 18, ADC_BITS = 10, STG0_STGS = 4, ld_max_gain = 16
+      -- yields
+      --   ld ( 5 ) * 4 > 10 - 18 + 16 = 8  =>  ld(5) > 2 which is OK.
 
       assert 2*MUL_FACT_W_C >= 2*ADC_BITS_G + STG0_STGS_C*STG0_LD_MAX_DCM_C
          report "Need a pre-shifter if stage 0 required width is > 18" severity failure;
@@ -1232,28 +1240,58 @@ begin
          datOut     => status
       );
 
-   U_RAMBUF    : entity work.SampleBuffer
-      generic map (
-         A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
-         MEM_DEPTH_G => MEM_DEPTH_G,
-         D_WIDTH_G   => (2*RAM_BITS_G)
-      )
-      port map (
-         wrClk       => memClk,
-         wrEna       => wrEna,
-         wrDat       => wrDat,
-         wrFul       => wrFul,
+   G_DRAMBUF : if ( USE_SDRAM_BUF_G ) generate
 
-         sdramClk    => sdramClk,
-         sdramReq    => sdramReq,
-         sdramRep    => sdramRep,
+      U_DRAMBUF    : entity work.SampleBufferSDRAM
+         generic map (
+            A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
+            MEM_DEPTH_G => MEM_DEPTH_G,
+            D_WIDTH_G   => (2*RAM_BITS_G)
+         )
+         port map (
+            wrClk       => memClk,
+            wrEna       => wrEna,
+            wrDat       => wrDat,
+            wrFul       => wrFul,
 
-         rdClk       => busClk,
-         rdEna       => rdEna,
-         rdDat       => rdDat,
-         rdEmp       => rdEmp,
-         rdFlush     => rRd.flush
-      );
+            sdramClk    => sdramClk,
+            sdramReq    => sdramReq,
+            sdramRep    => sdramRep,
+
+            rdClk       => busClk,
+            rdEna       => rdEna,
+            rdDat       => rdDat,
+            rdEmp       => rdEmp,
+            rdFlush     => rRd.flush
+         );
+   end generate G_DRAMBUF;
+
+
+   G_BRAMBUF : if ( not USE_SDRAM_BUF_G ) generate
+
+      U_BRAMBUF    : entity work.SampleBufferBRAM
+         generic map (
+            A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
+            MEM_DEPTH_G => MEM_DEPTH_G,
+            D_WIDTH_G   => (2*RAM_BITS_G)
+         )
+         port map (
+            wrClk       => memClk,
+            wrEna       => wrEna,
+            wrDat       => wrDat,
+            wrFul       => wrFul,
+
+            sdramClk    => sdramClk,
+            sdramReq    => sdramReq,
+            sdramRep    => sdramRep,
+
+            rdClk       => busClk,
+            rdEna       => rdEna,
+            rdDat       => rdDat,
+            rdEmp       => rdEmp,
+            rdFlush     => rRd.flush
+         );
+   end generate G_BRAMBUF;
 
    err(1) <= rWr.fifoFul;
    err(0) <= rRd.fifoEmp;
