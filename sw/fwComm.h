@@ -150,6 +150,8 @@ buf_get_flags(FWInfo *);
 int
 buf_flush(FWInfo *);
 
+#define FW_BUF_HDR_FLG_OVR(ch) (1<<(ch))
+
 int
 buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len);
 
