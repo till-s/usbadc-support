@@ -546,7 +546,7 @@ cdef class FEC(FwDev):
   def setDacRangeHi(self, int channel, bool on):
     raise RuntimeError("Front-End has no DAC range controls")
 
-  def getDacRangeHi(self, int channel, bool on):
+  def getDacRangeHi(self, int channel):
     raise RuntimeError("Front-End has no DAC range controls")
 
 
@@ -620,7 +620,7 @@ cdef class I2CFEC(FEC):
   def setDacRangeHi(self, int channel, bool on):
     self.setDACCtlBit( channel, not on )
 
-  def getDacRangeHi(self, int channel, bool on):
+  def getDacRangeHi(self, int channel):
     return not self.setDACCtlBit( channel )
 
   def allOutputs(self):
