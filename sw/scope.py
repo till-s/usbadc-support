@@ -86,17 +86,121 @@ class BufMgr:
       self._buf.put()
     return None
 
+class ScaleMod(Qwt.QwtScaleDraw):
+  def __init__(self, *args, **kwargs):
+    super().__init__( *args, **kwargs )
+    print("ScaleMod constructor")
+
+  def draw(self, painter, palette):
+    print("draw")
+    super().draw(painter, palette)
+
+  def drawLabel(self, painter, val):
+    print("drawLabel", val)
+    super().drawLabel(painter, val)
+    print("Length: ", self.length())
+
+  def label(self, val):
+    print("ScaleMod label")
+    return "{:f}".format(val/32768)
+
+class TrigLevel(Qwt.QwtPlotMarker):
+
+  def __init__(self, zoom, fw, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self._fw         = fw
+    self._zoom       = zoom
+    self._txtWdgt    = None
+    self._lvlPercent = self._fw.acqGetTriggerLevelPercent()
+
+  def setLevelPercent(self, levelPercent):
+    if levelPercent < -100 or levelPercent > 100:
+      raise RuntimeError("TrigLevel.setLevelPercent: argument out of range")
+    self._fw.acqSetTriggerLevelPercent( levelPercent )
+    self._lvlPercent = levelPercent
+    self.updateMark()
+
+  def updateMark(self):
+    scl = self.getScale()
+    self.setValue( 0, scl * self._lvlPercent/100.0 )
+
+  def getLevelPercent(self):
+    return self._lvlPercent
+
+  def getScale(self):
+    return self._zoom.zoomBase().bottom()
+# doesn't work if it is zoomed
+#    return self.plot().axisScaleDiv( Qwt.QwtPlot.yLeft ).upperBound()
+
+  def update(self, point):
+    self.setValue( point.x(), point.y() )
+    self._lvlPercent = 100.0*point.y()/self.getScale()
+    if not self._txtWdgt is None:
+      self._txtWdgt.setText("{:.0f}".format( self._lvlPercent ))
+
+  def updateDone(self):
+    self._fw.acqSetTriggerLevelPercent( self._lvlPercent )
+
+  def attachTxt(self, txtWdgt):
+    self._txtWdgt = txtWdgt
+
+  def attach(self, plot):
+    super().attach( plot )
+    self.updateMark()
+
+class MoveableMarkers(QtCore.QObject):
+
+  def __init__(self, plot, picker, markers, *args, **kwargs):
+    super().__init__( *args, **kwargs )
+    self._plot     = plot
+    self._picker   = picker
+    self._markers  = markers
+    self._selected = -1
+    def act( on ):
+      if not on:
+        if ( self._selected >= 0 ):
+          self._markers[self._selected].updateDone()
+        self._selected = -1
+    def mov( point ):
+      if ( self._selected < 0 ):
+        i    = 0
+        dmin = 0.0
+        for m in self._markers:
+          ls = m.lineStyle()
+          if   ( ls == Qwt.QwtPlotMarker.VLine ):
+            xfrm = self._plot.canvasMap( Qwt.QwtPlot.xBottom )
+            d = np.abs( xfrm.transform(point.x()) - xfrm.transform(m.xValue()) )
+          elif ( ls == Qwt.QwtPlotMarker.HLine ):
+            yfrm = self._plot.canvasMap( Qwt.QwtPlot.yLeft )
+            d = np.abs( yfrm.transform(point.y()) - yfrm.transform(m.yValue()) )
+          else:
+            xfrm = self._plot.canvasMap( Qwt.QwtPlot.xBottom )
+            yfrm = self._plot.canvasMap( Qwt.QwtPlot.yLeft )
+            d = np.hypot(
+                          xfrm.transform( point.x() ) - xfrm.transform( m.xValue() ),
+                          yfrm.transform( point.y() ) - yfrm.transform( m.yValue() )
+                        )
+          if ( 0 == i or d < dmin ):
+            self._selected = i
+            dmin           = d
+          i += 1
+      m  = self._markers[ self._selected ]
+      m.update( point )
+    self._picker.activated.connect( act )
+    self._picker.moved.connect( mov )
+
 class Scope(QtCore.QObject):
 
   haveData = QtCore.pyqtSignal()
 
-  def __init__(self, devnam, *args, **kwargs):
+  def __init__(self, devnam, isSim = False, *args, **kwargs):
     super().__init__(*args, **kwargs)
     if ( sys.flags.interactive ):
        self._fw       = fw.FwCommExprt( devnam )
     else:
        self._fw       = fw.FwComm( devnam )
-    self._fw.init()
+    if not isSim:
+      self._fw.init()
     self._main          = QtWidgets.QMainWindow()
     self._cent          = QtWidgets.QWidget()
     menuBar             = QtWidgets.QMenuBar()
@@ -108,10 +212,32 @@ class Scope(QtCore.QObject):
     self._plot.setAutoReplot( True )
     d0, d1 = self._fw.acqGetDecimation()
     self._decimation    = d0*d1
-    self._adcClkFreq    = self._fw.getAdcClkFreq()
+    if not isSim:
+      self._adcClkFreq    = self._fw.getAdcClkFreq()
+    else:
+      self._adcClkFreq    = 120.0e6
+    self._plot.enableAxis( Qwt.QwtPlot.yRight )
     self._zoom          = Qwt.QwtPlotZoomer( self._plot.canvas() )
     self._zoom.setKeyPattern( Qwt.QwtEventPattern.KeyRedo, Qt.Qt.Key_I )
     self._zoom.setKeyPattern( Qwt.QwtEventPattern.KeyUndo, Qt.Qt.Key_O )
+    self._zoom.setMousePattern( Qwt.QwtEventPattern.MouseSelect1, Qt.Qt.LeftButton,   Qt.Qt.ShiftModifier )
+    self._zoom.setMousePattern( Qwt.QwtEventPattern.MouseSelect2, Qt.Qt.MiddleButton, Qt.Qt.ShiftModifier )
+    self._zoom.setMousePattern( Qwt.QwtEventPattern.MouseSelect3, Qt.Qt.RightButton,  Qt.Qt.ShiftModifier )
+    self._trigMarker    = Qwt.QwtPlotMarker()
+    self._levlMarker    = TrigLevel( self._zoom, self._fw )
+    self._trigMarker.setLineStyle( Qwt.QwtPlotMarker.VLine )
+    self._levlMarker.setLineStyle( Qwt.QwtPlotMarker.HLine )
+    self._trigMarker.attach( self._plot )
+    self._levlMarker.attach( self._plot )
+#    self._picker        = Qwt.QwtPlotPicker( self._plot.xBottom, self._plot.yLeft, Qwt.QwtPicker.NoRubberBand, Qwt.QwtPicker.AlwaysOn, self._plot.canvas() )
+    self._picker        = Qwt.QwtPlotPicker( self._plot.xBottom, self._plot.yLeft,  self._plot.canvas() )
+    self._picker.setStateMachine( Qwt.QwtPickerDragPointMachine() )
+    self._plot.setAxisScaleDraw( Qwt.QwtPlot.yLeft, ScaleMod() )
+    MoveableMarkers( self._plot, self._picker, [self._levlMarker] )
+    if ( 2 == self._fw.getSampleSize() ):
+      self._yScale = 32767
+    else:
+      self._yScale = 127
     self.updateYAxis()
     self.updateXAxis()
     hlay.addWidget( self._plot, stretch = 2 )
@@ -125,11 +251,12 @@ class Scope(QtCore.QObject):
     self._trgArm        = "Continuous"
     self.clrOvrLed()
     def g():
-      rv = self._fw.acqGetTriggerLevelPercent()
+      rv = self._levlMarker.getLevelPercent()
       return "{:.0f}".format(rv)
     def s(s):
-      self._fw.acqSetTriggerLevelPercent( float(s) )
+      self._levlMarker.setLevelPercent( float(s ) )
     createValidator( edt, g, s, QtGui.QDoubleValidator, -100.0, +100.0, 1 )
+    self._levlMarker.attachTxt( edt )
     frm.addRow( QtWidgets.QLabel("Trigger Level [%]"), edt )
     class TrgSrcMenu(MenuButton):
       def __init__(mb, parent = None):
@@ -140,7 +267,7 @@ class Scope(QtCore.QObject):
           l0 = "Channel B"
         else:
           l0 = "External"
-        MenuButton.__init__(mb, [l0, "Channel A", "Channel B", "External "], parent )
+        MenuButton.__init__(mb, [l0, "Channel A", "Channel B", "External"], parent )
 
       def activated(mb, act):
         super().activated(act)
@@ -330,12 +457,10 @@ class Scope(QtCore.QObject):
     self.clrOvrLed()
 
   def updateYAxis(self):
-    if ( 2 == self._fw.getSampleSize() ):
-      sc = 32767
-    else:
-      sc = 127
-    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -sc - 1, sc )
+    self._plot.setAxisScale( Qwt.QwtPlot.yLeft, -self._yScale - 1, self._yScale )
+    self._plot.setAxisScale( Qwt.QwtPlot.yRight, - 1, 1 )
     self._zoom.setZoomBase()
+    self._levlMarker.updateMark()
 
   def updateXAxis(self):
     n = self._fw.getBufSize() - 1
@@ -560,14 +685,15 @@ class ScopeThread(QtCore.QThread):
     self.exec()
 
 def usage(nm):
-  print("usage: {} [-d <usb_device_name] [-h]".format(nm))
+  print("usage: {} [-d <usb_device_name] [-hs]".format(nm))
 
 if __name__ == "__main__":
 
-  devn = '/dev/ttyUSB0'
-  styl = None
+  devn  = '/dev/ttyUSB0'
+  styl  = None
+  isSim = False
 
-  ( opts, args ) = getopt.getopt( sys.argv[1:], "hd:S:", [] )
+  ( opts, args ) = getopt.getopt( sys.argv[1:], "hd:S:s", [] )
   for opt in opts:
     if   ( opt[0] == '-d' ):
       devn = opt[1]
@@ -576,12 +702,14 @@ if __name__ == "__main__":
       sys.exit(0)
     elif ( opt[0] == '-S' ):
       styl = opt[1]
+    elif ( opt[0] == '-s' ):
+      isSim = True
 
   app = QtWidgets.QApplication( args )
   if ( not styl is None ):
     with open(styl, "r") as f:
       app.setStyleSheet( f.read() )
-  scp = Scope( devn )
+  scp = Scope( devn, isSim )
   scp.show()
   if ( sys.flags.interactive ):
     scpThread = ScopeThread()
