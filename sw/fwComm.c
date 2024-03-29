@@ -873,7 +873,6 @@ uint32_t rv = 0;
 int
 acq_set_params(FWInfo *fw, AcqParams *set, AcqParams *get)
 {
-AcqParams p;
 uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
 uint8_t   buf[BITS_FW_CMD_ACQ_TOT_LEN_V2];
 uint8_t  *bufp;
@@ -884,10 +883,23 @@ uint32_t  nsamples;
 int       got;
 int       len;
 
-	p.mask = ACQ_PARAM_MSK_GET;
+	if ( ! fw ) {
+		return FW_CMD_ERR_INVALID;
+	}
 
-	if ( ! set ) {
-		set = &p;
+	if ( ! set || (ACQ_PARAM_MSK_GET == set->mask) ) {
+		if ( get == &fw->acqParams ) {
+			/* read the cache !! */
+			if ( ! set ) {
+				set = get;
+				set->mask = ACQ_PARAM_MSK_GET;
+			}
+		} else {
+			if ( get ) {
+				*get = fw->acqParams;
+			}
+			return 0;
+		}
 	}
 
 	/* parameter validation and updating of cache */
