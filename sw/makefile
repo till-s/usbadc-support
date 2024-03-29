@@ -9,7 +9,10 @@ PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
 PYFWCOMM_C=pyfwcomm.c
 
-all: bbcli pyfwcomm.so
+all: bbcli pyfwcomm.so libfwcomm.a
+
+libfwcomm.a: $(LOBJS)
+	$(AR) r $@ $^
 
 bbcli: bbcli.o $(LOBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lm
@@ -19,7 +22,6 @@ pyfwcomm.o: $(PYFWCOMM_C)
 
 $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
 	cython3  $<
-
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -34,7 +36,7 @@ versaClkSup.o: fwComm.h versaClkSup.h
 .PHONY: clean
 
 clean:
-	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o
+	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
 	$(RM) -rf __pycache__
 
 pyfwcomm.so: pyfwcomm.o $(LOBJS)
