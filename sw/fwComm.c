@@ -882,17 +882,17 @@ uint32_t  v32;
 uint32_t  nsamples;
 int       got;
 int       len;
+uint32_t  smask = set ? set->mask : ACQ_PARAM_MSK_GET;
 
 	if ( ! fw ) {
 		return FW_CMD_ERR_INVALID;
 	}
 
-	if ( ! set || (ACQ_PARAM_MSK_GET == set->mask) ) {
+	if ( ! set || (ACQ_PARAM_MSK_GET == smask) ) {
 		if ( get == &fw->acqParams ) {
 			/* read the cache !! */
 			if ( ! set ) {
-				set = get;
-				set->mask = ACQ_PARAM_MSK_GET;
+				set   = get;
 			}
 		} else {
 			if ( get ) {
@@ -903,15 +903,15 @@ int       len;
 	}
 
 	/* parameter validation and updating of cache */
-	if ( ( set->mask & ACQ_PARAM_MSK_SRC ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_SRC ) ) {
 		fw->acqParams.src    = set->src;
 	}
 
-	if ( ( set->mask & ACQ_PARAM_MSK_EDG ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_EDG ) ) {
 		fw->acqParams.rising = set->rising;
 	}
 
-	if ( ( set->mask & ACQ_PARAM_MSK_DCM ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_DCM ) ) {
         if ( 1 >= set->cic0Decimation ) {
 printf("Forcing cic1 decimation to 1");
 			set->cic1Decimation = 1;
@@ -920,12 +920,11 @@ printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
 		/* If they change the decimation but not explicitly the scale
 		 * then adjust the scale automatically
 		 */
-		if (  ! ( set->mask & ACQ_PARAM_MSK_SCL ) ) {
-			set->mask  |= ACQ_PARAM_MSK_SCL;
+		if (  ! ( smask & ACQ_PARAM_MSK_SCL ) ) {
+			smask         |= ACQ_PARAM_MSK_SCL;
 			set->cic0Shift = 0;
 			set->cic1Shift = 0;
 			set->scale     = acq_default_cic1Scale( set->cic1Decimation );
-printf("Default scale %d\n", set->scale);
 		}
 		fw->acqParams.cic0Decimation = set->cic0Decimation;
 		fw->acqParams.cic1Decimation = set->cic1Decimation;
@@ -933,17 +932,18 @@ printf("Default scale %d\n", set->scale);
 
 	nsamples = fw->acqParams.nsamples;
 
-	if ( ( set->mask & ACQ_PARAM_MSK_NSM ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_NSM ) ) {
 		if ( fw->apiVers < FW_API_VERSION_2 ) {
-			return FW_CMD_ERR_NOTSUP;
+			if ( set->nsamples != fw->memSize ) {
+				return FW_CMD_ERR_NOTSUP;
+			}
+			smask &= ~ACQ_PARAM_MSK_NSM;
 		}
 		if ( set->nsamples > fw->memSize ) {
 			set->nsamples = fw->memSize;
-printf("Forcing nsamples to %ld\n", fw->memSize);
 		}
 		if ( set->nsamples < 1 ) {
 			set->nsamples = 1;
-printf("Forcing nsamples to 1\n");
 		}
 		nsamples = set->nsamples;
         fw->acqParams.nsamples = set->nsamples;
@@ -951,20 +951,20 @@ printf("Forcing nsamples to 1\n");
 
     bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK;
 	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
-    putBuf( &bufp, set->mask, len );
+    putBuf( &bufp, smask, len );
 
 	v8  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
 	v8 |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
     putBuf( &bufp, v8, BITS_FW_CMD_ACQ_LEN_SRC );
 
-	if ( ( set->mask & ACQ_PARAM_MSK_LVL ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_LVL ) ) {
 		fw->acqParams.level      = set->level;
         fw->acqParams.hysteresis = set->hysteresis;
 	}
 
 	putBuf( &bufp, set->level, BITS_FW_CMD_ACQ_LEN_LVL );
 
-	if ( ( set->mask & ACQ_PARAM_MSK_NPT ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_NPT ) ) {
 		if ( (set->npts >= nsamples ) ) {
 			set->npts = nsamples - 1;
 			fprintf(stderr, "acq_set_params: WARNING npts >= nsamples requested; clipping to %" PRId32 "\n", set->npts);
@@ -980,7 +980,7 @@ printf("Forcing nsamples to 1\n");
 	/* firmware uses nsamples - 1 */
 	putBuf( &bufp, nsamples - 1, len );
 
-	if ( ( set->mask & ACQ_PARAM_MSK_AUT ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_AUT ) ) {
 		if ( set->autoTimeoutMS > (1<<sizeof(uint16_t)*8) - 1 ) {
 			set->autoTimeoutMS = (1<<sizeof(uint16_t)*8) - 1;
 		}
@@ -1024,7 +1024,7 @@ printf("Forcing nsamples to 1\n");
 
 	v32 |= ( (set->scale >> (32 - 18)) & ( (1<<18) - 1 ) );
 
-	if ( ( set->mask & ACQ_PARAM_MSK_SCL ) ) {
+	if ( ( smask & ACQ_PARAM_MSK_SCL ) ) {
 			fw->acqParams.cic0Shift = set->cic0Shift;
 			fw->acqParams.cic1Shift = set->cic1Shift;
 			fw->acqParams.scale     = set->scale;
@@ -1135,6 +1135,9 @@ acq_set_nsamples(FWInfo *fw, uint32_t nsamples)
 AcqParams p;
 
 	if ( fw->apiVers < FW_API_VERSION_2 ) {
+		if ( nsamples == fw->memSize ) {
+			return 0;
+		}
 		return FW_CMD_ERR_NOTSUP;
 	}
 	p.mask          = ACQ_PARAM_MSK_NSM;
