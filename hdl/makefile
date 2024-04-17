@@ -10,7 +10,13 @@ GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
-all: commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb spiregtb spishadowregtb samplebuffertb
+TESTS= commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb
+TESTS+=spiregtb spishadowregtb samplebuffertb simplebusasynctb
+
+all: $(TESTS)
+
+test: $(filter-out commandwrappersim,$(TESTS))
+	for i in $^; do if ! ./$$i; then exit 1; fi done
 
 # BRAM or SDRAM
 SAMPLEBUFFER_TYPE=SDRAM
@@ -30,6 +36,7 @@ OBJS+=SampleBufferBRAM.o
 OBJS+=SampleBufferSDRAM.o
 OBJS+=SDRAMPkg.o
 OBJS+=GenericFifoAsync.o
+OBJS+=SimpleBusAsync.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
 # Elaboration target
@@ -57,6 +64,8 @@ spiregtb: SpiRegTb.o SpiReg.o
 samplebuffertb: SampleBufferTb.o SampleBuffer$(SAMPLEBUFFER_TYPE).o SynchronizerBit.o $(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 	$(GHDL) -e $(GHDLFLAGS)  $@
 
+simplebusasynctb: SimpleBusAsyncTb.o
+	$(GHDL) -e $(GHDLFLAGS)  $@
 
 # Run target
 run: commandwrappertb
@@ -166,11 +175,11 @@ SpiRegTb.o: SpiReg.o
 GITVERSION:=$(shell git rev-parse --short=8 HEAD)
 BRDVERSION:=01
 
-.PHONY: .FORCE
+.PHONY: .FORCE all clean test
 
 clean:
 	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb samplebuffertb
 	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
 	$(RM) spiregtb SpiRegTb.o SampleBufferTb.o
 	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o spishadowregtb
-	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o spishadowregtb
+	$(RM) simplebusasynctb
