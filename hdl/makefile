@@ -10,12 +10,12 @@ GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
-TESTS= commandwrappertb commandwrappersim cicfiltertb pipelinedrshiftertb
-TESTS+=spiregtb spishadowregtb samplebuffertb simplebusasynctb
+TESTS= CommandWrapperTb CommandWrapperSim CicFilterTb PipelinedRShifterTb
+TESTS+=SpiRegTb SpiShadowRegTb SampleBufferTb SimpleBusAsyncTb
 
 all: $(TESTS)
 
-test: $(filter-out commandwrappersim,$(TESTS))
+test: $(filter-out CommandWrapperSim,$(TESTS))
 	for i in $^; do if ! ./$$i; then exit 1; fi done
 
 # BRAM or SDRAM
@@ -40,36 +40,21 @@ OBJS+=SimpleBusAsync.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
 # Elaboration target
-commandwrappertb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
-	$(GHDL) -e $(GHDLFLAGS) $@
+CommandWrapperTb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
+	$(GHDL) -e $(GHDLFLAGS) -o $@ $@
 
-commandwrapperalt1tb: CommandWrapperAlt1Tb.o $(OBJS)
-	$(GHDL) -e $(GHDLFLAGS) $@
+%Tb: %Tb.o $(OBJS)
+	$(GHDL) -e $(GHDLFLAGS) -o $@ $@
 
-commandwrappersim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
-	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o  $@
+CommandWrapperSim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
+	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o -o $@  $@
 
-cicfiltertb: $(OBJS) CicFilterTb.o
-	$(GHDL) -e $(GHDLFLAGS)  $@
-
-spishadowregtb: $(OBJS) SpiShadowRegTb.o
-	$(GHDL) -e $(GHDLFLAGS)  $@
-
-pipelinedrshiftertb: PipelinedRShifterTb.o $(OBJS)
-	$(GHDL) -e $(GHDLFLAGS)  $@
-
-spiregtb: SpiRegTb.o SpiReg.o
-	$(GHDL) -e $(GHDLFLAGS)  $@
-
-samplebuffertb: SampleBufferTb.o SampleBuffer$(SAMPLEBUFFER_TYPE).o SynchronizerBit.o $(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
-	$(GHDL) -e $(GHDLFLAGS)  $@
-
-simplebusasynctb: SimpleBusAsyncTb.o
-	$(GHDL) -e $(GHDLFLAGS)  $@
+SampleBufferTb: SampleBufferTb.o SampleBuffer$(SAMPLEBUFFER_TYPE).o SynchronizerBit.o $(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
+	$(GHDL) -e $(GHDLFLAGS) -o $@  $@
 
 # Run target
-run: commandwrappertb
-	$(GHDL) -r commandwrappertb $(GHDLRUNFLAGS)
+run: CommandWrapperTb
+	$(GHDL) -r $^ $(GHDLRUNFLAGS)
 
 # Targets to analyze files
 /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/v93/std_logic_1164.vhdl
@@ -178,8 +163,6 @@ BRDVERSION:=01
 .PHONY: .FORCE all clean test
 
 clean:
-	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o CommandWrapperTb.o commandwrappersim commandwrappertb samplebuffertb
-	$(RM) dump.ghw work-obj*.cf e~*.o cicfiltertb CicFilterTb.o
-	$(RM) spiregtb SpiRegTb.o SampleBufferTb.o
-	$(RM) pipelinedrshiftertb PipelinedRShifterTb.o SpiShadowRegTb.o SpiShadowReg.o spishadowregtb
-	$(RM) simplebusasynctb
+	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o 
+	$(RM) dump.ghw work-obj*.cf e~*.o
+	$(RM) $(TESTS:%=%.o) $(TESTS)
