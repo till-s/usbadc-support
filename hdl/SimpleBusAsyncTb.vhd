@@ -20,6 +20,9 @@ architecture sim of SimpleBusAsyncTb is
 
    signal run   : boolean          := true;
 
+   signal rst   : std_logic        := '0';
+   signal rstBsy: std_logic;
+
 begin
 
    process is
@@ -42,6 +45,7 @@ begin
       variable rand : real;
    begin
       if ( rising_edge( clkIb ) ) then
+         rst <= '0';
          if ( busIb.vld = '1' ) then
             if ( rdyIb = '1' ) then
                busIb.dat <= std_logic_vector(unsigned(busIb.dat) + 1);
@@ -57,8 +61,12 @@ begin
             end if;
          else
             uniform(s1, s2, rand);
-            if rand < 0.3 then
-               busIb.vld <= '1';
+            if ( rstBsy = '0' ) then
+               if rand < 0.3 then
+                  busIb.vld <= '1';
+               elsif rand < 0.5 then
+                  rst       <= '1';
+               end if;
             end if;
          end if;
       end if;
@@ -104,8 +112,10 @@ begin
    U_DUT : entity work.SimpleBusAsync
       port map (
          clkIb  => clkIb,
+         rstIb  => rst,
          busIb  => busIb,
          rdyIb  => rdyIb,
+         rstBsy => rstBsy,
 
          clkOb  => clkOb,
          busOb  => busOb,
