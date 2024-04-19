@@ -49,7 +49,8 @@ use work.CommandMuxPkg.all;
 entity CommandReg is
    generic (
       ADDR_W_G     : natural := 8;
-      DATA_W_G     : natural := 8
+      DATA_W_G     : natural := 8;
+      ASYNC_G      : boolean := false
    );
    port (
       clk          : in  std_logic;
@@ -61,6 +62,7 @@ entity CommandReg is
       mOb          : out SimpleBusMstType;
       rOb          : in  std_logic;
 
+      regClk       : in  std_logic := '0';
       addr         : out unsigned(ADDR_W_G - 1 downto 0);
       wdat         : out std_logic_vector(DATA_W_G - 1 downto 0);
       rdat         : in  std_logic_vector(DATA_W_G - 1 downto 0);
@@ -80,6 +82,8 @@ architecture rtl of CommandReg is
       addr         : unsigned(ADDR_W_G - 1 downto 0);
       count        : unsigned(ADDR_W_G     downto 0);
       cmd          : std_logic_vector(7 downto 0);
+      rdat         : std_logic_vector(7 downto 0);
+      rvld         : std_logic;
       err          : std_logic;
    end record RegType;
 
@@ -88,62 +92,111 @@ architecture rtl of CommandReg is
       addr         => (others => '0'),
       count        => (others => '1'),
       cmd          => (others => '0'),
+      rdat         => (others => '0'),
+      rvld         => '0',
       err          => '0'
    );
 
    signal r        : RegType := REG_INIT_C;
    signal rin      : RegType := REG_INIT_C;
+   signal regClkLoc: std_logic;
+
+   signal mIbLoc   : SimpleBusMstType;
+   signal rIbLoc   : std_logic;
+   signal mObLoc   : SimpleBusMstType;
+   signal rObLoc   : std_logic;
+   signal rstLoc   : std_logic;
+
 begin
 
-   P_COMB : process ( r, mIb, rOb, rdat, rdy, err ) is
+   G_SYNC : if ( not ASYNC_G ) generate
+      regClkLoc  <= clk;
+      mIbLoc     <= mIb;
+      rIb        <= rIbLoc;
+      mOb        <= mObLoc;
+      rObLoc     <= rOb;
+      rstLoc     <= rst;
+   end generate G_SYNC;
+
+   G_ASYNC : if ( ASYNC_G ) generate
+
+      regClkLoc  <= regClk;
+
+      U_BUS_CC_B2R : entity work.SimpleBusAsync
+         port map (
+            clkIb => clk,
+            busIb => mIb,
+            rdyIb => rIb,
+            rstIb => rst,
+
+            clkOb => regClkLoc,
+            busOb => mIbLoc,
+            rdyOb => rIbLoc,
+            rstOb => rstLoc
+         );
+
+      U_BUS_CC_R2B : entity work.SimpleBusAsync
+         port map (
+            clkIb => regClkLoc,
+            busIb => mObLoc,
+            rdyIb => rObLoc,
+
+            clkOb => clk,
+            busOb => mOb,
+            rdyOb => rOb
+         );
+
+   end generate G_ASYNC;
+
+   P_COMB : process ( r, mIbLoc, rObLoc, rdat, rdy, err ) is
       variable v : RegType;
    begin
       v          := r;
-      mOb        <= SIMPLE_BUS_MST_INIT_C;
-      mOb.dat    <= r.cmd;
-      mOb.lst    <= '0';
-      mOb.vld    <= '0';
-      rIb        <= '0';
+      mObLoc     <= SIMPLE_BUS_MST_INIT_C;
+      mObLoc.dat <= r.cmd;
+      mObLoc.lst <= '0';
+      mObLoc.vld <= '0';
+      rIbLoc     <= '0';
       rdnw       <= '1';
       vld        <= '0';
 
       case ( r.state ) is
          when IDLE  =>
-            rIb     <= '1';
+            rIbLoc  <= '1';
             v.count := (others => '1');
             v.err   := '1';
-            if ( mIb.vld = '1' ) then
-               v.cmd := mIb.dat;
-               if (   subCommandRegGet( mIb.dat ) = CMD_REG_RD8_C
-                   or subCommandRegGet( mIb.dat ) = CMD_REG_WR8_C ) then
+            if ( mIbLoc.vld = '1' ) then
+               v.cmd := mIbLoc.dat;
+               if (   subCommandRegGet( mIbLoc.dat ) = CMD_REG_RD8_C
+                   or subCommandRegGet( mIbLoc.dat ) = CMD_REG_WR8_C ) then
                      v.state := A8;
                else
                      v.state := DRAIN;
                end if;
-               if ( mIb.lst = '1' ) then
+               if ( mIbLoc.lst = '1' ) then
                   v.state := REPLY;
                end if;
             end if;
 
          when A8    =>
-            rIb <= '1';
-            if ( mIb.vld = '1' ) then
-               v.addr := resize( unsigned( mIb.dat ), v.addr'length );
+            rIbLoc <= '1';
+            if ( mIbLoc.vld = '1' ) then
+               v.addr := resize( unsigned( mIbLoc.dat ), v.addr'length );
                if ( subCommandRegGet( r.cmd ) = CMD_REG_RD8_C ) then
                   v.state := L8;
                else
                   v.state := WR8;
                end if;
-               if ( mIb.lst = '1' ) then
+               if ( mIbLoc.lst = '1' ) then
                   v.state := REPLY;
                end if;
             end if;
 
          when L8    =>
-            rIb <= '1';
-            if ( mIb.vld = '1' ) then
-               if ( mIb.lst = '1' ) then
-                  v.count := resize( unsigned(mIb.dat), v.count'length );
+            rIbLoc <= '1';
+            if ( mIbLoc.vld = '1' ) then
+               if ( mIbLoc.lst = '1' ) then
+                  v.count := resize( unsigned(mIbLoc.dat), v.count'length );
                   v.state := REPLY;
                else
                   v.state := DRAIN;
@@ -151,13 +204,13 @@ begin
             end if;
 
          when WR8   =>
-            rdnw <= '0';
-            rIb  <= rdy;
-            vld  <= mIb.vld;
-            if ( (mIb.vld and rdy ) = '1' ) then
+            rdnw    <= '0';
+            rIbLoc  <= rdy;
+            vld     <= mIbLoc.vld;
+            if ( (mIbLoc.vld and rdy ) = '1' ) then
                v.addr := r.addr + 1;
                v.err  := err;
-               if    ( mIb.lst = '1' ) then
+               if    ( mIbLoc.lst = '1' ) then
                   v.state := REPLY;
                elsif ( err     = '1' ) then
                   v.state := DRAIN;
@@ -165,36 +218,52 @@ begin
             end if;
 
          when RD8   =>
-            vld     <= rOb; 
-            mOb.dat <= rdat; -- needs rework if DATA_W_G /= 8
-            mOb.vld <= rdy and not err;
-            if ( (rOb and rdy) = '1' ) then
+            -- accept data if 'rdat' is vacant
+            vld        <= not r.rvld;
+            mObLoc.dat <= r.rdat; -- needs rework if DATA_W_G /= 8
+            mObLoc.vld <= r.rvld;
+            -- if an error occurred then this is also the last/status cycle
+            mObLoc.lst <= r.err;
+            if ( ( not r.rvld and rdy ) = '1' ) then
+               -- read cycle
+               v.rvld := '1';
+               if ( err = '1' ) then
+                  -- status
+                  v.rdat := (others => '1');
+               else
+                  v.rdat := rdat;
+               end if;
+               v.err  := err;
+            end if;
+            if ( (r.rvld and rObLoc) = '1' ) then
                v.addr  := r.addr  + 1;
                v.count := r.count - 1;
-               v.err   := err;
-               if ( (err or v.count(v.count'left)) = '1' ) then
+               v.rvld  := '0';
+               if ( r.err = '1' ) then
+                  v.state := IDLE;
+               elsif ( v.count(v.count'left) = '1' ) then
                   v.state := STA;
                end if;
             end if;
 
          when STA   =>
-            mOb.dat <= (others => r.err);
-            mOb.vld <= '1';
-            mOb.lst <= '1';
-            if ( rOb = '1' ) then
+            mObLoc.dat <= (others => r.err);
+            mObLoc.vld <= '1';
+            mObLoc.lst <= '1';
+            if ( rObLoc = '1' ) then
                v.state := IDLE;
             end if;
 
          when DRAIN =>
-            rIb <= '1';
-            if ( (mIb.vld and mIb.lst) = '1' ) then
+            rIbLoc <= '1';
+            if ( (mIbLoc.vld and mIbLoc.lst) = '1' ) then
                v.state := REPLY;
             end if;
 
          when REPLY =>
-            mOb.vld <= '1';
+            mObLoc.vld <= '1';
             -- reply (CMD echo)
-            if ( rOb = '1' ) then
+            if ( rObLoc = '1' ) then
                if ( r.count(r.count'left) = '0' ) then
                   -- successfully latched a count; this must be a read op
                   v.state := RD8;
@@ -210,7 +279,7 @@ begin
    P_SEQ : process ( clk ) is
    begin
       if ( rising_edge( clk ) ) then
-         if ( rst = '1' ) then
+         if ( rstLoc = '1' ) then
             r <= REG_INIT_C;
          else
             r <= rin;
@@ -219,6 +288,6 @@ begin
    end process P_SEQ;
 
    addr <= r.addr;
-   wdat <= mIb.dat; -- needs rework if DATA_W_G /= 8
+   wdat <= mIbLoc.dat; -- needs rework if DATA_W_G /= 8
 
 end architecture rtl;
