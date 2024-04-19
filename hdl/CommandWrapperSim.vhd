@@ -180,7 +180,8 @@ begin
          RAM_BITS_G          => RAM_BITS_C,
          MEM_DEPTH_G         => MEM_DEPTH_C,
          SDRAM_ADDR_WIDTH_G  => RAM_A_WIDTH_C,
-         HAVE_SPI_CMD_G      => true
+         HAVE_SPI_CMD_G      => true,
+         REG_ASYNC_G         => true
       )
       port map (
          clk          => clk,
@@ -201,6 +202,7 @@ begin
          bbi          => bbi,
          subCmdBB     => subCmdBB,
 
+         regClk       => clk,
          regRDat      => regRDat,
          regWDat      => regWDat,
          regAddr      => regAddr,

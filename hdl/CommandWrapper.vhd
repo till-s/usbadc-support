@@ -37,7 +37,9 @@ entity CommandWrapper is
       -- dedicated SPI interface for faster flash operations;
       HAVE_SPI_CMD_G           : boolean := true;
       HAVE_BB_CMD_G            : boolean := true;
-      HAVE_REG_CMD_G           : boolean := true
+      HAVE_REG_CMD_G           : boolean := true;
+      -- registers are in other, asynchronous clock domain
+      REG_ASYNC_G              : boolean := false
    );
    port (
       clk          : in  std_logic;
@@ -62,6 +64,7 @@ entity CommandWrapper is
       err          : out std_logic_vector(1 downto 0);
 
       -- register interface
+      regClk       : in  std_logic := '0'; -- only used if REG_ASYNC_G
       regRDat      : in  std_logic_vector(7 downto 0) := (others => '0');
       regWDat      : out std_logic_vector(7 downto 0) := (others => '0');
       regAddr      : out unsigned(7 downto 0)         := (others => '0');
@@ -373,6 +376,9 @@ begin
 
    G_REGS : if ( CMDS_SUPPORTED_C( CMD_REG_IDX_C ) ) generate
       U_REG : entity work.CommandReg
+         generic map (
+            ASYNC_G      => REG_ASYNC_G
+         )
          port map (
             clk          => clk,
             rst          => rst,
@@ -383,6 +389,7 @@ begin
             mOb          => bussesOb(CMD_REG_IDX_C),
             rOb          => readysOb(CMD_REG_IDX_C),
 
+            regClk       => regClk,
             rdat         => regRDat,
             wdat         => regWDat,
             addr         => regAddr,

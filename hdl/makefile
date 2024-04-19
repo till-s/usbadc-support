@@ -139,7 +139,9 @@ PipelinedRShifterTb.o: PipelinedRShifter.o
 CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
 SpiFlashSim.o: SpiReg.o
 CommandWrapperSim.o: SpiReg.o SpiChecker.o
-ComandReg.o: CommandMuxPkg.o BasicPkg.o
+CommandReg.o: CommandMuxPkg.o BasicPkg.o SimpleBusAsync.o
+
+SimpleBusAsync.o: SynchronizerBit.o
 
 SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
