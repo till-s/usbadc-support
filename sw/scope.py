@@ -400,7 +400,7 @@ class Scope(QtCore.QObject):
         self._fw.ledSet( 'Term{}'.format( self._channelNames[ch] ), val )
       if ( tryAddTgl( elms, i, ["50Ohm", "1MOhm" ], self._fw.fecGetTermination, setTerm ) ):
         self._fw.ledSet( 'Term{}'.format( self._channelNames[i] ), elms[-1].isChecked() )
-      tryAddTgl( elms, i, ["AC",    "DC"    ], self._fw.fecGetACMode, self._fw.fecSetACMode )
+      tryAddTgl( elms, i, ["DC",    "AC"    ], self._fw.fecGetACMode, self._fw.fecSetACMode )
       tryAddTgl( elms, i, ["-20dB", "0dB"   ], self._fw.fecGetAttenuator, self._fw.fecSetAttenuator )
       if len(elms) > 0:
         elms.insert(0, QtWidgets.QLabel("{}:".format(self._channelNames[i])))
