@@ -61,7 +61,7 @@ end entity MaxADC;
 architecture rtl of MaxADC is
    attribute KEEP           : string;
    attribute DONT_TOUCH     : string;
-   attribute SYN_PRESERVE   : boolean; -- efinity for 'keep'
+   attribute SYN_KEEP       : boolean; -- efinity for 'keep'; seems stronger than syn_preserve
    attribute MARK_DEBUG     : string;
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G);
@@ -228,7 +228,7 @@ architecture rtl of MaxADC is
 
    -- helps writing constraints
    attribute KEEP         of rWrCC   : signal is "TRUE";
-   attribute SYN_PRESERVE of rWrCC   : signal is true;
+   attribute SYN_KEEP     of rWrCC   : signal is true;
 
    signal memClk    : std_logic;
    signal filClk    : std_logic;
@@ -792,7 +792,7 @@ begin
 
       signal   cenCic1              : std_logic;
       attribute KEEP         of cenCic1 : signal is "TRUE";
-      attribute SYN_PRESERVE of cenCic1 : signal is true;
+      attribute SYN_KEEP     of cenCic1 : signal is true;
 
       -- one extra bit because of sign
       signal   stg0Scl              : Stg0ScaleType;
@@ -1194,7 +1194,7 @@ begin
    G_NO_DECIMATORS : if ( DISABLE_DECIMATORS_G ) generate
      signal cenCic1 : std_logic := '1';
      attribute KEEP         of cenCic1 : signal is "TRUE";
-     attribute SYN_PRESERVE of cenCic1 : signal is true;
+     attribute SYN_KEEP     of cenCic1 : signal is true;
 
      function ladj(constant x :ADCWord) return RamWord is
         variable v : RamWord;

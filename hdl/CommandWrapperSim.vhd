@@ -3,6 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 
+use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.SDRAMPkg.all;
 
@@ -17,6 +18,8 @@ architecture sim of CommandWrapperSim is
    constant RAM_A_WIDTH_C : natural := 12; -- >= log2(MEM_DEPTH_C)
    constant MEM_DEPTH_C   : natural := 2048;
    constant ADC_FIRST_C   : unsigned(ADC_W_C - 1 downto 0)  := (others => '1');
+   constant USE_GEN_C     : boolean := true;
+   constant NUM_REGS_C    : natural := 6;
 
    constant BB_SPI_CSb_C  : natural := 0;
    constant BB_SPI_SCK_C  : natural := 1;
@@ -24,9 +27,19 @@ architecture sim of CommandWrapperSim is
    constant BB_SPI_MSI_C  : natural := 3;
    constant BB_SPI_T_C    : natural := 6;
 
+   function toSlv(constant a : in Slv8Array)
+   return std_logic_vector is
+      variable v : std_logic_vector(8*a'length - 1 downto 0);
+   begin
+      for i in a'low to a'high loop
+         v(8*(i - a'low) + 7 downto 8*(i - a'low)) := a(i);
+      end loop;
+      return v;
+   end function toSlv;
 
    signal clk     : std_logic := '0';
    signal adcClk  : std_logic := '0';
+   signal regClk  : std_logic := '0';
    signal ramClk  : std_logic := '0';
    signal rst     : std_logic_vector(4 downto 0) := (others => '1');
 
@@ -50,6 +63,12 @@ architecture sim of CommandWrapperSim is
    signal adcB    : unsigned(ADC_W_C-1 downto 0) := ADC_FIRST_C;
    signal dorA    : std_logic                    := '0';
    signal dorB    : std_logic                    := '0';
+
+   signal adcCos  : signed(34 downto 0);
+   signal adcSin  : signed(34 downto 0);
+   signal adcCoef : signed(17 downto 0);
+   signal adcCini : signed(17 downto 0);
+   signal adcLoad : std_logic := '0';
 
    signal spirReg : std_logic_vector(7 downto 0) := (others => '0');
    signal spirWen : std_logic;
@@ -106,6 +125,7 @@ architecture sim of CommandWrapperSim is
       );
    end component RamEmul;
 
+   signal regs : Slv8Array(0 to NUM_REGS_C - 1) := (others => (others => '0'));
 
 begin
 
@@ -202,7 +222,7 @@ begin
          bbi          => bbi,
          subCmdBB     => subCmdBB,
 
-         regClk       => clk,
+         regClk       => regClk,
          regRDat      => regRDat,
          regWDat      => regWDat,
          regAddr      => regAddr,
@@ -238,6 +258,29 @@ begin
       end if;
    end process P_RST;
 
+   regClk <= adcClk;
+
+   G_GEN : if ( USE_GEN_C ) generate
+
+   U_SIN_COS : entity work.SinCosGen
+      port map (
+         clk      => adcClk,
+         load     => adcLoad,
+         coeff    => adcCoef,
+         cini     => adcCini,
+         cos      => adcCos,
+         sin      => adcSin
+      );
+
+   adcCoef <= resize( signed( toSlv( regs(0 to 2) ) ), adcCoef'length );
+   adcCini <= resize( signed( toSlv( regs(3 to 5) ) ), adcCini'length  );
+   adcA    <= unsigned( adcCos(adcCos'left downto adcCos'left - ADC_W_C + 1 ) );
+   adcB    <= unsigned( adcSin(adcSin'left downto adcSin'left - ADC_W_C + 1 ) );
+
+   end generate G_GEN;
+
+   G_FILL : if ( not USE_GEN_C ) generate
+
    P_FILL_A : process ( adcClk ) is
    begin
       if ( rising_edge( adcClk ) ) then
@@ -261,6 +304,8 @@ begin
          end if;
       end if;
    end process P_FILL_B;
+
+   end generate G_FILL;
 
 --   P_BBMON : process (bbo) is
 --   begin
@@ -333,16 +378,9 @@ begin
          viol   => open
       );
 
-   P_REG  : process ( clk, regAddr, regVld, regRdnw ) is
-      variable r0 : std_logic_vector(7 downto 0) := (others => 'X');
-      variable r1 : std_logic_vector(7 downto 0) := (others => 'X');
-      variable r2 : std_logic_vector(7 downto 0) := (others => 'X');
-
-      variable dly: unsigned(2 downto 0)         := to_unsigned(2, 3);
-      variable rdy: std_logic;
+   P_REG_RD : process ( regAddr, regRdnw, regs ) is
    begin
-      rdy    := '1';
-      regErr <= '0';
+      regErr  <= '0';
       case ( to_integer( regAddr ) ) is
          when 4 | 24  =>
             regRDat <= x"14";
@@ -355,28 +393,54 @@ begin
             regErr  <= not regRdnw;
 
          when 10 | 30 =>
-            regRDat <= r0;
+            regRDat <= regs(0);
          when 11 | 31 =>
-            regRDat <= r1;
+            regRDat <= regs(1);
          when 12 | 32 =>
-            regRDat <= r2;
+            regRDat <= regs(2);
+         when 13 | 34 =>
+            regRDat <= regs(3);
+         when 14 | 35 =>
+            regRDat <= regs(4);
+         when 15 | 36 =>
+            regRDat <= regs(5);
          when others =>
             regRDat <= (others => 'X');
             regErr  <= '1';
       end case;
+   end process P_REG_RD;
+
+   P_REG  : process ( regClk ) is
+      variable dly: unsigned(2 downto 0)         := to_unsigned(2, 3);
+      variable rdy: std_logic;
+   begin
+      rdy     := '1';
       if ( to_integer( regAddr ) > 20 ) then
          rdy := dly(dly'left);
       end if;
-      if ( rising_edge( clk ) ) then
+      if ( rising_edge( regClk ) ) then
+         adcLoad <= '0';
          if ( regVld = '1' ) then
             if ( rdy = '1' ) then
                if ( regRdnw = '0' ) then
                   if    ( regAddr = 10 or regAddr = 30 ) then
-                     r0 := regWDat;
+                     adcLoad <= '1';
+                     regs(0) <= regWDat;
                   elsif ( regAddr = 11 or regAddr = 31 ) then
-                     r1 := regWDat;
+                     adcLoad <= '1';
+                     regs(1) <= regWDat;
                   elsif ( regAddr = 12 or regAddr = 32 ) then
-                     r2 := regWDat;
+                     adcLoad <= '1';
+                     regs(2) <= regWDat;
+                  elsif ( regAddr = 13 or regAddr = 33 ) then
+                     adcLoad <= '1';
+                     regs(3) <= regWDat;
+                  elsif ( regAddr = 14 or regAddr = 34 ) then
+                     adcLoad <= '1';
+                     regs(4) <= regWDat;
+                  elsif ( regAddr = 15 or regAddr = 35 ) then
+                     adcLoad <= '1';
+                     regs(5) <= regWDat;
                   end if;
                end if;
                dly := to_unsigned(2, dly'length);

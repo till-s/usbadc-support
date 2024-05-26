@@ -276,9 +276,9 @@ begin
       rin        <= v;
    end process P_COMB;
 
-   P_SEQ : process ( clk ) is
+   P_SEQ : process ( regClkLoc ) is
    begin
-      if ( rising_edge( clk ) ) then
+      if ( rising_edge( regClkLoc ) ) then
          if ( rstLoc = '1' ) then
             r <= REG_INIT_C;
          else

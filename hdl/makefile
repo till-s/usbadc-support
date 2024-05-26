@@ -37,6 +37,7 @@ OBJS+=SampleBufferSDRAM.o
 OBJS+=SDRAMPkg.o
 OBJS+=GenericFifoAsync.o
 OBJS+=SimpleBusAsync.o
+OBJS+=SinCosGen.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
 # Elaboration target

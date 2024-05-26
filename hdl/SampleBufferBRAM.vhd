@@ -39,7 +39,7 @@ architecture BRAM of SampleBufferBRAM is
 
    attribute ASYNC_REG      : string;
    attribute KEEP           : string;
-   attribute SYN_PRESERVE   : boolean;
+   attribute SYN_KEEP       : boolean;
 
    constant MEM_DEPTH_C     : natural := ite( MEM_DEPTH_G = 0, 2**A_WIDTH_G, MEM_DEPTH_G );
 
@@ -90,10 +90,10 @@ architecture BRAM of SampleBufferBRAM is
    -- these signals (-> false path)
    signal waddrCC           : RamAddr := (others => '0');
    attribute KEEP           of waddrCC : signal is "TRUE";
-   attribute SYN_PRESERVE   of waddrCC : signal is true;
+   attribute SYN_KEEP       of waddrCC : signal is true;
    signal nsmplCC           : RamAddr := (others => '0');
    attribute KEEP           of nsmplCC : signal is "TRUE";
-   attribute SYN_PRESERVE   of nsmplCC : signal is true;
+   attribute SYN_KEEP       of nsmplCC : signal is true;
 
    signal DPRAMD            : RamArray;
    signal rdata             : RamWord;

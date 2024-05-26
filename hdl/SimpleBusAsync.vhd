@@ -22,7 +22,8 @@ entity SimpleBusAsync is
 end entity SimpleBusAsync;
 
 architecture rtl of SimpleBusAsync is
-   attribute KEEP   : string;
+   attribute KEEP         : string;
+   attribute SYN_KEEP     : boolean;
 
    type RegIbType is record
       tgl       : std_logic;
@@ -55,7 +56,8 @@ architecture rtl of SimpleBusAsync is
    signal rstS2M   : std_logic;
 
    signal busCC    : SimpleBusMstType := SIMPLE_BUS_MST_INIT_C;
-   attribute KEEP  of busCC : signal is "TRUE";
+   attribute KEEP         of busCC : signal is "TRUE";
+   attribute SYN_KEEP     of busCC : signal is true;
 
    signal rdyIbLoc : std_logic;
    signal vldObLoc : std_logic;
