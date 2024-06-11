@@ -201,6 +201,7 @@ begin
          MEM_DEPTH_G         => MEM_DEPTH_C,
          SDRAM_ADDR_WIDTH_G  => RAM_A_WIDTH_C,
          HAVE_SPI_CMD_G      => true,
+         GIT_VERSION_G       => x"deadbeef",
          REG_ASYNC_G         => true
       )
       port map (

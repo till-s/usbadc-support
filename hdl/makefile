@@ -28,6 +28,7 @@ OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
 OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
 OBJS+=CicFilter.o CommandAcqParm.o BasicPkg.o PipelinedRShifter.o
 OBJS+=MulShifter.o SpiReg.o
+OBJS+=CommandVersion.o
 OBJS+=CommandSpi.o SpiBitShifter.o
 OBJS+=SpiFlashSim.o SpiChecker.o
 OBJS+=Flicker.o
@@ -86,6 +87,8 @@ ByteDeStuffer.o: ByteDeStuffer.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandMux.o: CommandMux.vhd ILAWrapperPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
+CommandVersion.o: CommandVersion.vhd CommandMuxPkg.o BasicPkg.o
+	$(GHDL) -a $(GHDLFLAGS) $<
 SynchronizerBit.o: SynchronizerBit.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 BitBangIF.o: BitBangIF.vhd
@@ -96,7 +99,7 @@ SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
-CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o
+CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o CommandVersion.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
