@@ -112,7 +112,8 @@ begin
          ADC_BITS_G     => ADC_W_C,
          RAM_BITS_G     => RAM_BITS_C,
          MEM_DEPTH_G    => MEM_DEPTH_C,
-         HAVE_SPI_CMD_G => true
+         HAVE_SPI_CMD_G => true,
+         GIT_VERSION_G  => x"deadbeef"
       )
       port map (
          clk          => clk,
