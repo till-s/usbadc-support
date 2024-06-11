@@ -38,6 +38,7 @@ entity CommandWrapper is
       HAVE_SPI_CMD_G           : boolean := true;
       HAVE_BB_CMD_G            : boolean := true;
       HAVE_REG_CMD_G           : boolean := true;
+      HAVE_ADC_CMD_G           : boolean := true;
       -- registers are in other, asynchronous clock domain
       REG_ASYNC_G              : boolean := false
    );
@@ -79,11 +80,11 @@ entity CommandWrapper is
       spiCSb       : out std_logic;
       spiMISO      : in  std_logic := '0';
 
-      adcClk       : in  std_logic;
+      adcClk       : in  std_logic := '0';
       adcRst       : in  std_logic := '0';
       -- bit 0 is the DOR (overrange) bit
-      adcDataA     : in  std_logic_vector(ADC_BITS_G downto 0);
-      adcDataB     : in  std_logic_vector(ADC_BITS_G downto 0);
+      adcDataA     : in  std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
+      adcDataB     : in  std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
 
       extTrg       : in  std_logic := '0';
 
@@ -106,8 +107,8 @@ architecture rtl of CommandWrapper is
    constant CMDS_SUPPORTED_C  : CmdsSupportedType := (
       CMD_VER_IDX_C           => true,
       CMD_BB_IDX_C            => HAVE_BB_CMD_G,
-      CMD_ADC_MEM_IDX_C       => true,
-      CMD_ACQ_PRM_IDX_C       => true,
+      CMD_ADC_MEM_IDX_C       => HAVE_ADC_CMD_G,
+      CMD_ACQ_PRM_IDX_C       => HAVE_ADC_CMD_G,
       CMD_SPI_IDX_C           => HAVE_SPI_CMD_G,
       CMD_REG_IDX_C           => HAVE_REG_CMD_G
    );
