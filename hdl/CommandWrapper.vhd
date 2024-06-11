@@ -73,16 +73,6 @@ architecture rtl of CommandWrapper is
    signal   acqParmsTgl       : std_logic      := '0';
    signal   acqParmsAck       : std_logic;
 
-   constant VERSION_C : Slv8Array := (
-      0 => GIT_VERSION_C(31 downto 24),
-      1 => GIT_VERSION_C(23 downto 16),
-      2 => GIT_VERSION_C(15 downto  8),
-      3 => GIT_VERSION_C( 7 downto  0)
-   );
-
-   signal verAddr     : integer range -1 to VERSION_C'high := -1;
-   signal verAddrIn   : integer range -1 to VERSION_C'high;
-
 begin
 
 
@@ -148,50 +138,21 @@ begin
          rdyMuxedOb   => readysOb
       );
 
-   P_VERSION_COMB : process ( bussesIb(CMD_VER_IDX_C), readysOb(CMD_VER_IDX_C), verAddr ) is
-      variable v : SimpleBusMstType;
-   begin
-      v         := bussesIb(CMD_VER_IDX_C);
-      v.lst     := '0';
-      verAddrIn <= verAddr;
-      if ( verAddr < 0 ) then
-         readysIb(CMD_VER_IDX_C) <= readysOb(CMD_VER_IDX_C);
-         bussesOb(CMD_VER_IDX_C) <= v;
-      else
-         readysIb(CMD_VER_IDX_C)        <= '1';
-         bussesOb(CMD_VER_IDX_C).dat    <= VERSION_C( verAddr );
-         bussesOb(CMD_VER_IDX_C).vld    <= '1';
-         if ( verAddr = VERSION_C'high ) then
-            bussesOb(CMD_VER_IDX_C).lst <= '1';
-         else
-            bussesOb(CMD_VER_IDX_C).lst <= '0';
-         end if;
-      end if;
-      if ( verAddr < 0 ) then
-         if ( ( v.vld and readysOb(CMD_VER_IDX_C) ) = '1' ) then
-            verAddrIn <= 0;
-         end if;
-      else
-         if ( readysOb(CMD_VER_IDX_C) = '1' ) then
-            if ( verAddr = VERSION_C'high ) then
-               verAddrIn <= -1;
-            else
-               verAddrIn <= verAddr + 1;
-            end if;
-         end if;
-      end if;
-   end process P_VERSION_COMB;
+   U_VERSION : entity work.CommandVersion
+      generic map (
+         BOARD_VERSION_G => BOARD_VERSION_G,
+         GIT_VERSION_G   => GIT_VERSION_G
+      )
+      port map (
+         clk          => clk,
+         rst          => rst,
 
-   P_VERSION_SEQ : process ( clk ) is
-   begin
-      if ( rising_edge( clk ) ) then
-         if ( rst = '1' ) then
-            verAddr <= -1;
-         else
-            verAddr <= verAddrIn;
-         end if;
-      end if;
-   end process P_VERSION_SEQ;
+         mIb          => bussesIb(CMD_VER_IDX_C),
+         rIb          => readysIb(CMD_VER_IDX_C),
+
+         mOb          => bussesOb(CMD_VER_IDX_C),
+         rOb          => readysOb(CMD_VER_IDX_C)
+      );
 
     G_BITBANG : if ( NUM_CMDS_C > CMD_BB_IDX_C ) generate
 
