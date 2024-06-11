@@ -82,6 +82,7 @@ architecture rtl of MaxADC is
    subtype  RamAddr         is unsigned( NUM_ADDR_BITS_C - 1 downto 0);
 
    subtype  RamWord         is std_logic_vector(RAM_BITS_G - 1 downto 0);
+   type     RamArray        is array (natural range <>) of RamWord;
 
    subtype  ADCWord         is std_logic_vector(ADC_BITS_G - 1 downto 0);
 
@@ -242,20 +243,52 @@ architecture rtl of MaxADC is
    signal fdorA     : std_logic;
    signal fdorB     : std_logic;
 
-   -- data into RAM
+   type   SmplType is record
+      wdatA     : RamWord;
+      wdatB     : RamWord;
+      wdorA     : std_logic;
+      wdorB     : std_logic;
+   end record SmplType;
+
+   constant SMPL_INIT_C : SmplType := (
+      wdatA     => (others => '0'),
+      wdatB     => (others => '0'),
+      wdorA     => '0',
+      wdorB     => '0'
+   );
+
+   type SmplArray is array (natural range <>) of SmplType;
+
+   type   TrgRegType is record
+      trg       : std_logic;
+      extTrg    : std_logic;
+      armed     : boolean;
+      trgSmpl   : signed(RamWord'range);
+      smplDly   : SmplArray(1 downto 0);
+   end record TrgRegType;
+
+   constant TRG_REG_INIT_C : TrgRegType := (
+      trg       => '0',
+      extTrg    => '0',
+      armed     => false,
+      trgSmpl   => (others => '0'),
+      smplDly   => (others => SMPL_INIT_C)
+   );
+
+   signal rTrg      : TrgRegType := TRG_REG_INIT_C;
+   signal rinTrg    : TrgRegType;
+
    signal wdatA     : RamWord;
    signal wdatB     : RamWord;
    signal wdorA     : std_logic;
    signal wdorB     : std_logic;
-   signal trg       : std_logic := '0';
-   signal armed     : boolean   := false;
+
+   -- data into RAM
    -- keep data in sync with registered trigger
    signal wdatAin   : RamWord;
    signal wdatBin   : RamWord;
    signal wdorAin   : std_logic;
    signal wdorBin   : std_logic;
-   signal trgin     : std_logic;
-   signal armin     : boolean;
 
    signal wrDon             : std_logic;
    signal wrEna             : std_logic;
@@ -466,44 +499,61 @@ begin
 
    -- compare the un-delayed wdatAin/wdatBin to produce the registered
    -- trigger 'trg'...
-   P_TRG : process ( rWr, lparms, wdatAin, wdatBin, extTrgSynDelayed, armed ) is
-      variable v      : std_logic;
+   P_TRG : process ( rWr, rTrg, lparms, wdatAin, wdatBin, wdorAin, wdorBin, extTrgSynDelayed ) is
+      variable v      : TrgRegType;
       variable l      : signed(wdatAin'range);
-      variable a      : signed(wdatAin'range);
-      variable x      : signed(wdatAin'range);
+      variable s      : SmplType;
    begin
-      armin <= armed;
+      v := rTrg;
+
       l := lparms.lvl(lparms.lvl'left downto lparms.lvl'left - wdatAin'length + 1);
 
       if ( lparms.src = CHB ) then
-         x := signed(wdatBin);
+         v.trgSmpl := signed(wdatBin);
       else
-         x := signed(wdatAin);
+         v.trgSmpl := signed(wdatAin);
       end if;
 
-      if ( ( x < rWr.armLvl ) = lparms.rising ) then
-         armin <= true;
+      if ( ( rTrg.trgSmpl < rWr.armLvl ) = lparms.rising ) then
+         v.armed := true;
       end if;
 
-      v := '0';
+      -- trg is computed from rTrg.trgSmpl (1 cycle delay); delay
+      -- external trigger by the same amount
+      v.extTrg := extTrgSynDelayed xnor toSl( lparms.rising );
+
+      -- delay data by the same amount it takes to compute the trigger
+      s           := SMPL_INIT_C;
+      s.wdatA     := wdatAin;
+      s.wdatB     := wdatBin;
+      s.wdorA     := wdorAin;
+      s.wdorB     := wdorBin;
+
+      v.smplDly   := s & rTrg.smplDly(rTrg.smplDly'left downto 1);
+
       case ( lparms.src ) is
          when CHA | CHB =>
-            if ( ( ( x >= l ) = lparms.rising ) and armed ) then
-               v := '1';
+            if ( ( ( rTrg.trgSmpl >= l ) = lparms.rising ) and rTrg.armed ) then
+               v.trg := '1';
                -- if this happens in the FILL stage then
                -- the trigger is ignored and we must reset 'armed'
                if ( rWr.state = FILL ) then
-                  v     := '0';
-                  armin <= false;
+                  v.trg   := '0';
+                  v.armed := false;
                end if;
             end if;
          when EXT =>
-            v := extTrgSynDelayed xnor toSl( lparms.rising );
+            v.trg := rTrg.extTrg;
          when others => -- manual
             -- handle separately
       end case;
 
-      trgin <= v;
+      wdatA  <= rTrg.smplDly(0).wdatA;
+      wdatB  <= rTrg.smplDly(0).wdatB;
+      wdorA  <= rTrg.smplDly(0).wdorA;
+      wdorB  <= rTrg.smplDly(0).wdorB;
+
+      rinTrg <= v;
    end process P_TRG;
 
    GEN_TRG_ILA : if ( false ) generate
@@ -514,11 +564,11 @@ begin
             trg0 => wdatAin(wdatAin'left downto wdatAin'left - 7),
             trg1 => std_logic_vector( lparms.lvl(lparms.lvl'left downto lparms.lvl'left - 7) ),
             trg2 => std_logic_vector( rWr.armLvl( rWr.armLvl'left downto rWr.armLvl'left - 7) ),
-            trg3(0) => trgin,
-            trg3(1) => toSl( armin ),
+            trg3(0) => rinTrg.trg,
+            trg3(1) => toSl( rinTrg.armed ),
             trg3(2) => acqTglIb,
-            trg3(3) => toSl( armed ),
-            trg3(4) => trg,
+            trg3(3) => toSl( rTrg.armed ),
+            trg3(4) => rTrg.trg,
             trg3(5) => toSl( lparms.rising ),
             trg3(6) => acqTglOb,
             trg3(7) => '0'
@@ -549,7 +599,7 @@ begin
       end if;
    end process P_TICK;
 
-   P_WR_COMB : process ( rWr, lparms, trg, rdTgl, wrFul, wdatA, wdorA, wdatB, wdorB, msTimerExpired ) is
+   P_WR_COMB : process ( rWr, lparms, rTrg, rdTgl, wrFul, wdatA, wdorA, wdatB, wdorB, msTimerExpired ) is
       variable v : WrRegType;
       variable a : signed( lparms.lvl'length downto 0 );
       variable s : std_logic;
@@ -575,7 +625,7 @@ begin
       v.armLvl := a( a'left - 1 downto a'left - 1 - v.armLvl'length + 1 );
 
       if ( rWr.state = FILL or rWr.state = RUN ) then
-         v.lstTrg  := trg;
+         v.lstTrg  := rTrg.trg;
          v.nsmpls  := rWr.nsmpls + 1;
          -- remember overrange 'seen' during the last MEM_DEPTH_G samples
          if ( wdorA = '1' ) then
@@ -607,7 +657,7 @@ begin
             end if;
 
          when RUN        =>
-            if ( not rWr.wasTrg and ( ( ( not rWr.lstTrg and trg ) = '1' ) or msTimerExpired ) ) then
+            if ( not rWr.wasTrg and ( ( ( not rWr.lstTrg and rTrg.trg ) = '1' ) or msTimerExpired ) ) then
                v.wasTrg := true;
             end if;
             if ( v.wasTrg ) then
@@ -697,17 +747,12 @@ begin
             rWr.decmIs1 <= (parms.decm0 = 0);
          elsif ( ( wrDecm = '1' ) and ( rWr.state /= INIT ) ) then
             rWr         <= rinWr;
-           -- register trigger and delay data to remain in-sync
-            armed       <= armin;
-            trg         <= trgin;
-            wdatA       <= wdatAin;
-            wdatB       <= wdatBin;
-            wdorA       <= wdorAin;
-            wdorB       <= wdorBin;
+            rTrg        <= rinTrg;
          end if;
          if ( ( rWr.state = HOLD ) or ( acqTglOb /= acqTglIb ) ) then
-            armed       <= false;
-            trg         <= '0';
+            rTrg.armed  <= false;
+            rTrg.trg    <= '0';
+            rTrg.extTrg <= '0';
          end if;
       end if;
    end process P_WR_SEQ;
