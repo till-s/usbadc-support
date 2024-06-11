@@ -141,7 +141,7 @@ begin
    U_VERSION : entity work.CommandVersion
       generic map (
          BOARD_VERSION_G => BOARD_VERSION_G,
-         GIT_VERSION_G   => GIT_VERSION_G
+         GIT_VERSION_G   => GIT_VERSION_C
       )
       port map (
          clk          => clk,
