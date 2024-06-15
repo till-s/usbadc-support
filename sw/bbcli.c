@@ -32,7 +32,7 @@ static void usage(const char *nm)
 	printf("   -a address         : start-address for SPI flash operations [0x%x].\n", FLASHADDR_DFLT);
 	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
 	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
-	printf("   -d usb-device      : usb-device [/dev/ttyUSB0]; you may also set the BBCLI_DEVICE env-var.\n");
+	printf("   -d usb-device      : usb-device [/dev/ttyACM0]; you may also set the BBCLI_DEVICE env-var.\n");
 	printf("   -h                 : this message.\n");
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
@@ -359,7 +359,7 @@ const char        *trgOp     = 0;
 const char        *regOp     = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
-		devn = "/dev/ttyUSB0";
+		devn = "/dev/ttyACM0";
 	}
 
 	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:PpR:S:T:Vv!?")) > 0 ) {

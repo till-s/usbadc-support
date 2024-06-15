@@ -49,6 +49,8 @@ int
 bb_i2c_start(FWInfo *fw, int restart);
 
 #define FW_FEATURE_SPI_CONTROLLER (1ULL<<0)
+#define FW_FEATURE_ADC            (1ULL<<1)
+
 uint64_t
 fw_get_features(FWInfo *fw);
 

@@ -87,6 +87,7 @@ static int
 __bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval);
 
 #define BUF_SIZE_FAILED ((long)-1L)
+#define BUF_SIZE_NOTSUP ((long) 0L)
 static long
 __buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg);
 
@@ -214,8 +215,16 @@ int     st;
 	rv->debug    = 0;
 	rv->ownFd    = 0;
 	rv->features = 0;
-	if ( BUF_SIZE_FAILED == __buf_get_size( rv, &rv->memSize, &rv->memFlags ) ) {
-		fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
+	switch ( __buf_get_size( rv, &rv->memSize, &rv->memFlags ) ) {
+		case BUF_SIZE_FAILED:
+			fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
+			break;
+		case BUF_SIZE_NOTSUP:
+			break;
+		default:
+			rv->features |= FW_FEATURE_ADC;
+			break;
+
 	}
 
 	if ( ( vers = __fw_get_version( rv ) ) == (int64_t) -1 ) {
@@ -235,8 +244,10 @@ int     st;
 
 	/* abiVers etc. valid after this point */
 
-	if ( (st = acq_set_params( rv, NULL, &rv->acqParams )) ) {
-		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
+	if ( ( rv->features & FW_FEATURE_ADC ) ) {
+		if ( (st = acq_set_params( rv, NULL, &rv->acqParams )) ) {
+			fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
+		}
 	}
 
 	return rv;
@@ -722,11 +733,21 @@ uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
 			*psz = 512UL * ((unsigned long)((buf[1]<<8) | buf[0]) + 1);
 			ret  = 0;
 			break;
-		case -2:
+		case FW_CMD_ERR:
+			fprintf(stderr, "Error: buf_get_size() -- unspecified error occurred\n");
+			break;
+		case FW_CMD_ERR_NOTSUP:
+			*psz = 0UL;
+			ret  = BUF_SIZE_NOTSUP;
+			break;
+		case FW_CMD_ERR_TIMEOUT:
 			fprintf(stderr, "Error: buf_get_size() -- timeout; command unsupported?\n");
 			break;
+		case FW_CMD_ERR_INVALID:
+			fprintf(stderr, "Error: buf_get_size() -- invalid arguments.\n");
+			break;
 		default:
-			fprintf(stderr, "Error: buf_get_size() -- unexpected frame size %ld\n", rval);
+			fprintf(stderr, "Error: buf_get_size() -- unexpected frame size/status %ld\n", rval);
 			break;
 	}
 
@@ -886,6 +907,10 @@ uint32_t  smask = set ? set->mask : ACQ_PARAM_MSK_GET;
 
 	if ( ! fw ) {
 		return FW_CMD_ERR_INVALID;
+	}
+
+	if ( ! (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
+		return FW_CMD_ERR_NOTSUP;
 	}
 
 	if ( ! set || (ACQ_PARAM_MSK_GET == smask) ) {
@@ -1134,7 +1159,7 @@ acq_set_nsamples(FWInfo *fw, uint32_t nsamples)
 {
 AcqParams p;
 
-	if ( fw->apiVers < FW_API_VERSION_2 ) {
+	if ( (fw->apiVers < FW_API_VERSION_2) || ! (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
 		if ( nsamples == fw->memSize ) {
 			return 0;
 		}
