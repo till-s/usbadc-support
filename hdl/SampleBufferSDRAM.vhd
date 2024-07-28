@@ -4,6 +4,20 @@ use     ieee.numeric_std.all;
 
 use     work.SDRAMPkg.all;
 
+-- Bandwidth Calculation
+--
+-- SDRAM bandwidth reduction due to refresh:
+--    (T_preload + T_refresh) / (Refresh_period / N_rows)
+--
+--    (T_RP_G + T_RFC_G)/(T_REF_G / 2**(A_WIDTH_G)
+--
+-- Bandwidth reduction due to bank switching (addressing is organized
+-- such that accessing different rows within the same bank never happens
+-- if addresses are issued *sequentially*):
+--   (T_RCD + 1 cycle) / (N_columns)
+--
+--   (T_RCD_T * CLK_FREQ_G + 1)/(2**C_WIDTH_G)
+
 entity SampleBufferSDRAM is
    generic (
       -- SDRAM address width
