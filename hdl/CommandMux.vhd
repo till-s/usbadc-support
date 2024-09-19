@@ -115,6 +115,7 @@ begin
       end loop;
 
       rdy          := '0';
+      ns           := r.state;
 
       if ( r.abrtDon = '1' ) then
          v.abrtDon := '0';
