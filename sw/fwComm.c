@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <math.h>
+#include <termios.h>
 
 #include "cmdXfer.h"
 #include "fwComm.h"
@@ -182,7 +183,12 @@ int64_t rval;
 FWInfo *
 fw_open(const char *devn, unsigned speed)
 {
-int     fd = fifoOpen( devn, speed );
+/* set speed to B0 which should deassert DTR; this
+ * allows firmwares to MUX a FIFO and a UART using
+ * DTR as the mux control signal. Unlikely that
+ * there is an actual modem...
+ */
+int     fd = fifoOpen( devn, B0 );
 FWInfo *rv;
 
 	if ( fd < 0 ) {
