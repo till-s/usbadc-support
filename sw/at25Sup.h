@@ -60,6 +60,10 @@ at25_prog(FWInfo *fw, unsigned addr, const uint8_t *data, size_t len, int check)
 int
 at25_reset(FWInfo *fw);
 
+/* Send wakeup from deep sleep */
+int
+at25_resume_updwn(FWInfo *fw);
+
 #ifdef __cplusplus
 }
 #endif
