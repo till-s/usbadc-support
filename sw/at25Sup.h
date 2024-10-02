@@ -56,6 +56,10 @@ at25_block_erase(FWInfo *fw, unsigned addr, size_t sz);
 int
 at25_prog(FWInfo *fw, unsigned addr, const uint8_t *data, size_t len, int check);
 
+/* Send soft reset sequence */
+int
+at25_reset(FWInfo *fw);
+
 #ifdef __cplusplus
 }
 #endif

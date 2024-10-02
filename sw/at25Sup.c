@@ -21,6 +21,8 @@
 #define AT25_OP_ERASE_32K  0x52
 #define AT25_OP_ERASE_64K  0xD8
 #define AT25_OP_ERASE_ALL  0x60
+#define AT25_OP_RESET_ENA  0x66
+#define AT25_OP_RESET_EXE  0x99
 
 #define AT25_ST_BUSY       0x01
 #define AT25_ST_WEL        0x02
@@ -129,6 +131,16 @@ int
 at25_write_dis(FWInfo *fw)
 {
 	return at25_cmd_1( fw, AT25_OP_WRITE_DIS );
+}
+
+int
+at25_reset(FWInfo *fw)
+{
+	int st;
+	if ( ( st = at25_cmd_1( fw, AT25_OP_RESET_ENA )) < 0 ) {
+		return st;
+	}
+	return at25_cmd_1( fw, AT25_OP_RESET_EXE );
 }
 
 int
