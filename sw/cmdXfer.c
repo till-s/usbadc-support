@@ -85,7 +85,7 @@ size_t             i;
 		goto bail;
 	}
 
-	if ( tcsetattr( fd, TCSANOW, &atts ) ) {
+	if ( tcsetattr( fd, TCSAFLUSH, &atts ) ) {
 		perror( "tcgetattr failed" );
 		goto bail;
 	}
