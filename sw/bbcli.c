@@ -54,6 +54,8 @@ static void usage(const char *nm)
 	printf("       ForceBB        : force using bit-bang, even if a SPI controller is available.\n");
 	printf("       Id             : read and print ID bytes.\n");
 	printf("       St             : read and print status.\n");
+	printf("       Reset          : reset the flash device.\n");
+	printf("       Resume         : resume from (ultra-) power down\n");
 	printf("       Rd<size>       : read and print <size> bytes [100] (starting at -a <addr>)\n");
     printf("       Wena           : enable write/erase -- needed for erasing; the programming operation does this implicitly\n");
     printf("       Wdis           : disable write/erase (programming operation still implicitly enables writing).\n");
@@ -531,6 +533,14 @@ const char        *regOp     = 0;
 
 			if ( strstr(op, "ForceBB") ) {
 				fw_disable_features( fw, FW_FEATURE_SPI_CONTROLLER );
+			} else if ( strstr(op, "Reset") ) {
+				if ( at25_reset( fw ) < 0 ) {
+					goto bail;
+				}
+			} else if ( strstr(op, "Resume") ) {
+				if ( at25_resume_updwn( fw ) < 0 ) {
+					goto bail;
+				}
 			} else if ( strstr(op, "Id") ) {
 				if ( at25_id( fw ) < 0 ) {
 					goto bail;
