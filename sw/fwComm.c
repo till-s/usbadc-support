@@ -88,7 +88,7 @@ static int
 __bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval);
 
 #define BUF_SIZE_FAILED ((long)-1L)
-#define BUF_SIZE_NOTSUP ((long) 0L)
+#define BUF_SIZE_NOTSUP ((long)-2L)
 static long
 __buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg);
 
