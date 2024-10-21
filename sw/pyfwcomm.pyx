@@ -698,12 +698,13 @@ cdef class FwComm:
       return True
 
   @staticmethod
-  cdef void * threadFunc(void *arg) nogil:
+  cdef void * threadFunc(void *arg) noexcept nogil:
     with gil:
       return (<FwComm>arg).pyThreadFunc()
 
   cdef void * pyThreadFunc(self):
     while True:
+      timeout = -1.0 # silence compiler warning
       with self._asyncEvt as c:
         while self._buf is None:
           c.wait()
@@ -1064,6 +1065,7 @@ cdef class FwComm:
     cdef uint8_t  cic0Dec
     cdef uint32_t cic1Dec
     cdef int      st
+    cic1Dec = 1 # silence compiler warning
     if ( not n1 is None ):
       if ( n0 < 1 or n0 > 16 or  n1 < 1 or n1 > 2**12 ):
         raise ValueError("acqSetDecimation(): decimation out of range")
