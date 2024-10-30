@@ -31,6 +31,9 @@ entity MaxADC is
       adcDataA    : in  std_logic_vector(ADC_BITS_G downto 0);
       adcDataB    : in  std_logic_vector(ADC_BITS_G downto 0);
 
+      extTrgOut   : out std_logic := '0';
+      extTrgOutEn : out std_logic := '0';
+
       -- SDRAM interface (if SDRAM sample buffer is used)
       sdramClk    : in  std_logic := '0';
       sdramReq    : out SDRAMReqType := SDRAM_REQ_INIT_C;
@@ -1340,5 +1343,8 @@ begin
 
    err(1) <= rWr.fifoFul;
    err(0) <= rRd.fifoEmp;
+
+   extTrgOut   <= toSl( rWr.wasTrg );
+   extTrgOutEn <= toSl( rWr.parms.trgDirOut );
 
 end architecture rtl;

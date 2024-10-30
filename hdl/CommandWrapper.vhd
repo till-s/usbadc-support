@@ -86,12 +86,16 @@ entity CommandWrapper is
       adcDataA     : in  std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
       adcDataB     : in  std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
 
+      extTrgOut    : out std_logic := '0';
+      extTrgOutEn  : out std_logic := '0';
+
+      -- synchronized into adcClk domain internally; may be asynchronous
       extTrg       : in  std_logic := '0';
 
       -- SDRAM interface (if SDRAM sample buffer is used)
-      sdramClk    : in  std_logic := '0';
-      sdramReq    : out SDRAMReqType := SDRAM_REQ_INIT_C;
-      sdramRep    : in  SDRAMRepType := SDRAM_REP_INIT_C
+      sdramClk     : in  std_logic := '0';
+      sdramReq     : out SDRAMReqType := SDRAM_REQ_INIT_C;
+      sdramRep     : in  SDRAMRepType := SDRAM_REP_INIT_C
    );
 end entity CommandWrapper;
 

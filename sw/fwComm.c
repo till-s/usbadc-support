@@ -45,6 +45,7 @@
 #define BITS_FW_CMD_ACQ_MSK_SRC  7
 #define BITS_FW_CMD_ACQ_SHF_SRC  0
 #define BITS_FW_CMD_ACQ_SHF_EDG  3
+#define BITS_FW_CMD_ACQ_SHF_TGO  4
 
 #define BITS_FW_CMD_ACQ_IDX_MSK     0
 #define BITS_FW_CMD_ACQ_LEN_MSK_V1  sizeof(uint8_t)
@@ -938,13 +939,23 @@ uint32_t  smask = set ? set->mask : ACQ_PARAM_MSK_GET;
 		fw->acqParams.src    = set->src;
 	}
 
+	if ( ( smask & ACQ_PARAM_MSK_TGO ) ) {
+		fw->acqParams.trigOutEn = set->trigOutEn;
+	}
+
+    if ( EXT == fw->acqParams.src && !! fw->acqParams.trigOutEn ) {
+printf("Forcing ext trigger output OFF\n");
+		fw->acqParams.trigOutEn = set->trigOutEn = 0;
+		smask |= ACQ_PARAM_MSK_TGO;
+	}
+
 	if ( ( smask & ACQ_PARAM_MSK_EDG ) ) {
 		fw->acqParams.rising = set->rising;
 	}
 
 	if ( ( smask & ACQ_PARAM_MSK_DCM ) ) {
         if ( 1 >= set->cic0Decimation ) {
-printf("Forcing cic1 decimation to 1");
+printf("Forcing cic1 decimation to 1\n");
 			set->cic1Decimation = 1;
         }
 printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
@@ -985,7 +996,8 @@ printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
     putBuf( &bufp, smask, len );
 
 	v8  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
-	v8 |= (set->rising ? 1 : 0)                 << BITS_FW_CMD_ACQ_SHF_EDG;
+	v8 |= (set->rising    ? 1 : 0)              << BITS_FW_CMD_ACQ_SHF_EDG;
+	v8 |= (set->trigOutEn ? 1 : 0)              << BITS_FW_CMD_ACQ_SHF_TGO;
     putBuf( &bufp, v8, BITS_FW_CMD_ACQ_LEN_SRC );
 
 	if ( ( smask & ACQ_PARAM_MSK_LVL ) ) {
@@ -1097,7 +1109,8 @@ printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
 		default: get->src = EXT; break;
 	}
 
-	get->rising  = !! ( (v8 >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
+	get->rising         = !! ( (v8 >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
+	get->trigOutEn      = !! ( (v8 >> BITS_FW_CMD_ACQ_SHF_TGO) & 1 );
 
 	get->level          = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_LVL );
 
@@ -1240,6 +1253,19 @@ AcqParams p;
 		p.mask   |= ACQ_PARAM_MSK_EDG;
 		p.rising  = rising > 0 ? 1 : 0;
 	}
+	if ( EXT == src ) {
+		p.mask     |= ACQ_PARAM_MSK_TGO;
+        p.trigOutEn = 0;
+	}
+	return acq_set_params( fw, &p, 0 );
+}
+
+int
+acq_set_trig_out_en(FWInfo *fw, int on)
+{
+AcqParams p;
+	p.mask          = ACQ_PARAM_MSK_TGO;
+	p.trigOutEn     = !!on;
 	return acq_set_params( fw, &p, 0 );
 }
 

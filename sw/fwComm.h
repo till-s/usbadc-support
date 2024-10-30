@@ -181,6 +181,7 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 #define ACQ_PARAM_MSK_SCL (1<<6) /* scale                         */
 /* number of samples requires firmware V2 */
 #define ACQ_PARAM_MSK_NSM (1<<7) /* number of samples to acquire  */
+#define ACQ_PARAM_MSK_TGO (1<<8) /* ext. trigger-output enable    */
 
 #define ACQ_LD_SCALE_ONE 30
 #define ACQ_SCALE_ONE (1L<<ACQ_LD_SCALE_ONE)
@@ -193,7 +194,12 @@ typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
 
 typedef struct AcqParams {
     uint32_t      mask;
+    /* note that when the source is switched to external then
+     * the 'trigOutEn' feature is automatically switched off
+	 * by firmware
+     */
 	TriggerSource src;
+    int           trigOutEn;
 	int           rising;
 	int16_t       level;
     uint16_t      hysteresis;
@@ -243,6 +249,12 @@ acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale);
 /* rising: 1, falling: -1, leave previous value: 0 */
 int
 acq_set_source(FWInfo *, TriggerSource src, int rising);
+
+/* Note that this feature is automatically switched off by firmware
+ * if the trigger-source is set to 'external' (uses the same wire)
+ */
+int
+acq_set_trig_out_en(FWInfo *, int on);
 
 int
 acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);

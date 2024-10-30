@@ -14,6 +14,7 @@ package AcqCtlPkg is
    type AcqCtlParmType is record
       src          : TriggerSrcType;
       rising       : boolean;
+      trgDirOut    : boolean;
       lvl          : signed  (15 downto 0);
       nprets       : unsigned(23 downto 0);
       nsamples     : unsigned(23 downto 0);
@@ -33,6 +34,7 @@ package AcqCtlPkg is
    constant ACQ_CTL_PARM_INIT_C : AcqCtlParmType := (
       src         => CHA,
       rising      => true,
+      trgDirOut   => false,
       lvl         => (others => '0'),
       nprets      => (others => '0'),
       nsamples    => (others => '0'),
@@ -64,7 +66,7 @@ package body AcqCtlPkg is
       variable v : natural := 0;
       variable x : AcqCtlParmType;
    begin
-      v := v + 1; -- src + 'rising' flag
+      v := v + 1; -- src + 'rising' + 'trgDirOut' flags (5 bits tot)
       v := v + ( x.lvl'length + 7) / 8;
       v := v + ( x.nprets'length + 7) / 8;
       v := v + ( x.nsamples'length + 7) / 8;
@@ -81,7 +83,8 @@ package body AcqCtlPkg is
    end function ite;
 
    function toSlv(constant x : in AcqCtlParmType) return std_logic_vector is
-      constant e : std_logic        := ite( x.rising );
+      constant e : std_logic        := ite( x.rising    );
+      constant d : std_logic        := ite( x.trgDirOut );
       constant v : std_logic_vector :=
              (
                 std_logic_vector( x.hyst       )
@@ -94,7 +97,7 @@ package body AcqCtlPkg is
               & std_logic_vector( x.nsamples   )
               & std_logic_vector( x.nprets     )
               & std_logic_vector( x.lvl        )
-              & x"0" & e & std_logic_vector( to_unsigned( TriggerSrcType'pos( x.src ), 3 ) ) );
+              & "000" & d & e & std_logic_vector( to_unsigned( TriggerSrcType'pos( x.src ), 3 ) ) );
       variable r : std_logic_vector(v'high downto v'low);
    begin
       r := v;
@@ -139,7 +142,8 @@ package body AcqCtlPkg is
       else
          v.src := EXT;
       end if;
-      v.rising := (x(3) = '1');
+      v.rising     := (x(3) = '1');
+      v.trgDirOut  := (x(4) = '1');
       l            := 8;
       lr( x, l, r, v.lvl        );
       lr( x, l, r, v.nprets     );

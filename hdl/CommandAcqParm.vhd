@@ -40,6 +40,7 @@ architecture rtl of CommandAcqParm is
    constant M_SET_DCM_BIT_C : natural  := 5;
    constant M_SET_SCL_BIT_C : natural  := 6;
    constant M_SET_NSM_BIT_C : natural  := 7;
+   constant M_SET_TGO_BIT_C : natural  := 8;
 
    constant CMD_LEN_C       : natural := acqCtlParmSizeBytes;
 
@@ -123,6 +124,9 @@ begin
                if ( r.mask( M_SET_SRC_BIT_C ) = '0' ) then
                   v.p.src        := r.p.src;
                end if;
+               if ( r.mask( M_SET_TGO_BIT_C ) = '0' ) then
+                  v.p.trgDirOut  := r.p.trgDirOut;
+               end if;
                if ( r.mask( M_SET_EDG_BIT_C ) = '0' ) then
                   v.p.rising     := r.p.rising;
                end if;
@@ -175,6 +179,9 @@ begin
             end if;
             if ( r.p.nprets > v.p.nsamples ) then
                v.p.nprets   := v.p.nsamples;
+            end if;
+            if ( r.p.src = EXT ) then
+               v.p.trgDirOut := false;
             end if;
 
             v.trg    := not r.trg;

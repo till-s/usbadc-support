@@ -37,7 +37,7 @@ static void usage(const char *nm)
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
 	printf("   -B                 : dump ADC buffer (raw).\n");
-    printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor').\n");
+    printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor', 'extTrgOE').\n");
     printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", ACQ_LD_SCALE_ONE);
     printf("                              and may be appended with ':hysteresis'\n");
     printf("                              (hysteresis always positive)\n");
@@ -107,7 +107,7 @@ static int
 scanl(const char *tok, const char *eq, long *vp)
 {
 	if ( 1 != sscanf( eq + 1, "%li", vp ) ) {
-		fprintf(stderr, "Error -- parseAcqParam: unable to scan value in '%s'\n", tok);
+		fprintf(stderr, "Error -- parseAcqParam: unable to scan long int value in '%s'\n", tok);
 		return -1;
 	}
 	return 0;
@@ -151,6 +151,7 @@ char *col;
 char *val;
 int   rval = -1;
 long  v[4];
+int   badParm = 0;
 
 	if ( ! str ) {
 		fprintf(stderr, "Error -- parseAcqParams: no memory\n");
@@ -164,6 +165,8 @@ long  v[4];
 			fprintf(stderr, "Error -- parseAcqParams: expect <parm> '=' <value> pairs ('=' missing in op %s)\n", tok);
 			goto bail;
 		}
+
+		badParm = 0;
 
 		switch ( toupper( tok[0] ) ) {
 			case 'A':
@@ -184,16 +187,36 @@ long  v[4];
 				pp->mask |= ACQ_PARAM_MSK_DCM;
 				break;
 			case 'E':
-				for ( val = eq + 1; isspace( *val ); val++ )
-					/* nothing else */;
-				switch( toupper( *val ) ) {
-					case 'R': pp->rising = 1; break;
-					case 'F': pp->rising = 0; break;
-					default :
-						fprintf(stderr, "Error -- parseAcqParams: Invalid trigger edge '%s'\n", val);
-						goto bail;
+				switch ( toupper( tok[1] ) ) {
+					case 'D':
+						{
+							for ( val = eq + 1; isspace( *val ); val++ )
+								/* nothing else */;
+							switch( toupper( *val ) ) {
+								case 'R': pp->rising = 1; break;
+								case 'F': pp->rising = 0; break;
+								default :
+										  fprintf(stderr, "Error -- parseAcqParams: Invalid trigger edge '%s'\n", val);
+										  goto bail;
+							}
+							pp->mask |= ACQ_PARAM_MSK_EDG;
+						}
+					break;
+
+					case 'X':
+						{
+							if ( scanl( tok, eq, &v[0] ) ) {
+								goto bail;
+							}
+							pp->trigOutEn = !!v[0];
+							pp->mask     |= ACQ_PARAM_MSK_TGO;
+						}
+					break;
+
+					default:
+						badParm = 1;
+					break;
 				}
-				pp->mask |= ACQ_PARAM_MSK_EDG;
 				break;
 			case 'F':
 				if ( scanScal( tok, eq, &v[0], &v[1], &v[2] ) ) goto bail;
@@ -251,8 +274,12 @@ long  v[4];
 				pp->mask |= ACQ_PARAM_MSK_SRC;
 				break;
 			default:
-			    fprintf(stderr, "Error -- parseAcqParams: invalid operation: '%s'\n", tok);
-				goto bail;
+				badParm = 1;
+				break;
+		}
+		if ( badParm ) {
+		    fprintf(stderr, "Error -- parseAcqParams: invalid operation: '%s'\n", tok);
+			goto bail;
 		}
 	}
 
@@ -452,6 +479,7 @@ const char        *regOp     = 0;
 		printf("Trigger Hysteresis : %" PRId16 "\n", p.hysteresis );
 		printf(" NOTE: Trigger level is int16_t, ADC numbers are normalized to\n");
 		printf("       this range!\n");
+        printf("External Trigger   : %s\n", p.trigOutEn ? "OUTPUT" : "INPUT");
 		printf("N Samples          : %" PRIu32 "\n", p.nsamples  );
 		printf("N Pretrig samples  : %" PRIu32 "\n", p.npts      );
 		printf("Autotrig timeout   : ");
