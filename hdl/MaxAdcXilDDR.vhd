@@ -6,6 +6,16 @@ use     ieee.math_real.all;
 library unisim;
 use     unisim.vcomponents.all;
 
+-- IDDR / 7-series note
+-- From looking at some posts, e.g.,
+--  https://adaptivesupport.amd.com/s/question/0D52E00006hplnfSAA/question-about-constraining-an-iddr-interface?language=en_US
+-- using an MMCM may not be improve timing over the current IDELAY/BUFIO
+-- solution. I had started experimenting but quickly ran into the woods
+-- because you can't simply shift the phase to increase delays. The delays
+-- show up in the phase of the source clock which then messes up which
+-- edges are timed. Addressing that requires proper multicycle exceptions and
+-- that's when I gave up for lack of time...
+
 entity MaxADCXilDDR is
    generic (
       ADC_CLOCK_FREQ_G     : real    := 130.0E6;
