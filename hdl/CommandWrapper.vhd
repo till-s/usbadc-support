@@ -132,6 +132,11 @@ architecture rtl of CommandWrapper is
    signal   deStufferSynced   : std_logic;
    signal   deStufferAbort    : std_logic;
 
+   signal   pipelinedBusIb    : SimpleBusMstType                           := SIMPLE_BUS_MST_INIT_C;
+   signal   pipelinedRdyIb    : std_logic                                  := '1';
+   signal   pipelinedBusOb    : SimpleBusMstType                           := SIMPLE_BUS_MST_INIT_C;
+   signal   pipelinedRdyOb    : std_logic                                  := '1';
+
    signal   acqParms          : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
    signal   acqParmsTgl       : std_logic      := '0';
    signal   acqParmsAck       : std_logic;
@@ -163,6 +168,18 @@ begin
          rdyInp      => rdyIb
       );
 
+   U_PIPE_IB : entity work.SimpleBusPipeStage
+      port map (
+         clk         => clk,
+         rst         => rst,
+
+         busIb       => unstuffedBusIb,
+         rdyIb       => unstuffedRdyIb,
+
+         busOb       => pipelinedBusIb,
+         rdyOb       => pipelinedRdyIb
+      );
+
    U_STUFFER : entity work.ByteStuffer
       generic map (
          COMMA_G     => COMMA_G,
@@ -182,6 +199,17 @@ begin
          rdyOut      => rdyOb
       );
 
+   U_PIPE_OB : entity work.SimpleBusPipeStage
+      port map (
+         clk         => clk,
+         rst         => rst,
+
+         busIb       => pipelinedBusOb,
+         rdyIb       => pipelinedRdyOb,
+
+         busOb       => unstuffedBusOb,
+         rdyOb       => unstuffedRdyOb
+      );
 
    U_MUXER : entity work.CommandMux
       generic map (
@@ -191,11 +219,11 @@ begin
          clk          => clk,
          rst          => rst,
 
-         busIb        => unstuffedBusIb,
-         rdyIb        => unstuffedRdyIb,
+         busIb        => pipelinedBusIb,
+         rdyIb        => pipelinedRdyIb,
 
-         busOb        => unstuffedBusOb,
-         rdyOb        => unstuffedRdyOb,
+         busOb        => pipelinedBusOb,
+         rdyOb        => pipelinedRdyOb,
 
          abrt         => abrt,
          abrtDon      => abrtDon,
