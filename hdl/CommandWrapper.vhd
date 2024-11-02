@@ -294,6 +294,9 @@ begin
             adcDataA     => adcDataA,
             adcDataB     => adcDataB,
 
+            extTrgOut    => extTrgOut,
+            extTrgOutEn  => extTrgOutEn,
+
             sdramClk     => sdramClk,
             sdramReq     => sdramReq,
             sdramRep     => sdramRep,

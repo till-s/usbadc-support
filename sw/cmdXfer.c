@@ -304,7 +304,7 @@ struct timespec timeout;
 					} else {
 						if ( got >= rlen ) {
 							if ( ! warned ) {
-								fprintf(stderr, "fifoXferFrame: RX buffer too small; truncating frame\n");
+								fprintf(stderr, "fifoXferFrame: RX buffer too small; truncating frame (got %zu >= rlen %zu)\n", got, rlen);
 								warned = 1;
 							}
 						} else {
