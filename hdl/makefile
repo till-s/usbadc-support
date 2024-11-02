@@ -11,7 +11,7 @@ HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
 TESTS= CommandWrapperTb CommandWrapperSim CicFilterTb PipelinedRShifterTb
-TESTS+=SpiRegTb SpiShadowRegTb SampleBufferTb SimpleBusAsyncTb
+TESTS+=SpiRegTb SpiShadowRegTb SampleBufferTb SimpleBusAsyncTb SimpleBusPipeStageTb
 
 all: $(TESTS)
 
@@ -145,6 +145,10 @@ CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
 SpiFlashSim.o: SpiReg.o
 CommandWrapperSim.o: SpiReg.o SpiChecker.o
 CommandReg.o: CommandMuxPkg.o BasicPkg.o SimpleBusAsync.o
+
+SimpleBusPipeStage.o: CommandMuxPkg.o BasicPkg.o
+
+SimpleBusPipeStageTb.o: SimpleBusPipeStage.o CommandMuxPkg.o BasicPkg.o
 
 SimpleBusAsync.o: SynchronizerBit.o
 
