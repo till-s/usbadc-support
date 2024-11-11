@@ -7,7 +7,7 @@ use work.BasicPkg.all;
 
 package CommandMuxPkg is
 
-   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"02";
+   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"03";
 
    type SimpleBusMstType is record
       vld : std_logic;
@@ -53,6 +53,8 @@ package CommandMuxPkg is
    constant CMD_ACQ_FLUSH_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 1, SubCommandAcqType'length ) );
    -- read back sample buffer size
    constant CMD_ACQ_MSIZE_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 2, SubCommandAcqType'length ) );
+   -- sample frequency
+   constant CMD_ACQ_SFREQ_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 3, SubCommandAcqType'length ) );
 
    function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0))
       return SubCommandAcqType;

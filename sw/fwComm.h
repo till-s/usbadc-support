@@ -41,6 +41,7 @@ fw_get_board_version(FWInfo *fw);
 
 #define FW_API_VERSION_1 (1)
 #define FW_API_VERSION_2 (2)
+#define FW_API_VERSION_3 (3)
 
 uint8_t
 fw_get_api_version(FWInfo *fw);
@@ -146,8 +147,17 @@ buf_get_size(FWInfo *);
 
 /* buffer uses 16-bit samples */
 #define FW_BUF_FLG_16B (1<<0)
+
 uint8_t
 buf_get_flags(FWInfo *);
+
+/* Requres API vers. 3; returns FW_CMD_ERR_NOTSUP if API is older */
+int
+buf_get_sample_size(FWInfo *);
+
+/* Requres API vers. 3; returns NaN if not supported */
+double
+buf_get_sampling_freq(FWInfo *fw);
 
 int
 buf_flush(FWInfo *);

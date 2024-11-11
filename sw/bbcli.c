@@ -348,8 +348,14 @@ printBufInfo(FILE *f, FWInfo *fw)
 {
 unsigned long sz = buf_get_size( fw );
 uint8_t       fl = buf_get_flags( fw );
-unsigned      bs = ( (fl & FW_BUF_FLG_16B) ? 16 : 8 );
-	fprintf(f, "ADC Buffer size: %ld (%d-bit) samples/channel\n", sz, bs);
+int           bs = buf_get_sample_size( fw );
+const char *  xt = "";
+	if ( bs < 0 ) {
+		bs = ( (fl & FW_BUF_FLG_16B) ? 16 : 8 );
+	} else if ( bs > 8 ) {
+		xt = "; left-adjusted to 16-bit";
+	}
+	fprintf(f, "ADC Buffer size: %ld (%d-bit%s) samples/channel.\n", sz, bs, xt);
 }
 
 int main(int argc, char **argv)

@@ -35,6 +35,7 @@
 #define BITS_FW_CMD_ADCBUF      0x02
 #define BITS_FW_CMD_ADCFLUSH    (1<<4)
 #define BITS_FW_CMD_MEMSIZE     (2<<4)
+#define BITS_FW_CMD_SMPLFREQ    (3<<4) /* API vers 3 */
 #define BITS_FW_CMD_ACQPRM      0x03
 #define BITS_FW_CMD_SPI         0x04
 
@@ -80,6 +81,7 @@ struct FWInfo {
 	uint8_t         apiVers;
 	uint64_t        features;
 	AcqParams       acqParams;
+	double          samplingFreq;
 };
 
 static int
@@ -87,6 +89,9 @@ fw_xfer_bb(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_
 
 static int
 __bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval);
+
+static int
+__buf_get_sampling_freq_mhz(FWInfo *fw);
 
 #define BUF_SIZE_FAILED ((long)-1L)
 #define BUF_SIZE_NOTSUP ((long)-2L)
@@ -251,9 +256,24 @@ int     st;
 
 	/* abiVers etc. valid after this point */
 
+	rv->samplingFreq = 0.0/0.0;
+
 	if ( ( rv->features & FW_FEATURE_ADC ) ) {
 		if ( (st = acq_set_params( rv, NULL, &rv->acqParams )) ) {
 			fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
+		}
+		if ( rv->apiVers >= FW_API_VERSION_3 ) {
+			if ( (st = __buf_get_sampling_freq_mhz( rv )) <= 0 ) {
+				fprintf(stderr, "Error %d: unable to read sample frequency\n", st);
+			} else {
+				rv->samplingFreq = 1.0E6 * (double)st;
+			}
+		} else {
+			if ( 0 == rv->brdVers ) {
+				rv->samplingFreq = 130.0E6;
+			} else if ( 1 == rv->brdVers ) {
+				rv->samplingFreq = 120.0E6;
+			}
 		}
 	}
 
@@ -507,7 +527,7 @@ uint8_t  v;
 int
 bb_spi_xfer_vec(FWInfo *fw, SPIMode mode, SPIDev type, const struct bb_vec *vec, size_t nelms)
 {
-int               stretch = 1;
+int               stretch = 10;
 uint8_t           buf[BUF_BRK*8*2*stretch];
 int               el;
 int               rval = 0;
@@ -719,6 +739,22 @@ bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val)
 	return bb_i2c_rw_reg(fw, sla, reg, val);
 }
 
+static int
+__buf_get_sampling_freq_mhz(FWInfo *fw)
+{
+uint8_t buf[1];
+uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
+long    rval;
+	if ( fw->apiVers < FW_API_VERSION_3 ) {
+		return -FW_CMD_ERR_NOTSUP;
+	}
+	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
+	if ( 1 == rval ) {
+		return buf[0];
+	}
+	return -FW_CMD_ERR_INVALID;
+}
+
 static long
 __buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg)
 {
@@ -773,6 +809,21 @@ buf_get_flags(FWInfo *fw)
 	return fw->memFlags;
 }
 
+double
+buf_get_sampling_freq(FWInfo *fw)
+{
+	return fw->samplingFreq;
+}
+
+#define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
+int
+buf_get_sample_size(FWInfo *fw)
+{
+	if ( fw->apiVers < FW_API_VERSION_3 ) {
+		return FW_CMD_ERR_NOTSUP;
+	}
+	return FW_BUF_FLG_GET_SMPLSZ( fw->memFlags );
+}
 
 int
 buf_flush(FWInfo *fw)

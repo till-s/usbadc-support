@@ -69,6 +69,8 @@ architecture rtl of MaxADC is
 
    constant NUM_ADDR_BITS_C : natural := numBits(MEM_DEPTH_G);
 
+   constant ADC_FREQ_MHZ_C  : natural := natural( round( ADC_CLOCK_FREQ_G / 1.0E6 ) );
+
    constant MS_TICK_PERIOD_C: natural := natural( round( ADC_CLOCK_FREQ_G / 1000.0 ) );
 
    -- I learned the following: when inferring RAM, XST always organizes into a parallel
@@ -135,12 +137,17 @@ architecture rtl of MaxADC is
    constant MSIZE_INFO_C    : unsigned(15 downto 0) := memInfo;
 
    constant FLAG_IDX_2B_C   : natural               := 0;
+   constant FLAG_IDX_NL_C   : natural               := 1;
+   constant FLAG_IDX_NH_C   : natural               := 3;
 
    function MSIZE_FLAGS_F return std_logic_vector is
       variable v : std_logic_vector(7 downto 0);
    begin
       v := (others => '0');
       v(FLAG_IDX_2B_C) := ite( RAM_BITS_G > 8 );
+      if ( RAM_BITS_G > 8 ) then
+        v(FLAG_IDX_NH_C downto FLAG_IDX_NL_C ) := std_logic_vector( to_unsigned( RAM_BITS_G - 9, FLAG_IDX_NH_C - FLAG_IDX_NL_C + 1 ) );
+      end if;
       return v;
    end function MSIZE_FLAGS_F;
 
@@ -323,6 +330,8 @@ begin
 
    assert MEM_DEPTH_G mod 1024 = 0 and MEM_DEPTH_G >= 1024 report "Cannot report accurate memory size" severity warning;
 
+   assert ADC_FREQ_MHZ_C < 256 report "Cannot report accurate Freq. [MHz]" severity failure;
+
    lparms  <= rWr.parms;
 
    memClk  <= adcClk;
@@ -401,10 +410,13 @@ begin
             v.busOb.vld := '1';
 
             if ( (rdyOb and busIb.vld) = '1' ) then
-               if ( CMD_ACQ_MSIZE_C = subCommandAcqGet( busIb.dat ) ) then
-                  v.state     := MSIZE;
-                  v.busOb.dat := std_logic_vector( MSIZE_INFO_C(7 downto 0) );
-                  v.busOb.lst := '0';
+               if    ( CMD_ACQ_MSIZE_C = subCommandAcqGet( busIb.dat ) ) then
+                  v.state        := MSIZE;
+                  v.busOb.dat    := std_logic_vector( MSIZE_INFO_C(7 downto 0) );
+                  v.busOb.lst    := '0';
+               elsif ( CMD_ACQ_SFREQ_C = subCommandAcqGet( busIb.dat ) ) then
+                  v.busOb.dat    := std_logic_vector( to_unsigned( ADC_FREQ_MHZ_C, 8 ) );
+                  v.busOb.lst    := '1';
                elsif ( ( rdEmp = '0' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state        := HDR;
                   v.busOb.dat    := (others => '0');
@@ -422,13 +434,14 @@ begin
 
          when MSIZE =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
-               v.busOb.vld := '1';
-               if ( rRd.byteCnt = 0 ) then
-                  v.busOb.dat := std_logic_vector( MSIZE_INFO_C(15 downto 8) );
-               elsif ( rRd.busOb.lst = '1' ) then
+               if    ( rRd.busOb.lst = '1' ) then
                   v.state     := ECHO;
+               elsif ( rRd.byteCnt = 0 ) then
+                  v.busOb.dat := std_logic_vector( MSIZE_INFO_C(15 downto 8) );
+                  v.busOb.vld := '1';
                else
                   v.busOb.dat := MSIZE_FLAGS_F;
+                  v.busOb.vld := '1';
                   v.busOb.lst := '1';
                end if;
             end if;
