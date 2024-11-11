@@ -408,21 +408,24 @@ begin
             busOb.lst   <= '0';
             rdyIb       <= rdyOb;
             v.busOb.vld := '1';
+            v.busOb.lst := '0';
 
             if ( (rdyOb and busIb.vld) = '1' ) then
                if    ( CMD_ACQ_MSIZE_C = subCommandAcqGet( busIb.dat ) ) then
                   v.state        := MSIZE;
                   v.busOb.dat    := std_logic_vector( MSIZE_INFO_C(7 downto 0) );
-                  v.busOb.lst    := '0';
                elsif ( CMD_ACQ_SFREQ_C = subCommandAcqGet( busIb.dat ) ) then
                   v.busOb.dat    := std_logic_vector( to_unsigned( ADC_FREQ_MHZ_C, 8 ) );
                   v.busOb.lst    := '1';
+                  -- any 1-byte reply command can just go to MSIZE
+                  -- which will return to ECHO once the single byte is
+                  -- consumed
+                  v.state        := MSIZE;
                elsif ( ( rdEmp = '0' ) and ( CMD_ACQ_READ_C = subCommandAcqGet( busIb.dat ) ) ) then
                   v.state        := HDR;
                   v.busOb.dat    := (others => '0');
                   v.busOb.dat(0) := rWrCC.ovrA;
                   v.busOb.dat(1) := rWrCC.ovrB;
-                  v.busOb.lst    := '0';
                else
                   busOb.lst <= '1';
                   if ( rdEmp = '0' ) then  -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
