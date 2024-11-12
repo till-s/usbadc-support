@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+/* for exp10() */
+#endif
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -7,6 +11,8 @@
 
 #include "cmdXfer.h"
 #include "fwComm.h"
+#include "lmh6882Sup.h"
+#include "ad8370Sup.h"
 
 #define CS_SHFT   0
 #define SCLK_SHFT 1
@@ -69,6 +75,8 @@
 
 #define BITS_FW_CMD_UNSUPPORTED   0xff
 
+#define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
+
 struct FWInfo {
 	int             fd;
 	uint8_t         cmd;
@@ -82,6 +90,11 @@ struct FWInfo {
 	uint64_t        features;
 	AcqParams       acqParams;
 	double          samplingFreq;
+	double          fullScaleVolts;
+	unsigned        numChannels;
+	int             sampleSize;
+	PGAOps         *pga;
+	FECOps         *fec;
 };
 
 static int
@@ -167,6 +180,50 @@ fw_disable_features(FWInfo *fw, uint64_t mask)
 	fw->features &= ~mask;
 }
 
+double
+fw_get_full_scale_volts(FWInfo *fw)
+{
+	return fw->fullScaleVolts;
+}
+
+int
+fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
+{
+	if ( channel >= fw->numChannels ) {
+		return FW_CMD_ERR_INVALID;
+	}
+	if ( pscl ) {
+		double scl    = fw_get_full_scale_volts( fw );
+		double totAtt = 0.0;
+		double att;
+		int    st;
+		if ( 0.0 == scl ) {
+			/* don't bother */
+			return scl;
+		}
+		st = pgaGetAtt( fw, channel, &att );
+		if ( st < 0 ) {
+			if ( FW_CMD_ERR_NOTSUP != st ) {
+				return st;
+			}
+			/* NOTSUP means no additional attenuation */
+		} else {
+			totAtt += att;
+		}
+		st = fecGetAtt( fw, channel, &att );
+		if ( st < 0 ) {
+			if ( FW_CMD_ERR_NOTSUP != st ) {
+				return st;
+			}
+			/* NOTSUP means no additional attenuation */
+		} else {
+			totAtt += att;
+		}
+		*pscl = scl * exp10( totAtt/20.0 );
+	}
+	return 0;
+}
+
 static int64_t
 __fw_get_version(FWInfo *fw)
 {
@@ -213,71 +270,93 @@ FWInfo *rv;
 FWInfo *
 fw_open_fd(int fd)
 {
-FWInfo *rv;
+FWInfo *fw;
 int64_t vers;
 int     st;
 
-	if ( ! (rv = malloc(sizeof(*rv))) ) {
+	if ( ! (fw = calloc(1, sizeof(*fw))) ) {
 		perror("fw_open(): no memory");
 		return 0;
 	}
 
-	rv->fd       = fd;
-	rv->cmd      = BITS_FW_CMD_BB;
-	rv->debug    = 0;
-	rv->ownFd    = 0;
-	rv->features = 0;
-	switch ( __buf_get_size( rv, &rv->memSize, &rv->memFlags ) ) {
+	fw->fd             = fd;
+	fw->cmd            = BITS_FW_CMD_BB;
+	fw->debug          = 0;
+	fw->ownFd          = 0;
+	fw->features       = 0;
+	fw->sampleSize     = FW_CMD_ERR_NOTSUP;
+	fw->numChannels    = 2;
+	fw->fullScaleVolts = 0.0;
+
+	switch ( __buf_get_size( fw, &fw->memSize, &fw->memFlags ) ) {
 		case BUF_SIZE_FAILED:
 			fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
 			break;
 		case BUF_SIZE_NOTSUP:
 			break;
 		default:
-			rv->features |= FW_FEATURE_ADC;
+			fw->features |= FW_FEATURE_ADC;
 			break;
 
 	}
 
-	if ( ( vers = __fw_get_version( rv ) ) == (int64_t) -1 ) {
+	if ( ( vers = __fw_get_version( fw ) ) == (int64_t) -1 ) {
 		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
-		free( rv );
+		free( fw );
 		return 0;
 	}
 
-	rv->gitHash = ( vers & 0xffffffff );
-	rv->apiVers = ( (vers >> 32) & 0xff );
-    rv->brdVers = ( (vers >> 40) & 0xff );
+	fw->gitHash = ( vers & 0xffffffff );
+	fw->apiVers = ( (vers >> 32) & 0xff );
+    fw->brdVers = ( (vers >> 40) & 0xff );
 
 	/* avoid a timeout on old fw */
-	if ( rv->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( rv, BITS_FW_CMD_SPI, 0, 0, 0 ) ) {
-		rv->features |= FW_FEATURE_SPI_CONTROLLER;
+	if ( fw->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( fw, BITS_FW_CMD_SPI, 0, 0, 0 ) ) {
+		fw->features |= FW_FEATURE_SPI_CONTROLLER;
 	}
 
 	/* abiVers etc. valid after this point */
 
-	rv->samplingFreq = 0.0/0.0;
+	fw->samplingFreq = 0.0/0.0;
 
-	if ( ( rv->features & FW_FEATURE_ADC ) ) {
-		if ( (st = acq_set_params( rv, NULL, &rv->acqParams )) ) {
+	if ( ( fw->features & FW_FEATURE_ADC ) ) {
+		if ( (st = acq_set_params( fw, NULL, &fw->acqParams )) ) {
 			fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
 		}
-		if ( rv->apiVers >= FW_API_VERSION_3 ) {
-			if ( (st = __buf_get_sampling_freq_mhz( rv )) <= 0 ) {
+
+		fw->sampleSize = (fw->memFlags & FW_BUF_FLG_16B) ? 10 : 8;
+
+		if ( fw->apiVers >= FW_API_VERSION_3 ) {
+			if ( (st = __buf_get_sampling_freq_mhz( fw )) <= 0 ) {
 				fprintf(stderr, "Error %d: unable to read sample frequency\n", st);
 			} else {
-				rv->samplingFreq = 1.0E6 * (double)st;
+				fw->samplingFreq = 1.0E6 * (double)st;
 			}
+			fw->sampleSize = FW_BUF_FLG_GET_SMPLSZ( fw->memFlags );
 		} else {
-			if ( 0 == rv->brdVers ) {
-				rv->samplingFreq = 130.0E6;
-			} else if ( 1 == rv->brdVers ) {
-				rv->samplingFreq = 120.0E6;
+			if ( 0 == fw->brdVers ) {
+				fw->samplingFreq = 130.0E6;
+			} else if ( 1 == fw->brdVers ) {
+				fw->samplingFreq = 120.0E6;
 			}
 		}
 	}
 
-	return rv;
+	switch ( fw->brdVers ) {
+		case 0:
+			fw->pga = &lmh6882PGAOps;
+		break;
+
+		case 1:
+			fw->pga            = &ad8370PGAOps;
+	        fw->fullScaleVolts = 0.0098;
+		break;
+
+		default:
+		break;
+	}
+
+	return fw;
 }
 
 void
@@ -746,13 +825,13 @@ uint8_t buf[1];
 uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
 long    rval;
 	if ( fw->apiVers < FW_API_VERSION_3 ) {
-		return -FW_CMD_ERR_NOTSUP;
+		return FW_CMD_ERR_NOTSUP;
 	}
 	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 	if ( 1 == rval ) {
 		return buf[0];
 	}
-	return -FW_CMD_ERR_INVALID;
+	return FW_CMD_ERR_INVALID;
 }
 
 static long
@@ -815,14 +894,10 @@ buf_get_sampling_freq(FWInfo *fw)
 	return fw->samplingFreq;
 }
 
-#define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
 int
 buf_get_sample_size(FWInfo *fw)
 {
-	if ( fw->apiVers < FW_API_VERSION_3 ) {
-		return FW_CMD_ERR_NOTSUP;
-	}
-	return FW_BUF_FLG_GET_SMPLSZ( fw->memFlags );
+	return fw->sampleSize;
 }
 
 int
@@ -1407,4 +1482,77 @@ fw_inv_cmd(FWInfo *fw)
 {
 	int st = fw_xfer( fw, BITS_FW_CMD_UNSUPPORTED, 0, 0, 0 );
 	return (FW_CMD_ERR_NOTSUP == st) ? 0 : st;
+}
+
+int
+pgaReadReg(FWInfo *fw, unsigned ch, unsigned reg)
+{
+	return fw && fw->pga && fw->pga->readReg ? fw->pga->readReg(fw, ch, reg) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+pgaWriteReg(FWInfo *fw, unsigned ch, unsigned reg, unsigned val)
+{
+	return fw && fw->pga && fw->pga->writeReg ? fw->pga->writeReg(fw, ch, reg, val) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+pgaGetAttRange(FWInfo*fw, double *min, double *max)
+{
+	return fw && fw->pga && fw->pga->getAttRange ? fw->pga->getAttRange(fw, min, max) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+pgaGetAtt(FWInfo *fw, unsigned channel, double *att)
+{
+	return fw && fw->pga && fw->pga->getAtt ? fw->pga->getAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+pgaSetAtt(FWInfo *fw, unsigned channel, double att)
+{
+	return fw && fw->pga && fw->pga->setAtt ? fw->pga->setAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+}
+
+
+int
+fecGetAttRange(FWInfo*fw, double *min, double *max)
+{
+	return fw && fw->fec && fw->fec->getAttRange ? fw->fec->getAttRange(fw, min, max) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecGetAtt(FWInfo *fw, unsigned channel, double *att)
+{
+	return fw && fw->fec && fw->fec->getAtt ? fw->fec->getAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecSetAtt(FWInfo *fw, unsigned channel, double att)
+{
+	return fw && fw->fec && fw->fec->setAtt ? fw->fec->setAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecGetACMode(FWInfo *fw)
+{
+	return fw && fw->fec && fw->fec->getACMode ? fw->fec->getACMode(fw) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecSetACMode(FWInfo *fw, unsigned val)
+{
+	return fw && fw->fec && fw->fec->setACMode ? fw->fec->setACMode(fw, val) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecGetTermination(FWInfo *fw)
+{
+	return fw && fw->fec && fw->fec->getTermination ? fw->fec->getTermination(fw) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecSetTermination(FWInfo *fw, unsigned	val)
+{
+	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw, val) : FW_CMD_ERR_NOTSUP;
 }

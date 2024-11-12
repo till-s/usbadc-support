@@ -32,6 +32,10 @@ lmh6882SetAtt(FWInfo *fw, unsigned channel, float att);
 int
 lmh6882Power(FWInfo *fw, int state);
 
+struct PGAOps;
+
+extern struct PGAOps lmh6882PGAOps;
+
 #ifdef __cplusplus
 }
 #endif

@@ -10,10 +10,11 @@ int
 ad8370Write(FWInfo *fw, int channel, uint8_t val)
 {
 uint8_t buf[2];
+int     st;
 	buf[0] = fw_spireg_cmd_write( channel );
 	buf[1] = val;
-	if ( bb_spi_xfer( fw, SPI_MODE0, SPI_PGA, buf, 0, 0, sizeof(buf) ) < 0 ) {
-		return -1;
+	if ( (st = bb_spi_xfer( fw, SPI_MODE0, SPI_PGA, buf, 0, 0, sizeof(buf)) ) < 0 ) {
+		return st;
 	}
 	return 0;
 }
@@ -22,10 +23,11 @@ int
 ad8370Read(FWInfo *fw, int channel)
 {
 uint8_t buf[2];
+int     st;
 	buf[0] = fw_spireg_cmd_read( channel );
 	buf[1] = 0xff;
-	if ( bb_spi_xfer( fw, SPI_MODE0, SPI_PGA, buf, buf, 0, sizeof(buf) ) < 0 ) {
-		return -1;
+	if ( (st = bb_spi_xfer( fw, SPI_MODE0, SPI_PGA, buf, buf, 0, sizeof(buf)) ) < 0 ) {
+		return st;
 	}
 	return (int)buf[1];
 }
@@ -45,11 +47,11 @@ double         gain    =  pow( 10.0,  (MAXGAIN - att) / 20.0 );
 unsigned       cod;
 
 	if ( channel > 1 ) {
-		return -2;
+		return FW_CMD_ERR_INVALID;
 	}
 	if ( att < 0.0 ) {
 		fprintf(stderr, "ad837028SetAtt: value out of range (0..20)\n");
-		return -2;
+		return FW_CMD_ERR_INVALID;
 	}
 
 	if ( att >= 65.0 ) {
@@ -107,3 +109,51 @@ uint8_t cod;
 	
 	return (float)att;
 }
+
+static	int
+opReadReg(FWInfo *fw, unsigned ch, unsigned reg)
+{
+	return ad8370Read( fw, reg );
+}
+
+static	int
+opWriteReg(FWInfo *fw, unsigned ch, unsigned reg, unsigned val)
+{
+	return ad8370Write( fw, reg, val );
+}
+
+static	int
+opGetAttRange(FWInfo *fw, double *min, double *max)
+{
+	if ( min ) *min = 0;
+	if ( max ) *max = 40;
+	return 0;
+}
+
+static	int
+opGetAtt(FWInfo *fw, unsigned channel, double *att)
+{
+	double val = (double)ad8370GetAtt( fw, channel );
+	if ( isnan( val ) ) {
+		return FW_CMD_ERR_INVALID;
+	}
+	if ( val < 0.0 ) {
+		return (int)val;
+	}
+	if ( att ) *att = val;
+	return 0;
+}
+
+static	int
+opSetAtt(FWInfo *fw, unsigned channel, double att)
+{
+	return ad8370SetAtt( fw, channel, (float)att );
+}
+
+PGAOps ad8370PGAOps = {
+	.readReg     = opReadReg,
+	.writeReg    = opWriteReg,
+	.getAttRange = opGetAttRange,
+	.getAtt      = opGetAtt,
+	.setAtt      = opSetAtt
+};

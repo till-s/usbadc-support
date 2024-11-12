@@ -22,6 +22,9 @@ ad8370SetAtt(FWInfo *fw, unsigned channel, float att);
 float
 ad8370GetAtt(FWInfo *fw, unsigned channel);
 
+struct PGAOps;
+extern struct PGAOps ad8370PGAOps;
+
 #ifdef __cplusplus
 }
 #endif

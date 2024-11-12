@@ -62,6 +62,13 @@ fw_disable_features(FWInfo *fw, uint64_t mask);
 /* set 'I2C_READ' when writing the i2c address */
 #define I2C_READ (1<<0)
 
+// full-scale at zero attenuation
+double
+fw_get_full_scale_volts(FWInfo *fw);
+
+int
+fw_get_current_scale(FWInfo *fw, unsigned channel, double *scl);
+
 int
 bb_i2c_write(FWInfo *fw, uint8_t *buf, size_t len);
 
@@ -157,7 +164,7 @@ buf_get_sample_size(FWInfo *);
 
 /* Requres API vers. 3; returns NaN if not supported */
 double
-buf_get_sampling_freq(FWInfo *fw);
+buf_get_sampling_freq(FWInfo *);
 
 int
 buf_flush(FWInfo *);
@@ -268,6 +275,44 @@ acq_set_trig_out_en(FWInfo *, int on);
 
 int
 acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
+
+typedef struct PGAOps {
+	int    (*readReg)(FWInfo *, unsigned ch, unsigned reg);
+	int    (*writeReg)(FWInfo *, unsigned ch, unsigned reg, unsigned val);
+	//  min-max attenuation in db; return 0 on success
+	int    (*getAttRange)(FWInfo*, double *min, double *max);
+	int    (*getAtt)(FWInfo *, unsigned channel, double *att);
+	int    (*setAtt)(FWInfo *, unsigned channel, double att);
+} PGAOps;
+
+typedef struct FECOps {
+	// returns 0, 1, negative error
+	int    (*getACMode)(FWInfo *);
+	int    (*setACMode)(FWInfo *, unsigned);
+	int    (*getTermination)(FWInfo *);
+	int    (*setTermination)(FWInfo *, unsigned);
+	// assume 2-step attenuator on/off
+	int    (*getAttRange)(FWInfo*, double *min, double *max);
+	int    (*getAtt)(FWInfo *, unsigned channel, double *att);
+	int    (*setAtt)(FWInfo *, unsigned channel, double att);
+} FECOps;
+
+int    pgaReadReg(FWInfo *, unsigned ch, unsigned reg);
+int    pgaWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val);
+// at min-att
+//  min-max attenuation in db; return 0 on success; stage 0 is closest to ADC
+int    pgaGetAttRange(FWInfo*, double *min, double *max);
+int    pgaGetAtt(FWInfo *, unsigned channel, double *att);
+int    pgaSetAtt(FWInfo *, unsigned channel, double att);
+
+// returns 0, 1, negative error
+int    fecGetACMode(FWInfo *);
+int    fecSetACMode(FWInfo *, unsigned);
+int    fecGetTermination(FWInfo *);
+int    fecSetTermination(FWInfo *, unsigned);
+int    fecGetAttRange(FWInfo*, double *min, double *max);
+int    fecGetAtt(FWInfo *, unsigned channel, double *att);
+int    fecSetAtt(FWInfo *, unsigned channel, double att);
 
 #ifdef __cplusplus
 }

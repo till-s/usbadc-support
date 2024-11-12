@@ -11,7 +11,6 @@
 #include "fwUtil.h"
 #include "at25Sup.h"
 #include "dac47cxSup.h"
-#include "lmh6882Sup.h"
 #include "max195xxSup.h"
 #include "fegRegSup.h"
 
@@ -817,9 +816,9 @@ const char        *regOp     = 0;
 				break;
 
 			case TEST_PGA:
-				i = ( val < 0 ? lmh6882ReadReg( fw, reg ) : lmh6882WriteReg( fw, reg, val ) );
+				i = ( val < 0 ? pgaReadReg( fw, 0, reg ) : pgaWriteReg( fw, 0, reg, val ) );
 				if ( i < 0 ) {
-					fprintf(stderr, "lmh6882%sReg() failed\n", val < 0 ? "Read" : "Write");
+					fprintf(stderr, "pga%sReg() failed\n", val < 0 ? "Read" : "Write");
 					goto bail;
 				}
 				if ( val < 0 ) {
