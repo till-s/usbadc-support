@@ -285,17 +285,20 @@ typedef struct PGAOps {
 	int    (*setAtt)(FWInfo *, unsigned channel, double att);
 } PGAOps;
 
-typedef struct FECOps {
+typedef struct FECOps FECOps;
+
+struct FECOps {
 	// returns 0, 1, negative error
-	int    (*getACMode)(FWInfo *);
-	int    (*setACMode)(FWInfo *, unsigned);
-	int    (*getTermination)(FWInfo *);
-	int    (*setTermination)(FWInfo *, unsigned);
+	int    (*getACMode)(FECOps *, unsigned channel);
+	int    (*setACMode)(FECOps *, unsigned channel, unsigned on);
+	int    (*getTermination)(FECOps *, unsigned channel);
+	int    (*setTermination)(FECOps *, unsigned channel, unsigned on);
 	// assume 2-step attenuator on/off
-	int    (*getAttRange)(FWInfo*, double *min, double *max);
-	int    (*getAtt)(FWInfo *, unsigned channel, double *att);
-	int    (*setAtt)(FWInfo *, unsigned channel, double att);
-} FECOps;
+	int    (*getAttRange)(FECOps*, double *min, double *max);
+	int    (*getAtt)(FECOps *, unsigned channel, double *att);
+	int    (*setAtt)(FECOps *, unsigned channel, double att);
+	void   (*close)(FECOps *);
+};
 
 int    pgaReadReg(FWInfo *, unsigned ch, unsigned reg);
 int    pgaWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val);
@@ -306,13 +309,14 @@ int    pgaGetAtt(FWInfo *, unsigned channel, double *att);
 int    pgaSetAtt(FWInfo *, unsigned channel, double att);
 
 // returns 0, 1, negative error
-int    fecGetACMode(FWInfo *);
-int    fecSetACMode(FWInfo *, unsigned);
-int    fecGetTermination(FWInfo *);
-int    fecSetTermination(FWInfo *, unsigned);
+int    fecGetACMode(FWInfo *, unsigned channel);
+int    fecSetACMode(FWInfo *, unsigned channel, unsigned on);
+int    fecGetTermination(FWInfo *, unsigned channel);
+int    fecSetTermination(FWInfo *, unsigned channel, unsigned on);
 int    fecGetAttRange(FWInfo*, double *min, double *max);
 int    fecGetAtt(FWInfo *, unsigned channel, double *att);
 int    fecSetAtt(FWInfo *, unsigned channel, double att);
+void   fecClose(FWInfo *);
 
 #ifdef __cplusplus
 }

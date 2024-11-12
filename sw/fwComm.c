@@ -13,6 +13,7 @@
 #include "fwComm.h"
 #include "lmh6882Sup.h"
 #include "ad8370Sup.h"
+#include "tca6408FECSup.h"
 
 #define CS_SHFT   0
 #define SCLK_SHFT 1
@@ -224,6 +225,24 @@ fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 	return 0;
 }
 
+#define BRD_V1_TCA6408_SLA 0x20
+
+static int
+brdV1TCA6408Bits(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
+{
+	if ( channel >= fw->numChannels ) {
+		return FW_CMD_ERR_INVALID;
+	}
+	switch ( which ) {
+		case ATTENUATOR:   return channel ? (1<<2) : (1<<6);
+		case TERMINATION:  return channel ? (1<<4) : (1<<5);
+		case ACMODE:       return channel ? (1<<3) : (1<<7);
+		case DACRANGE:     return channel ? (1<<0) : (1<<1);
+		default:
+		return FW_CMD_ERR_INVALID;
+	}
+}
+
 static int64_t
 __fw_get_version(FWInfo *fw)
 {
@@ -349,6 +368,7 @@ int     st;
 
 		case 1:
 			fw->pga            = &ad8370PGAOps;
+			fw->fec            = tca6408FECSupCreate( fw, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
 	        fw->fullScaleVolts = 0.0098;
 		break;
 
@@ -1518,41 +1538,49 @@ pgaSetAtt(FWInfo *fw, unsigned channel, double att)
 int
 fecGetAttRange(FWInfo*fw, double *min, double *max)
 {
-	return fw && fw->fec && fw->fec->getAttRange ? fw->fec->getAttRange(fw, min, max) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getAttRange ? fw->fec->getAttRange(fw->fec, min, max) : FW_CMD_ERR_NOTSUP;
 }
 
 int
 fecGetAtt(FWInfo *fw, unsigned channel, double *att)
 {
-	return fw && fw->fec && fw->fec->getAtt ? fw->fec->getAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getAtt ? fw->fec->getAtt(fw->fec, channel, att) : FW_CMD_ERR_NOTSUP;
 }
 
 int
 fecSetAtt(FWInfo *fw, unsigned channel, double att)
 {
-	return fw && fw->fec && fw->fec->setAtt ? fw->fec->setAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setAtt ? fw->fec->setAtt(fw->fec, channel, att) : FW_CMD_ERR_NOTSUP;
 }
 
 int
-fecGetACMode(FWInfo *fw)
+fecGetACMode(FWInfo *fw, unsigned channel)
 {
-	return fw && fw->fec && fw->fec->getACMode ? fw->fec->getACMode(fw) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getACMode ? fw->fec->getACMode(fw->fec, channel) : FW_CMD_ERR_NOTSUP;
 }
 
 int
-fecSetACMode(FWInfo *fw, unsigned val)
+fecSetACMode(FWInfo *fw, unsigned channel, unsigned val)
 {
-	return fw && fw->fec && fw->fec->setACMode ? fw->fec->setACMode(fw, val) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setACMode ? fw->fec->setACMode(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
 }
 
 int
-fecGetTermination(FWInfo *fw)
+fecGetTermination(FWInfo *fw, unsigned channel)
 {
-	return fw && fw->fec && fw->fec->getTermination ? fw->fec->getTermination(fw) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getTermination ? fw->fec->getTermination(fw->fec, channel) : FW_CMD_ERR_NOTSUP;
 }
 
 int
-fecSetTermination(FWInfo *fw, unsigned	val)
+fecSetTermination(FWInfo *fw, unsigned channel, unsigned	val)
 {
-	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw, val) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
+}
+
+void
+fecClose(FWInfo *fw)
+{
+	if ( fw && fw->fec && fw->fec->close ) {
+		fw->fec->close( fw->fec );
+	}
 }
