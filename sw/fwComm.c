@@ -388,6 +388,7 @@ uint8_t v = SPI_MASK | I2C_MASK;
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
 		}
+		fecClose( fw );
 		free( fw );
 	}
 }
