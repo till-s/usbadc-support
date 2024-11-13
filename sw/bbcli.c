@@ -423,18 +423,18 @@ const char        *regOp     = 0;
 		}
 		if ( u_p && 1 != sscanf(optarg, "%i", u_p) ) {
 			fprintf(stderr, "Unable to scan argument to option -%c -- should be a number\n", opt);
-			return -1;
+			goto bail;
 		}
 	}
 
 	if ( argc > optind && (1 != sscanf(argv[optind], "%i", &reg) || reg > 0xff) ) {
 		fprintf(stderr, "Invalid reg\n");
-		return 1;
+		goto bail;
 	}
 
 	if ( argc > optind + 1 && (1 != sscanf(argv[optind + 1], "%i", &val) || val < 0 || val > 0xffff) ) {
 		fprintf(stderr, "Invalid val\n");
-		return 1;
+		goto bail;
 	}
 
 	if ( ! (fw = fw_open( devn, speed ) ) ) {
@@ -871,6 +871,9 @@ bail:
 	}
 	if ( buf ) {
 		free( buf );
+	}
+	if ( test_spi ) {
+		free( test_spi );
 	}
 	return rval;
 }
