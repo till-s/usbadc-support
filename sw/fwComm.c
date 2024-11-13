@@ -187,6 +187,12 @@ fw_get_full_scale_volts(FWInfo *fw)
 	return fw->fullScaleVolts;
 }
 
+unsigned
+fw_get_num_channels(FWInfo *fw)
+{
+	return fw->numChannels;
+}
+
 int
 fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 {
@@ -1577,6 +1583,19 @@ fecSetTermination(FWInfo *fw, unsigned channel, unsigned	val)
 {
 	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
 }
+
+int
+fecGetDACRangeHi(FWInfo *fw, unsigned channel)
+{
+	return fw && fw->fec && fw->fec->getDACRangeHi ? fw->fec->getDACRangeHi(fw->fec, channel) : FW_CMD_ERR_NOTSUP;
+}
+
+int
+fecSetDACRangeHi(FWInfo *fw, unsigned channel, unsigned	val)
+{
+	return fw && fw->fec && fw->fec->setDACRangeHi ? fw->fec->setDACRangeHi(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
+}
+
 
 void
 fecClose(FWInfo *fw)

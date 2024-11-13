@@ -6,6 +6,7 @@
 #include <getopt.h>
 #include <ctype.h>
 #include <math.h>
+#include <regex.h>
 
 #include "fwComm.h"
 #include "fwUtil.h"
@@ -18,8 +19,6 @@
 #ifndef  FLASHADDR_DFLT
 #define  FLASHADDR_DFLT 0x30000
 #endif
-
-#define  NCHANNELS 2
 
 static void usage(const char *nm)
 {
@@ -42,7 +41,14 @@ static void usage(const char *nm)
     printf("                              (hysteresis always positive)\n");
 	printf("   -p                 : dump acquisition parameters.\n");
 	printf("   -F                 : flush ADC buffer.\n");
-	printf("   -P                 : access PGA registers.\n");
+	printf("   -P                 : Program Front-end -- comma-separated list of '<parm>[channel]=<value>'.\n");
+	printf("                        If no channel index is specified the all channels are set.\n");
+    printf("                           Coupling=AC|DC\n");
+    printf("                           Termination=On|Off\n");
+    printf("                           FECAttenuator=On|Off\n");
+    printf("                           DACRangeHigh=On|Off\n");
+    printf("                           PGAAttenuation=<value_in_dB>\n");
+    printf("                         Example: -PTerm[0]=On,Term[1]=Off,Coupling=AC\n");
 	printf("   -R <reg_op>        : register read/write operation:\n");
 	printf("                         READ : <addr>:<len>\n");
 	printf("                         WRITE: <addr>=<val>{,<val>}\n");
@@ -98,7 +104,6 @@ int i;
 }
 
 #define TEST_I2C 1
-#define TEST_PGA 2
 #define TEST_ADC 3
 #define TEST_FEG 4
 
@@ -136,6 +141,222 @@ double s;
 		*d2p = (long)round(exp2(ACQ_LD_SCALE_ONE) * s);
 	}
 	return 0;
+}
+
+static void pronoff(FWInfo *fw, const char *prefix, const char *onstr, const char *offstr, int (*f)(FWInfo*, unsigned))
+{
+	unsigned ch;
+	unsigned numCh = fw_get_num_channels( fw );
+	int      vi;
+	printf("    %-15s:", prefix);
+	for ( ch = 0; ch < numCh; ++ch ) {
+		if ( (vi = f( fw, ch )) < 0 ) {
+			printf(" NOT SUPPORTED");
+			break;
+		} else {
+			/* trick to map index to 'A'..'F' without having to range-check */
+			printf(" CH %X: %s", ch + 10, vi ? onstr : offstr);
+		}
+	}
+	printf("\n");
+}
+
+static void
+dumpFrontEndParams(FWInfo *fw)
+{
+double   vd1, vd2;
+unsigned ch;
+unsigned numCh = fw_get_num_channels( fw );
+
+	printf("Front End Settings:\n");
+	printf("  PGA:");
+	if ( 0 != pgaGetAttRange( fw, &vd1, &vd2 ) ) {
+		printf(" NOT SUPPORTED\n");
+	} else {
+		printf("\n");
+		printf("    %-15s: %.0lfdB..%.0lfdB\n", "Range", vd1, vd2);
+		printf("    %-15s:", "Attenuation");
+		for ( ch = 0; ch < numCh; ++ch ) {
+			if ( 0 == pgaGetAtt( fw, ch, &vd1 ) ) {
+				printf(" CH %d: %3.1lfdB", ch, vd1);
+			} else {
+				printf(" NOT SUPPORTED");
+				break;
+			}
+		}
+		printf("\n");
+	}
+	printf("  FEC:\n");
+	pronoff( fw, "Coupling",     "    AC", "    DC", fecGetACMode );
+	pronoff( fw, "Termination",  " 50Ohm", " 1MOhm", fecGetTermination );
+	pronoff( fw, "DACHighRange", "    On", "   Off", fecGetDACRangeHi );
+	printf("    %-15s:", "Attenuation");
+	for ( ch = 0; ch < numCh; ++ch ) {
+		if ( 0 == fecGetAtt( fw, ch, &vd1 ) ) {
+			/* map channel index to 'A'.. */
+			printf(" CH %X: %4.0lfdB", ch + 10, vd1);
+		} else {
+			printf(" NOT SUPPORTED");
+			break;
+		}
+	}
+	printf("\n");
+}
+
+static int scanBool(const char *prefix, const char *val)
+{
+int iv = -1;
+	switch ( toupper( val[0] ) ) {
+		case 'T':
+		case '1':
+			iv = 1;
+			break;
+		case 'F':
+		case '0':
+			iv = 0;
+			break;
+		case 'O':
+			switch ( toupper( val[1] ) ) {
+				case 'N': iv = 1; break;
+				case 'F': iv = 0; break;
+				default:          break;
+			}
+		default:
+			break;
+	}
+	if ( iv < 0 ) {
+		fprintf(stderr, "Error -- parseFrontEndParams: invalid '%s' value - expect '1' or '0'\n", prefix);
+	}
+	return iv;
+}
+
+static int
+parseFrontEndParams(FWInfo *fw, const char *ops)
+{
+char   *str  = strdup( ops );
+int     rval = -1;
+char   *ctx;
+char   *tok;
+char   *val;
+regex_t chanPat;
+int     chb, che;
+int     iv;
+double  dv1, dv2;
+int     st;
+regmatch_t matches[5];
+
+	/*if ( (st = regcomp( &chanPat, "^[^[=]*[[]([0-9]+)[]]", REG_EXTENDED )) ) {*/
+	if ( (st = regcomp( &chanPat, "^[^=[]*(([[]([0-9]+)[]]){0,1}[=])", REG_EXTENDED )) ) {
+		char msg[256];
+		regerror( st, &chanPat, msg, sizeof(msg) );
+		fprintf(stderr, "Internal Error -- regcomp failed: %s\n", msg);
+		abort();
+	}
+
+	if ( ! str ) {
+		fprintf(stderr, "Error -- parseFrontEndParams: no memory\n");
+		goto bail;
+	}
+
+	for ( (tok = strtok_r( str, ",", &ctx )); tok; (tok = strtok_r(0, ",", &ctx)) ) {
+
+		val = 0;
+		chb = 0;
+		che = fw_get_num_channels( fw ) - 1;
+		if ( 0 == regexec( &chanPat, tok, sizeof(matches)/sizeof(matches[0]), matches, 0 ) ) {
+			if ( matches[1].rm_eo > 0 ) {
+				val = tok + matches[1].rm_eo;
+			}
+			if ( matches[3].rm_so > 0 && matches[3].rm_eo > 0 ) {
+				if ( 1 != sscanf( tok + matches[3].rm_so, "%u", &chb ) ) {
+					chb = -1;
+				}
+				che = chb;
+			}
+		}
+		if ( ! val || chb < 0 ) {
+			fprintf(stderr, "Error -- parseFrontEndParams: '%s' expect <parm>[chnl] '=' <value> pairs ([chnl] is optional, all channels are set when missing)\n", tok);
+			goto bail;
+		}
+
+		if ( 0 == strncasecmp( tok, "Coup", 4 ) ) {
+			switch ( toupper( val[0] ) ) {
+				case 'A': iv = 1; break;
+				case 'D': iv = 0; break;
+				default:
+					fprintf(stderr, "Error -- parseFrontEndParams: invalid 'Coupling' value - expect 'AC' or 'DC'\n");
+					goto bail;
+			}
+			while ( chb <= che ) {
+				if ( (st = fecSetACMode( fw, chb, iv )) < 0 ) {
+					fprintf(stderr, "Error -- setting 'Coupling' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					goto bail;
+				}
+				++chb;
+			}
+		} else if ( 0 == strncasecmp( tok, "Term", 4 ) ) {
+			iv = scanBool( "Termination", val );
+			if ( iv < 0 ) {
+				goto bail;
+			}
+			while ( chb <= che ) {
+				if ( (st = fecSetTermination( fw, chb, iv )) < 0 ) {
+					fprintf(stderr, "Error -- setting 'Coupling' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					goto bail;
+				}
+				++chb;
+			}
+		} else if ( 0 == strncasecmp( tok, "DAC", 3 ) ) {
+			iv = scanBool( "DACRangeHigh", val );
+			if ( iv < 0 ) {
+				goto bail;
+			}
+			while ( chb <= che ) {
+				if ( (st = fecSetDACRangeHi( fw, chb, iv )) < 0 ) {
+					fprintf(stderr, "Error -- setting 'DACRangeHigh' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					goto bail;
+				}
+				++chb;
+			}
+		} else if ( 0 == strncasecmp( tok, "FECA", 4 ) ) {
+			if ( fecGetAttRange( fw, &dv1, &dv2 ) < 0 ) {
+				fprintf(stderr, "Error -- Setting FEC Attenuator not supported?\n");
+				goto bail;
+			}
+			iv = scanBool( "FECAttenuator", val );
+			if ( iv < 0 ) {
+				goto bail;
+			}
+			while ( chb <= che ) {
+				if ( (st = fecSetAtt( fw, chb, iv ? dv2 : dv1 )) < 0 ) {
+					fprintf(stderr, "Error -- setting 'FECAttenuator' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					goto bail;
+				}
+				++chb;
+			}
+		} else if ( 0 == strncasecmp( tok, "PGAA", 4 ) || 0 == strncasecmp( tok, "Att", 3 )  ) {
+			if ( 1 != sscanf( val, "%lg", &dv1 ) ) {
+				fprintf(stderr, "Error -- parseFrontEndParams: unable to scan value for '%s' (double expected)\n", tok);
+				goto bail;
+			}
+			while ( chb <= che ) {
+				if ( (st = pgaSetAtt( fw, chb, dv1 )) < 0 ) {
+					fprintf(stderr, "Error -- setting 'PGAAttenuator' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					goto bail;
+				}
+				++chb;
+			}
+		} else {
+			fprintf(stderr, "Error -- parseFrontEndParams: invalid operation: '%s'\n", tok);
+			goto bail;
+		}
+	}
+
+	rval = 0;
+bail:
+	regfree( &chanPat );
+	free( str );
+	return rval;
 }
 
 
@@ -391,19 +612,20 @@ int                dumpAdc   = 0;
 int                dumpPrms  = 0;
 const char        *trgOp     = 0;
 const char        *regOp     = 0;
+const char        *feOp      = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
 	}
 
-	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:PpR:S:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:P:pR:S:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
 			default : fprintf(stderr, "Unknown option -%c (use -h for help)\n", opt); return 1;
 			case 'd': devn = optarg;                                                  break;
 			case 'D': dac  = 1; test_reg = TEST_I2C;                                  break;
-			case 'P': dac  = 0; test_reg = TEST_PGA;                                  break;
+			case 'P': feOp = optarg;                                                  break;
 			case 'A': dac  = 0; test_reg = TEST_ADC;                                  break;
 			case 'G': dac  = 0; test_reg = TEST_FEG;                                  break;
 			case 'B': dumpAdc = 1;                                                    break;
@@ -470,6 +692,9 @@ const char        *regOp     = 0;
 			goto bail;
 		}
 	}
+	if ( feOp ) {
+		parseFrontEndParams( fw, feOp );
+	}
 	if ( dumpPrms ) {
 		AcqParams p;
 		p.mask = ACQ_PARAM_MSK_GET;
@@ -477,6 +702,7 @@ const char        *regOp     = 0;
 			fprintf(stderr, "Error: transferring acquisition parameters failed\n");
 			goto bail;
 		}
+		dumpFrontEndParams( fw );
 		printf("Trigger Source     : %s\n",
 			CHA == p.src ? "Channel A" : (CHB == p.src ? "Channel B" : "External"));
 		printf("Edge               : %s\n", p.rising ? "rising" : "falling");
@@ -507,7 +733,7 @@ const char        *regOp     = 0;
 		uint16_t hdr;
 		unsigned long nSamples = buf_get_size( fw );
 		uint8_t       fl       = buf_get_flags( fw );
-		size_t        reqBufSz = nSamples * NCHANNELS * sizeof(buf[0]);
+		size_t        reqBufSz = nSamples * fw_get_num_channels( fw ) * sizeof(buf[0]);
 		if ( (fl & FW_BUF_FLG_16B) ) {
 			reqBufSz *= 2;
 		}
@@ -812,18 +1038,6 @@ const char        *regOp     = 0;
 							rdl    = 1;
 						}
 					}
-				}
-				break;
-
-			case TEST_PGA:
-				i = ( val < 0 ? pgaReadReg( fw, 0, reg ) : pgaWriteReg( fw, 0, reg, val ) );
-				if ( i < 0 ) {
-					fprintf(stderr, "pga%sReg() failed\n", val < 0 ? "Read" : "Write");
-					goto bail;
-				}
-				if ( val < 0 ) {
-					buf[0] = (uint8_t)i;
-					rdl = 1;
 				}
 				break;
 

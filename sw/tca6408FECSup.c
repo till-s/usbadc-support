@@ -80,6 +80,18 @@ opSetTermination(FECOps *ops, unsigned channel, unsigned on)
 }
 
 static int
+opGetDACRangeHi(FECOps *ops, unsigned channel)
+{
+	return readBit( ops, channel, DACRANGE );
+}
+
+static int
+opSetDACRangeHi(FECOps *ops, unsigned channel, unsigned on)
+{
+	return writeBit( ops, channel, DACRANGE, on );
+}
+
+static int
 opGetAttRange(FECOps *ops, double *min, double *max)
 {
 	TCA6408FECSup *fec  = (TCA6408FECSup*)ops;
@@ -128,30 +140,59 @@ struct FECOps *tca6408FECSupCreate(
 	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
 )
 {
+TCA6408FECSup *fec  = 0;
+uint8_t        sla8 = (sla << 1);
+unsigned       chn;
+int            dir;
+
 	if ( ! fw || ! getBit ) {
 		fprintf(stderr, "tca6408FECSupCreate: missing arguments\n");
 		return 0;
 	}
-	uint8_t sla8 = (sla << 1);
-	if ( bb_i2c_write_reg( fw, sla8, DIR_REG, DIR_ALL_OUT ) < 0 ) {
+
+	if ( (dir = bb_i2c_read_reg( fw, sla8, DIR_REG )) < 0 ) {
+		fprintf(stderr, "tca6408FECSup ERROR -- reading GPIO direction FAILED\n");
 		return 0;
 	}
-	TCA6408FECSup *fec = calloc( 1, sizeof(*fec) );
-	if ( fec ) {
-		fec->fw                 = fw;
-		fec->sla                = sla;
-		fec->attMin             = attMin;
-		fec->attMax             = attMax;
-		fec->getBit             = getBit;
-		fec->ops.getACMode      = opGetACMode;
-		fec->ops.setACMode      = opSetACMode;
-		fec->ops.getTermination = opGetTermination;
-		fec->ops.setTermination = opSetTermination;
-		fec->ops.getAttRange    = opGetAttRange;
-		fec->ops.getAtt         = opGetAtt;
-		fec->ops.setAtt         = opSetAtt;
-		fec->ops.close          = opClose;
+
+	fec = calloc( 1, sizeof(*fec) );
+	if ( ! fec ) {
+		fprintf(stderr, "tca6408FECSupCreate: no memory\n");
+		return 0;
+	}
+
+	fec->fw                 = fw;
+	fec->sla                = sla;
+	fec->attMin             = attMin;
+	fec->attMax             = attMax;
+	fec->getBit             = getBit;
+	fec->ops.getACMode      = opGetACMode;
+	fec->ops.setACMode      = opSetACMode;
+	fec->ops.getTermination = opGetTermination;
+	fec->ops.setTermination = opSetTermination;
+	fec->ops.getDACRangeHi  = opGetDACRangeHi;
+	fec->ops.setDACRangeHi  = opSetDACRangeHi;
+	fec->ops.getAttRange    = opGetAttRange;
+	fec->ops.getAtt         = opGetAtt;
+	fec->ops.setAtt         = opSetAtt;
+	fec->ops.close          = opClose;
+
+	/* Only initialize if it has not been done yet; otherwise leave alone */
+	if ( DIR_ALL_OUT != dir ) {
+		/* set output values before changing direction! */
+
+		for ( chn = 0; chn < fw_get_num_channels( fw ); ++chn ) {
+			opSetTermination( &fec->ops, chn, 0 );
+			opSetACMode     ( &fec->ops, chn, 1 );
+			opSetAtt        ( &fec->ops, chn, attMax );
+			opSetDACRangeHi ( &fec->ops, chn, 1 );
+		}
+
+		if ( bb_i2c_write_reg( fw, sla8, DIR_REG, DIR_ALL_OUT ) < 0 ) {
+			fprintf(stderr, "tca6408FECSup ERROR -- changing GPIO direction FAILED\n");
+			free( fec );
+			return 0;
+		}
 	}
 	return &fec->ops;
 }
-

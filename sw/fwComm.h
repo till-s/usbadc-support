@@ -39,6 +39,9 @@ fw_get_version(FWInfo *fw);
 uint8_t
 fw_get_board_version(FWInfo *fw);
 
+unsigned
+fw_get_num_channels(FWInfo *fw);
+
 #define FW_API_VERSION_1 (1)
 #define FW_API_VERSION_2 (2)
 #define FW_API_VERSION_3 (3)
@@ -297,6 +300,8 @@ struct FECOps {
 	int    (*getAttRange)(FECOps*, double *min, double *max);
 	int    (*getAtt)(FECOps *, unsigned channel, double *att);
 	int    (*setAtt)(FECOps *, unsigned channel, double att);
+	int    (*getDACRangeHi)(FECOps*, unsigned channel);
+	int    (*setDACRangeHi)(FECOps*, unsigned channel, unsigned on);
 	void   (*close)(FECOps *);
 };
 
@@ -313,6 +318,8 @@ int    fecGetACMode(FWInfo *, unsigned channel);
 int    fecSetACMode(FWInfo *, unsigned channel, unsigned on);
 int    fecGetTermination(FWInfo *, unsigned channel);
 int    fecSetTermination(FWInfo *, unsigned channel, unsigned on);
+int    fecGetDACRangeHi(FWInfo *, unsigned channel);
+int    fecSetDACRangeHi(FWInfo *, unsigned channel, unsigned on);
 int    fecGetAttRange(FWInfo*, double *min, double *max);
 int    fecGetAtt(FWInfo *, unsigned channel, double *att);
 int    fecSetAtt(FWInfo *, unsigned channel, double att);
