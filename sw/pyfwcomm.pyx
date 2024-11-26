@@ -359,6 +359,26 @@ cdef class Max195xxADC(FwDev):
     # muxed/DDR mode on port B
     self.writeReg( 1, 0x06 )
 
+  def setMuxedModeA(self):
+    # muxed/DDR mode on port B
+    self.writeReg( 1, 0x02 )
+
+  def getClkTermination(self):
+    cdef int st
+    with self._mgr as fw, nogil:
+      st = max195xxGetClkTermination( fw )
+    if ( st < 0 ):
+      raise IOError("Max195xxADC.getClkTermination()")
+    return st;
+
+  def enableClkTermination(self, bool on):
+    cdef int st
+    cdef int val = on
+    with self._mgr as fw, nogil:
+      st = max195xxEnableClkTermination( fw, val )
+    if ( st < 0 ):
+      raise IOError("Max195xxADC.getClkTermination()")
+
 cdef class DAC47CX(FwDev):
 
   def reset(self):
@@ -762,7 +782,7 @@ cdef class FwComm:
       self._amp = AmpLmh6882( self._mgr )
       self._fec = FEC( self._mgr )
       self._led = LED( self._mgr )
-    elif ( 1 == brdVers ):
+    elif ( 1 == brdVers or 2 == brdVers ):
       self._amp = AmpAd8370( self._mgr )
       self._fec = GpioFECv1( self._mgr )
       self._led = LEDv1( self._mgr )
@@ -799,6 +819,11 @@ cdef class FwComm:
        self._clkOut["ADC" ] = 3
        self._clkOut["FPGA"] = 1
        self._clkFRef = 26.0E6
+    elif ( 2 == brdVrs ):
+       self._clkOut["EXT" ] = 2
+       self._clkOut["ADC" ] = 3
+       self._clkOut["FPGA"] = 1
+       self._clkFRef = 25.0E6
     else:
       raise RuntimeError("Unsupported board version")
 
@@ -808,13 +833,18 @@ cdef class FwComm:
       # assume init has been done already
       return
     outs   = dict()
-    dflt   = {"IOSTD": OUT_CMOS}
+    dflt   = {"IOSTD": OUT_CMOS, "LEVEL": LEVEL_18}
     brdVrs = self.boardVersion()
     if   ( 0 == brdVrs ):
        fADC        = 130.0E6
     elif ( 1 == brdVrs ):
        outs["ADC"] = {"IOSTD": OUT_LVDS}
        fADC        = 120.0E6
+    elif ( 2 == brdVrs ):
+       outs["EXT"]  = {"IOSTD": OUT_CMOS, "LEVEL": LEVEL_33}
+       outs["ADC"]  = {"IOSTD": OUT_LVDS, "LEVEL": LEVEL_33}
+       outs["FPGA"] = {"IOSTD": OUT_CMOS, "LEVEL": LEVEL_33}
+       fADC         = 130.0E6
     else:
       raise RuntimeError("Unsupported board version")
     for k,v in self._clkOut.items():
@@ -822,8 +852,12 @@ cdef class FwComm:
         std = outs[k]["IOSTD"]
       except KeyError:
         std = dflt["IOSTD"]
+      try:
+        lvl = outs[k]["LEVEL"]
+      except KeyError:
+        lvl = dflt["LEVEL"]
       print("Setting output {:d} to {:d}".format(v, std))
-      self._clk.setOutCfg( v, std, SLEW_100, LEVEL_18 )
+      self._clk.setOutCfg( v, std, SLEW_100, lvl )
     fVCO   = self._clkFRef * self._clk.getFBDiv()
     outDiv = fVCO / fADC / 2.0
 
@@ -842,7 +876,10 @@ cdef class FwComm:
     # initialize the ADC
     if not self._adc.dllLocked():
       raise RuntimeError("ADC may have no clock")
-    self._adc.setMuxedModeB()
+    if ( 2 == brdVrs ):
+      self._adc.setMuxedModeA()
+    else:
+      self._adc.setMuxedModeB()
     if ( 0 == brdVrs ):
 	  # Empirically found setting for the prototype board
       self._adc.setTiming( -1, 3 )

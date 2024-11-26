@@ -51,6 +51,23 @@ cdef extern from "fwComm.h":
   int            bb_i2c_read_reg(FWInfo *, uint8_t sla, uint8_t reg) nogil
   int            bb_i2c_write_reg(FWInfo *, uint8_t sla, uint8_t reg, uint8_t val) nogil
 
+  int            pgaReadReg(FWInfo *, unsigned ch, unsigned reg) nogil
+  int            pgaWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val) nogil
+  int            pgaGetAttRange(FWInfo*, double *min, double *max) nogil
+  int            pgaGetAtt(FWInfo *, unsigned channel, double *att) nogil
+  int            pgaSetAtt(FWInfo *, unsigned channel, double att) nogil
+  int            fecGetACMode(FWInfo *, unsigned channel) nogil
+  int            fecSetACMode(FWInfo *, unsigned channel, unsigned on) nogil
+  int            fecGetTermination(FWInfo *, unsigned channel) nogil
+  int            fecSetTermination(FWInfo *, unsigned channel, unsigned on) nogil
+  int            fecGetDACRangeHi(FWInfo *, unsigned channel) nogil
+  int            fecSetDACRangeHi(FWInfo *, unsigned channel, unsigned on) nogil
+  int            fecGetAttRange(FWInfo*, double *min, double *max) nogil
+  int            fecGetAtt(FWInfo *, unsigned channel, double *att) nogil
+  int            fecSetAtt(FWInfo *, unsigned channel, double att) nogil
+  void           fecClose(FWInfo *) nogil
+
+
 cpdef enum SPIDev:
   NONE
   FLASH
@@ -97,7 +114,10 @@ cdef extern from "max195xxSup.h":
   int            max195xxSetTestMode(FWInfo *fw, Max195xxTestMode m) nogil
   int            max195xxSetCMVolt( FWInfo *fw, Max195xxCMVolt cmA, Max195xxCMVolt cmB ) nogil
   int            max195xxSetTiming( FWInfo *fw, int dclkDelay, int dataDelay ) nogil
-  
+  int            max195xxGetClkTermination( FWInfo *fw ) nogil
+
+  int            max195xxEnableClkTermination( FWInfo *fw, int on ) nogil
+
 cpdef enum Max195xxCMVolt:
   CM_0900mV = 0
   CM_1050mV = 1
