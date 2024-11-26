@@ -2,4 +2,5 @@
 *.swp
 pyfwcomm.c
 *.so
+*.a
 bbcli
