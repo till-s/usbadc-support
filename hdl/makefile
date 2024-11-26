@@ -7,6 +7,12 @@ GHDL=ghdl
 #GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
 GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
 
+# BRAM or SDRAM
+SAMPLEBUFFER_TYPE=SDRAM
+
+# where to find RamEmul.vhd (if SAMPLEBUFFER_TYPE == SDRAM)
+VPATH=../../SDRAMCtrl
+
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
@@ -17,9 +23,6 @@ all: $(TESTS)
 
 test: $(filter-out CommandWrapperSim,$(TESTS))
 	for i in $^; do if ! ./$$i; then exit 1; fi done
-
-# BRAM or SDRAM
-SAMPLEBUFFER_TYPE=SDRAM
 
 RAM_EMUL_SDRAM=RamEmul
 
@@ -38,7 +41,7 @@ OBJS+=SampleBufferSDRAM.o
 OBJS+=SDRAMPkg.o
 OBJS+=GenericFifoAsync.o
 OBJS+=SimpleBusAsync.o
-OBJS+=SinCosGen.o
+#OBJS+=SinCosGen.o
 OBJS+=SimpleBusPipeStage.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
@@ -109,7 +112,7 @@ CommandWrapperSim.o: CommandWrapperSim.vhd $(OBJS) SimPty.o SimPtyIO.o
 SDRAMPkg.o: SDRAMPkg.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 
-RamEmul.o: SDRAMCtrl/RamEmul.vhd
+RamEmul.o: RamEmul.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 
 SDRAMCtrl/RamEmul.vhd:

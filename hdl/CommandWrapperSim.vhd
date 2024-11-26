@@ -18,7 +18,7 @@ architecture sim of CommandWrapperSim is
    constant RAM_A_WIDTH_C : natural := 12; -- >= log2(MEM_DEPTH_C)
    constant MEM_DEPTH_C   : natural := 2048;
    constant ADC_FIRST_C   : unsigned(ADC_W_C - 1 downto 0)  := (others => '1');
-   constant USE_GEN_C     : boolean := true;
+   constant USE_GEN_C     : boolean := false;
    constant NUM_REGS_C    : natural := 6;
 
    constant BB_SPI_CSb_C  : natural := 0;
@@ -263,7 +263,20 @@ begin
 
    G_GEN : if ( USE_GEN_C ) generate
 
-   U_SIN_COS : entity work.SinCosGen
+      component SinCosGen is
+         port (
+            clk      : in  std_logic;
+            load     : in  std_logic;
+            coeff    : in  signed(17 downto 0);
+            cini     : in  signed(17 downto 0);
+            cos      : out signed(34 downto 0);
+            sin      : out signed(34 downto 0)
+         );
+      end component SinCosGen;
+
+   begin
+
+   U_SIN_COS : component SinCosGen
       port map (
          clk      => adcClk,
          load     => adcLoad,
