@@ -128,6 +128,7 @@ unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
 		case 0:
 			sup |= (1<<SPI_PGA) | (1<<SPI_FEG); break;
 		case 1:
+		case 2:
 			sup |= (1<<SPI_PGA);                break;
 		default:
 			fprintf(stderr, "spi_get_subcmd(): unsupported board/hw version %i\n", fw->brdVers);
@@ -373,6 +374,7 @@ int     st;
 		break;
 
 		case 1:
+		case 2:
 			fw->pga            = &ad8370PGAOps;
 			fw->fec            = tca6408FECSupCreate( fw, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
 	        fw->fullScaleVolts = 0.0098;
