@@ -110,6 +110,10 @@ int     rv;
 #define DCLK_TIME_SHIFT 3
 #define DATA_TIME_SHIFT 0
 
+#define TEST_REG   6
+
+#define CLK_TERMINATION (1<<3)
+
 static int delay2bits(int delay)
 {
 	if ( delay > 3 || delay < -3 ) {
@@ -133,7 +137,7 @@ max195xxSetTestMode(FWInfo *fw, Max195xxTestMode m)
 {
 uint8_t val;
 int     rv;
-	rv = max195xxReadReg( fw, 0x06, &val );
+	rv = max195xxReadReg( fw, TEST_REG, &val );
 	if ( rv < 0 ) {
 		return rv;
 	}
@@ -146,7 +150,7 @@ int     rv;
 		case AA55_TEST: val |= 0xD0; break;
 		default:        val |= 0x00; break; /* two's complement */
 	}
-	return max195xxWriteReg( fw, 0x06, val );
+	return max195xxWriteReg( fw, TEST_REG, val );
 }
 
 int
@@ -159,3 +163,29 @@ uint8_t val;
 	val = (cmB << 4 ) | cmA;
 	return max195xxWriteReg( fw, 0x08, val );	
 }
+
+int
+max195xxGetClkTermination( FWInfo *fw )
+{
+    uint8_t val;
+	int st = max195xxReadReg( fw, TEST_REG, &val );
+	return st < 0 ? st : !! ( val & CLK_TERMINATION );
+}
+
+int
+max195xxEnableClkTermination( FWInfo *fw, int on )
+{
+    uint8_t val;
+	int st = max195xxReadReg( fw, TEST_REG, &val );
+	if ( st < 0 ) {
+		return st;
+	}
+	if ( on ) {
+		val |= CLK_TERMINATION;
+	} else {
+		val &= ~CLK_TERMINATION;
+	}
+	return max195xxWriteReg( fw, TEST_REG, val );
+}
+
+

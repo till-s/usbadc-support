@@ -37,6 +37,17 @@ typedef enum { CM_0450mV = 7, CM_0600mV = 6, CM_0750mV = 5, CM_0900mV = 0, CM_10
 int
 max195xxSetCMVolt( FWInfo *fw, Max195xxCMVolt cmA, Max195xxCMVolt cmB );
 
+/* RETURNS: 100Ohm termination of (diff.) clock input
+ *  1: on
+ *  0: off
+ * <0: error
+ */
+int
+max195xxGetClkTermination( FWInfo *fw );
+
+int
+max195xxEnableClkTermination( FWInfo *fw, int on );
+
 #ifdef __cplusplus
 }
 #endif
