@@ -635,7 +635,7 @@ uint8_t  v;
 int
 bb_spi_xfer_vec(FWInfo *fw, SPIMode mode, SPIDev type, const struct bb_vec *vec, size_t nelms)
 {
-int               stretch = 10;
+int               stretch = 1;
 uint8_t           buf[BUF_BRK*8*2*stretch];
 int               el;
 int               rval = 0;
