@@ -82,13 +82,16 @@ opSetTermination(FECOps *ops, unsigned channel, unsigned on)
 static int
 opGetDACRangeHi(FECOps *ops, unsigned channel)
 {
-	return readBit( ops, channel, DACRANGE );
+	/* high-level enables analog switch that reduces the
+	 * DAC output voltage range.
+	 */
+	return ! readBit( ops, channel, DACRANGE );
 }
 
 static int
 opSetDACRangeHi(FECOps *ops, unsigned channel, unsigned on)
 {
-	return writeBit( ops, channel, DACRANGE, on );
+	return writeBit( ops, channel, DACRANGE, ! on );
 }
 
 static int
