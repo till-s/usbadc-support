@@ -37,12 +37,12 @@ typedef enum { DAC47XX_VREF_INTERNAL_X1 } DAC47CXRefSelection;
 int
 dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel);
 
-/* Detect the max. range supported by the device;
- * NOTE: Uses a HARD-RESET; all settings are lost !!!
- */
 int
 dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val);
 
+/* Detect the max. range supported by the device;
+ * NOTE: Uses a HARD-RESET; all settings are lost !!!
+ */
 int
 dac47cxDetectMax(FWInfo *fw);
 

@@ -3,6 +3,7 @@
 #include "fwComm.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /* could go into the FWInfo struct */
 #define SLA 0xc2
@@ -82,9 +83,11 @@ static int dacMax(FWInfo *fw)
 			case 0:
 				_dacMax = 0xff;  break;
 			case 1:
+			case 2:
 				_dacMax = 0xfff; break;
 			default:
-				fprintf(stderr, "Error -- dac47cxGetRange(): unknown -- DAC not initialized?\n");
+				fprintf(stderr, "Error -- dac47cxGetRange(): unknown board version\n");
+				abort();
 				return 0;
 		}
 	}
@@ -103,23 +106,74 @@ uint16_t val;
 	return _dacMax;
 }
 
-/* Analog circuit: Vamp = - Vref/2 + Vdac * 2 */
+/* Analog circuit:
+ *  Board version 0:
+ *   Vamp = - Vref/2 + Vdac
+ *  Board version 1,2 (hi-range):
+ *   Vamp = ( Vref/2 - Vdac ) / 2
+ */
 
+/* Board V1 */
 #define VOLT_REF   1.214
 #define VOLT_MIN   (-VOLT_REF/2.0)
-#define VOLT(tick) (VOLT_MIN + VOLT_REF * ((float)(tick)) / (float)(maxDac + 1))
-#define VOLT_MAX   VOLT(maxDac)
-#define TICK(volt) round( (volt - VOLT_MIN)/(VOLT_MAX - VOLT_MIN) * (float)maxDac )
+
+static double tick2Volt(FWInfo *fw, int tick, int maxDac)
+{
+	double volt = (VOLT_MIN + VOLT_REF * ((double)(tick)) / (double)(maxDac + 1));
+	switch ( fw_get_board_version( fw ) ) {
+		case 0:
+		break;
+
+		case 1: /* fall through */
+		case 2: volt *= -0.5;
+		break;
+
+		default:
+			fprintf(stderr, "dac47cx tick2Volt: unsupported board version\n");
+			abort();
+	}
+	return volt;
+}
+
+static int volt2Tick(FWInfo *fw, double volt, int maxDac)
+{
+	int tick;
+
+	switch ( fw_get_board_version( fw ) ) {
+		case 0:
+		break;
+
+		case 1: /* fall through */
+		case 2: volt *= -2.0;
+		break;
+
+		default:
+			fprintf(stderr, "dac47cx volt2Tick: unsupported board version\n");
+			abort();
+	}
+
+	tick = round( (volt - VOLT_MIN)/VOLT_REF * (double)(maxDac + 1) );
+	if ( tick < 0 ) {
+		tick = 0;
+	}
+	if ( tick > maxDac ) {
+		tick = maxDac;
+	}
+	return tick;
+}
 
 void
 dac47cxGetRange(FWInfo *fw, int *tickMin, int *tickMax, float *voltMin, float *voltMax)
 {
 int maxDac = dacMax(fw);
 
+	double voltLo = tick2Volt( fw,      0, maxDac );
+	double voltHi = tick2Volt( fw, maxDac, maxDac );
+
 	if ( tickMin ) *tickMin = 0;
 	if ( tickMax ) *tickMax = maxDac;
-	if ( voltMin ) *voltMin = VOLT( 0      );
-	if ( voltMax ) *voltMax = VOLT( maxDac );
+	if ( voltMin ) *voltMin = voltLo < voltHi ? voltLo : voltHi;
+	if ( voltMax ) *voltMax = voltHi > voltLo ? voltHi : voltLo;
 }
 
 int
@@ -160,21 +214,22 @@ int
 dac47cxSetVolt(FWInfo *fw, unsigned channel, float val)
 {
 int ival, maxDac = dacMax(fw);
+float voltMin, voltMax;
 
-	if ( val < VOLT_MIN ) {
-		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", VOLT_MIN);
-		val = VOLT_MIN;
+	dac47cxGetRange(fw, NULL, NULL, &voltMin, &voltMax);
+
+	if ( val < voltMin ) {
+		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", voltMin);
+		val = voltMin;
 	}
-	if ( val > VOLT_MAX ) {
-		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", VOLT_MAX);
-		val = VOLT_MAX;
+	if ( val > voltMax ) {
+		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", voltMax);
+		val = voltMax;
 	}
 
 
-	ival = TICK( val );
+	ival = volt2Tick( fw, val, maxDac );
 
-	if ( -1         == ival ) ival = 0;
-	if ( maxDac + 1 == ival ) ival = maxDac;
 	return dac47cxSet( fw, channel, ival );
 }
 
@@ -190,7 +245,7 @@ int      maxDac = dacMax(fw);
 	}
 	if ( dac47cxGet( fw, channel, &val ) < 0 ) return -1;
 
-	*valp = VOLT( val );
+	*valp = tick2Volt( fw, val, maxDac );
 
 	return 0;
 }
@@ -217,8 +272,3 @@ dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel)
 	}
 	return 0;
 }
-
-#ifdef __cplusplus
-}
-#endif
-
