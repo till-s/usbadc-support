@@ -49,9 +49,6 @@ fw_get_num_channels(FWInfo *fw);
 uint8_t
 fw_get_api_version(FWInfo *fw);
 
-int
-bb_i2c_start(FWInfo *fw, int restart);
-
 #define FW_FEATURE_SPI_CONTROLLER (1ULL<<0)
 #define FW_FEATURE_ADC            (1ULL<<1)
 
@@ -71,6 +68,10 @@ fw_get_full_scale_volts(FWInfo *fw);
 
 int
 fw_get_current_scale(FWInfo *fw, unsigned channel, double *scl);
+
+/* Low-level i2c commands */
+int
+bb_i2c_start(FWInfo *fw, int restart);
 
 int
 bb_i2c_write(FWInfo *fw, uint8_t *buf, size_t len);
@@ -96,6 +97,15 @@ bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg);
  */
 int
 bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val);
+
+/* Transfer 'data' buffer to/from destination 'addr'; the direction
+ * is encoded in the slave address (read if I2C_READ is set, write
+ * otherwise) which is the LEFT SHIFTED 7-bit address.
+ * RETURN: number of data (payload) bytes transferred or negative value on
+ *         error.
+ */
+int
+bb_i2c_rw_a8(FWInfo *fw, uint8_t sla, uint8_t addr, uint8_t *data, size_t len);
 
 /* Access to raw bit-bang states (for board debugging) */
 int

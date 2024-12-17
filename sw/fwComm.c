@@ -505,10 +505,10 @@ int
 bb_i2c_start(FWInfo *fw, int restart)
 {
 	if ( fw->debug ) {
-		printf("bb_i2c_start:\n");
+		printf("bb_i2c_start(restart = %i):\n", restart);
 	}
 	if ( restart ) {
-		if ( bb_i2c_set(fw, 0, 1 ) < 0 ) {
+		if ( bb_i2c_set(fw, 0, 1) < 0 ) {
 			return -1;
 		}
 		if ( bb_i2c_set(fw, 1, 1) < 0 ) {
@@ -780,45 +780,41 @@ size_t   i;
 			return -1;
 		}
 		if ( ( got & I2C_NAK ) ) {
-			fprintf(stderr, "bb_i2c_write - byte %i received NAK\n", (unsigned)i);
+			if ( fw->debug ) {
+				fprintf(stderr, "bb_i2c_write - byte %i received NAK\n", (unsigned)i);
+			}
 			return i;
 		}
 	}
 	return len;
 }
 
-static int
-bb_i2c_rw_reg(FWInfo *fw, uint8_t sla, uint8_t reg, int val)
+int
+bb_i2c_rw_a8(FWInfo *fw, uint8_t sla, uint8_t addr, uint8_t *data, size_t len)
 {
 uint8_t buf[3];
 int     wrl;
 int     rval = -1;
 
     wrl        = 0;
-	buf[wrl++] = sla;
-	buf[wrl++] = reg;
-	if ( val >= 0 ) {
-		buf[wrl++] = (uint8_t)(val & 0xff);
-	}
+	buf[wrl++] = sla & ~I2C_READ;
+	buf[wrl++] = addr;
 	if ( bb_i2c_start( fw, 0 ) )
 		return -1;
-	if ( bb_i2c_write( fw, buf, wrl ) < 0 ) {
+	if ( bb_i2c_write( fw, buf, wrl ) < wrl ) {
 		goto bail;
 	}
-	if ( val < 0 ) {
+	if ( !!(sla & I2C_READ) ) {
 		if ( bb_i2c_start( fw, 1 ) ) {
 			goto bail;
 		}
-		buf[0] = sla | I2C_READ;
-		if ( bb_i2c_write( fw, buf, 1 ) < 0 ) {
+		buf[0] = sla;
+		if ( bb_i2c_write( fw, buf, 1 ) < 1 ) {
 			goto bail;
 		}
-		if ( bb_i2c_read( fw, buf, 1 ) < 0 ) {
-			goto bail;
-		}
-		rval = buf[0];
+		rval = bb_i2c_read( fw, data, len );
 	} else {
-		rval = 0;
+		rval = bb_i2c_write( fw, data, len );
 	}
 
 bail:
@@ -828,6 +824,26 @@ bail:
 	}
 	return rval;
 }
+
+static int
+bb_i2c_rw_reg(FWInfo *fw, uint8_t sla, uint8_t reg, int val)
+{
+	int rval;
+	uint8_t buf[1];
+
+	if ( val < 0 ) {
+		sla |= I2C_READ;
+	} else {
+		buf[0] = val;
+	}
+
+	rval = bb_i2c_rw_a8( fw, sla, reg, buf, sizeof(buf) );
+	if ( rval > 0 ) {
+		rval =  (val < 0 ) ? buf[0] : 0;
+	}
+	return rval;
+}
+
 
 /*
  * RETURNS: read value, -1 on error;

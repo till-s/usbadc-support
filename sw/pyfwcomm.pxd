@@ -8,6 +8,7 @@ cdef extern from "fwComm.h":
     pass
 
   uint8_t        FW_BUF_FLG_16B
+  uint8_t        I2C_READ
   
   FWInfo        *fw_open(const char *devn, unsigned speed) nogil
   int            fw_xfer(FWInfo *, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len) nogil
@@ -50,6 +51,7 @@ cdef extern from "fwComm.h":
   int            bb_spi_raw(FWInfo *, SPIDev, int clk, int mosi, int cs, int hiz) nogil
   int            bb_i2c_read_reg(FWInfo *, uint8_t sla, uint8_t reg) nogil
   int            bb_i2c_write_reg(FWInfo *, uint8_t sla, uint8_t reg, uint8_t val) nogil
+  int            bb_i2c_rw_a8(FWInfo *fw, uint8_t sla, uint8_t addr, uint8_t *data, size_t len) nogil
 
   int            pgaReadReg(FWInfo *, unsigned ch, unsigned reg) nogil
   int            pgaWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val) nogil

@@ -511,6 +511,29 @@ cdef class I2CDev(FwDev):
     if ( rv < 0 ):
       raise IOError("i2cReadReg failed")
 
+  cdef i2cRW(self, uint8_t sla, uint8_t off, pyb):
+    cdef Py_buffer b
+    if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
+      raise ValueError("I2CDev.i2cReadWrite arg must support buffer protocol")
+    if   ( b.itemsize == 1 ) :
+      with self._mgr as fw, nogil:
+        rv = bb_i2c_rw_a8( fw, sla, off, <uint8_t*>b.buf, b.len )
+    else:
+      PyBuffer_Release( &b )
+      raise ValueError("I2CDev.i2cReadWrite arg buffer itemsize must be 1")
+    PyBuffer_Release( &b )
+    if ( rv < 0 ):
+      PyErr_SetFromErrnoWithFilenameObject(OSError, self.mgr().name())
+    return rv
+
+  def i2cRead(self, uint8_t sla, uint8_t off, pybuf):
+    sla = (sla<<1) | I2C_READ
+    return self.i2cRW( sla, off, pybuf )
+
+  def i2cWrite(self, uint8_t sla, uint8_t off, pybuf):
+    sla = (sla<<1) & ~I2C_READ
+    return self.i2cRW( sla, off, pybuf )
+
 cdef class FEC(FwDev):
 
   def __init__(self, *args, **kwargs):
@@ -1011,7 +1034,7 @@ cdef class FwComm:
         rv = buf_read_flt( fw, &hdr, <float*>b.buf, b.len )
     else:
       PyBuffer_Release( &b )
-      raise ValueError("FwComm.read arg buffer itemsize must be 1 or {:d}".format(sizeof(float)))
+      raise ValueError("FwComm.read arg buffer itemsize must be 1,2 or {:d}".format(sizeof(float)))
     PyBuffer_Release( &b )
     if ( rv < 0 ):
       PyErr_SetFromErrnoWithFilenameObject(OSError, self.mgr().name())
