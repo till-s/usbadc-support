@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <math.h>
+#include <errno.h>
 
 #include "lmh6882Sup.h"
 #include "fwComm.h"
@@ -43,7 +44,7 @@ lmh6882GetAtt(FWInfo *fw, unsigned channel)
 {
 int v;
 	if ( channel > 1 ) {
-		return -2.0;
+		return (float)-EINVAL;
 	}
 	if ( ( v = lmh6882ReadReg( fw, PGA_REG_ATT_CHA + channel ) ) < 0 ) {
 		return (float)v;
@@ -56,11 +57,11 @@ lmh6882SetAtt(FWInfo *fw, unsigned channel, float att)
 {
 uint8_t v;
 	if ( channel > 1 ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 	if ( att < 0.0 || att > 20.0 ) {
 		fprintf(stderr, "lmh6228SetAtt: value out of range (0..20)\n");
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 	v = round( att * 4.0 );
 	return lmh6882WriteReg( fw, PGA_REG_ATT_CHA + channel, v );

@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <regex.h>
+#include <errno.h>
 
 #include "fwComm.h"
 #include "fwUtil.h"
@@ -289,7 +290,7 @@ regmatch_t matches[5];
 			}
 			while ( chb <= che ) {
 				if ( (st = fecSetACMode( fw, chb, iv )) < 0 ) {
-					fprintf(stderr, "Error -- setting 'Coupling' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					fprintf(stderr, "Error -- setting 'Coupling' failed: %s\n", strerror(-st));
 					goto bail;
 				}
 				++chb;
@@ -301,7 +302,7 @@ regmatch_t matches[5];
 			}
 			while ( chb <= che ) {
 				if ( (st = fecSetTermination( fw, chb, iv )) < 0 ) {
-					fprintf(stderr, "Error -- setting 'Coupling' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					fprintf(stderr, "Error -- setting 'Coupling' failed: %s\n", strerror(-st));
 					goto bail;
 				}
 				++chb;
@@ -313,7 +314,7 @@ regmatch_t matches[5];
 			}
 			while ( chb <= che ) {
 				if ( (st = fecSetDACRangeHi( fw, chb, iv )) < 0 ) {
-					fprintf(stderr, "Error -- setting 'DACRangeHigh' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					fprintf(stderr, "Error -- setting 'DACRangeHigh' failed: %s\n", strerror(-st));
 					goto bail;
 				}
 				++chb;
@@ -329,7 +330,7 @@ regmatch_t matches[5];
 			}
 			while ( chb <= che ) {
 				if ( (st = fecSetAtt( fw, chb, iv ? dv2 : dv1 )) < 0 ) {
-					fprintf(stderr, "Error -- setting 'FECAttenuator' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					fprintf(stderr, "Error -- setting 'FECAttenuator' failed: %s\n", strerror(-st));
 					goto bail;
 				}
 				++chb;
@@ -341,7 +342,7 @@ regmatch_t matches[5];
 			}
 			while ( chb <= che ) {
 				if ( (st = pgaSetAtt( fw, chb, dv1 )) < 0 ) {
-					fprintf(stderr, "Error -- setting 'PGAAttenuator' failed%s\n", FW_CMD_ERR_NOTSUP == st ? " (not supported)" : "");
+					fprintf(stderr, "Error -- setting 'PGAAttenuator' failed: %s\n", strerror(-st));
 					goto bail;
 				}
 				++chb;
@@ -776,7 +777,7 @@ const char        *feOp      = 0;
 				printf("\n");
 			}
 		} else if ( i < 0 ) {
-			if ( FW_CMD_ERR_TIMEOUT == i ) {
+			if ( -ETIMEDOUT == i ) {
 				fw_inv_cmd( fw );
 				fprintf(stderr, "Error: buffer-read timeout\n");
 			}
@@ -1030,7 +1031,7 @@ const char        *feOp      = 0;
 					} else {
 						i = ( val < 0 ? bb_i2c_read_reg( fw, sla, reg ) : bb_i2c_write_reg( fw, sla, reg, val ) );
 						if ( i < 0 ) {
-							fprintf(stderr, "bb_i2c_%s_reg failed\n", val < 0 ? "read" : "write");
+							fprintf(stderr, "bb_i2c_%s_reg failed: %s\n", val < 0 ? "read" : "write", strerror(-i));
 							goto bail;
 						}
 						if ( val < 0 ) {

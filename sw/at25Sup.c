@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
+#include <errno.h>
 
 #include "cmdXfer.h"
 #include "fwComm.h"
@@ -54,8 +55,8 @@ int     i;
 	buf[4] = 0xff;
 	buf[5] = 0xff;
 
-	if ( do_xfer( fw, 0, 0, buf, buf + 0x10, 6 ) < 0 ) {
-		return -1;
+	if ( (i = do_xfer( fw, 0, 0, buf, buf + 0x10, 6 )) < 0 ) {
+		return i;
 	}
 
 	for ( i = 1; i < 6; i++ ) {
@@ -80,7 +81,7 @@ int      st;
 
 	if ( (st = do_xfer( fw, hdr, hlen, rbuf, rbuf, len )) != hlen + len ) {
 		fprintf(stderr,"at25_spi_read -- receiving data failed or incomplete st %d, hlen %d, len %d\n", st, hlen, (unsigned)len);
-		return -1;
+		return st < 0 ? st : -EIO;
 	}
 
 	return len;
@@ -90,10 +91,11 @@ int
 at25_status(FWInfo *fw)
 {
 uint8_t buf[2];
+int     st;
 	buf[0] = AT25_OP_STATUS;
-	if ( do_xfer( fw, 0, 0, buf, buf, sizeof(buf) ) < 0 ) {
+	if ( (st = do_xfer( fw, 0, 0, buf, buf, sizeof(buf) )) < 0 ) {
 		fprintf(stderr, "at25_status: spi_xfer failed\n");
-		return -1;
+		return st;
 	}
 	return buf[1];
 }
@@ -103,15 +105,16 @@ at25_cmd_2(FWInfo *fw, uint8_t cmd, int arg)
 {
 uint8_t buf[2];
 int     len = 0;
+int     st;
 
 	buf[len++] = cmd;
 	if ( arg >= 0 && arg <= 255 ) {
 		buf[len++] = arg;
 	}
 
-	if ( do_xfer( fw, 0, 0, buf, buf, len ) < 0 ) {
+	if ( (st = do_xfer( fw, 0, 0, buf, buf, len )) < 0 ) {
 		fprintf(stderr, "at25_cmd_2(0x%02x) transfer failed\n", cmd);
-		return -1;
+		return st;
 	}
 	return 0;
 }
@@ -165,16 +168,30 @@ int
 at25_global_unlock(FWInfo *fw)
 {
 	/* must se write-enable again; global_unlock clears that bit */
-	return    at25_write_ena( fw )
-          || (at25_status01_write( fw, 0x00 ) < 0)
-          ||  at25_write_ena( fw );
+	int st;
+	if ( (st = at25_write_ena( fw )) < 0 ) {
+		return st;
+	}
+    if ( (st = at25_status01_write( fw, 0x00 )) < 0) {
+		return st;
+	}
+    if ( (st = at25_write_ena( fw )) < 0 ) {
+		return st;
+	}
+	return 0;
 }
 
 int
 at25_global_lock(FWInfo *fw)
 {
-	return    at25_write_ena( fw )
-          || (at25_status01_write( fw, 0x3c ) < 0);
+	int st;
+	if ( (st = at25_write_ena( fw )) < 0 ) {
+		return st;
+	}
+	if ( (st = at25_status01_write( fw, 0x3c )) < 0 ) {
+		return st;
+	}
+	return 0;
 }
 
 int
@@ -218,19 +235,19 @@ int     l, st;
 		buf[l++] = (addr >>  0) & 0xff;
 	}
 
-	if ( do_xfer( fw, 0, 0, buf, buf, l ) < 0 ) {
+	if ( (st = do_xfer( fw, 0, 0, buf, buf, l )) < 0 ) {
 		fprintf(stderr, "at25_block_erase() -- sending command failed\n");
-		return -1;
+		return st;
 	}
 
 	if ( (st = at25_status_poll( fw )) < 0 ) {
 		fprintf(stderr, "at25_block_erase() -- unable to poll status\n");
-		return -1;
+		return st;
 	}
 
 	if ( (st & AT25_ST_EPE) ) {
 		fprintf(stderr, "at25_block_erase() -- programming error; status 0x%02x\n", st);
-		return -1;
+		return -EHWPOISON;
 	}
 
 	return 0;
@@ -250,6 +267,9 @@ int       got,i;
 			got = at25_spi_read( fw, wrkAddr, buf, x );
 			if ( got <= 0 ) {
 				fprintf(stderr, "at25_prog() verification failed -- unable to read back\n");
+				if ( 0 == got ) {
+					got = -EIO;
+				}
 				return got;
 			}
 			for ( i = 0; i < got; i++ ) {
@@ -270,7 +290,7 @@ int       got,i;
 		if ( addnl ) {
 			printf("\n");
 		}
-		return mismatch ? -1 : 0;
+		return mismatch ? -EPROTO : 0;
 }
 
 int
@@ -286,14 +306,14 @@ const uint8_t *src;
 uint8_t        junk[AT25_PAGE];
 
 	if ( (check & AT25_CHECK_ERASED) ) {
-		if ( verify( fw, addr, 0, len, 1 ) )
-			return -1;
+		if ( (st = verify( fw, addr, 0, len, 1 )) < 0 )
+			return st;
 	}
 
 	if ( (check & AT25_EXEC_PROG) ) {
-		if ( at25_global_unlock( fw ) ) {
+		if ( (st = at25_global_unlock( fw )) < 0 ) {
 			fprintf(stderr, "at25_prog() -- write-enable failed\n");
-			return -1;
+			return st;
 		}
 
 		wrk      = len;
@@ -316,7 +336,7 @@ uint8_t        junk[AT25_PAGE];
 			buf[i++] = (wrkAddr >>  8) & 0xff;
 			buf[i++] = (wrkAddr >>  0) & 0xff;
 
-			if ( do_xfer( fw, buf, i, src, junk, x ) < 0 ) {
+			if ( (rval = do_xfer( fw, buf, i, src, junk, x )) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to transmit\n");
 				goto bail;
 			}
@@ -332,19 +352,20 @@ uint8_t        junk[AT25_PAGE];
 				nanosleep( &t, 0 );
 			}
 
-			if ( (st = at25_status_poll( fw )) < 0 ) {
+			if ( (rval = at25_status_poll( fw )) < 0 ) {
 				fprintf(stderr, "at25_prog() - failed to poll status\n");
 				goto bail;
 			}
 
 			if ( (st & AT25_ST_EPE) ) {
 				fprintf(stderr, "at25_status_poll() -- programming error (status 0x%02x, writing page 0x%x) -- aborting\n", st, wrkAddr);
+				rval = -EHWPOISON;
 				goto bail;
 			}
 
 			if ( (check & AT25_CHECK_VERIFY) && VERIFY_AFTER_WRITE ) {
-				if ( verify( fw, wrkAddr, src, x, 0 ) ) {
-					return -1;
+				if ( (st = verify( fw, wrkAddr, src, x, 0 )) < 0 ) {
+					return st;
 				}
 			}
 
@@ -362,12 +383,13 @@ uint8_t        junk[AT25_PAGE];
 	}
 
 	if ( (check & AT25_CHECK_VERIFY) ) {
-		if ( verify( fw, addr, data, len, 1 ) ) {
+		if ( (rval = verify( fw, addr, data, len, 1 )) < 0 ) {
 			goto bail;
 		}
 	}
 
 	rval = len;
+	st   = 0;
 
 bail:
 	if ( (check & AT25_EXEC_PROG) ) {
@@ -387,7 +409,7 @@ int st;
 	} else {
 		st = do_xfer_bb(fw, hdr, hlen, tbuf, rbuf, buflen);
 	}
-	if ( FIFO_ERR_TIMEOUT == st ) {
+	if ( -ETIMEDOUT == st ) {
 		fprintf(stderr, "Error: transfer timed out\n");
 	}
 	return st;
@@ -427,7 +449,6 @@ uint8_t hbuf[64];
 		nr++;
 	}
 	return fw_xfer_vec( fw, cmd, tv, nt, rv, nr );
-
 }
 
 static int
@@ -465,7 +486,7 @@ size_t   nelms = 0;
 			st = bb_spi_xfer_vec( fw, SPI_MODE0, SPI_FLASH, vec, nelms );
 			if ( st < 0 ) {
 				fprintf(stderr, "do_xfer: bb_spi_xfer_vec failed\n");
-				rv = -1;
+				rv = st;
 				goto bail;
 			}
 			rv += st;

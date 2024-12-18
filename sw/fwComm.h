@@ -14,6 +14,8 @@ typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB
 
 typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG, SPI_VGA, SPI_VGB } SPIDev;
 
+/* Error return codes of this library are negative ERRNO numbers */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -129,14 +131,6 @@ typedef struct bb_vec {
 int
 bb_spi_xfer_vec(FWInfo *fw, SPIMode mode, SPIDev type, const struct bb_vec *vec, size_t nelms);
 
-/* Unspecified error   */
-#define FW_CMD_ERR         (-1)
-/* Timeout             */
-#define FW_CMD_ERR_TIMEOUT (-2)
-/* Unsupported command */
-#define FW_CMD_ERR_NOTSUP  (-3)
-/* Invalid arguments   */
-#define FW_CMD_ERR_INVALID (-4)
 /*
  * Low-level transfer for debugging
  */
@@ -171,7 +165,7 @@ buf_get_size(FWInfo *);
 uint8_t
 buf_get_flags(FWInfo *);
 
-/* Requres API vers. 3; returns FW_CMD_ERR_NOTSUP if API is older */
+/* Requres API vers. 3; returns -ENOTSUP if API is older */
 int
 buf_get_sample_size(FWInfo *);
 

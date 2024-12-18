@@ -3,6 +3,7 @@
 #include "fwComm.h"
 #include <math.h>
 #include <stdio.h>
+#include <errno.h>
 #include <stdlib.h>
 
 /* could go into the FWInfo struct */
@@ -12,16 +13,17 @@ int
 dac47cxReadReg(FWInfo *fw, unsigned reg, uint16_t *val)
 {
 uint8_t     buf[2];
+int         st;
 
 	buf[0] = SLA;
 	buf[1] = ( 0x06 | ( (reg & 0x1f) << 3 ) );
-	if ( bb_i2c_start( fw, 0      ) < 0 ) return -1;
-	if ( bb_i2c_write( fw, buf, 2 ) < 0 ) return -1;
-	if ( bb_i2c_start( fw, 1      ) < 0 ) return -1;
+	if ( (st = bb_i2c_start( fw, 0      )) < 0 ) return st;
+	if ( (st = bb_i2c_write( fw, buf, 2 )) < 0 ) return st;
+	if ( (st = bb_i2c_start( fw, 1      )) < 0 ) return st;
 	buf[0] = SLA | I2C_READ;
-	if ( bb_i2c_write( fw, buf, 1 ) < 0 ) return -1;
-	if ( bb_i2c_read ( fw, buf, 2 ) < 0 ) return -1;
-	if ( bb_i2c_stop ( fw         ) < 0 ) return -1;
+	if ( (st = bb_i2c_write( fw, buf, 1 )) < 0 ) return st;
+	if ( (st = bb_i2c_read ( fw, buf, 2 )) < 0 ) return st;
+	if ( (st = bb_i2c_stop ( fw         )) < 0 ) return st;
 	*val = ( buf[0] << 8 ) | buf[1];
 	return 0;
 }
@@ -30,14 +32,15 @@ int
 dac47cxWriteReg(FWInfo *fw, unsigned reg, uint16_t val)
 {
 uint8_t     buf[4];
+int         st;
 
 	buf[0] = SLA;
 	buf[1] = ( 0x00 | ( (reg & 0x1f) << 3 ) );
 	buf[2] = ( val >> 8 ) & 0xff;
 	buf[3] = ( val >> 0 ) & 0xff;
-	if ( bb_i2c_start( fw, 0      ) < 0 ) return -1;
-	if ( bb_i2c_write( fw, buf, 4 ) < 0 ) return -1;
-	if ( bb_i2c_stop ( fw         ) < 0 ) return -1;
+	if ( (st = bb_i2c_start( fw, 0      )) < 0 ) return st;
+	if ( (st = bb_i2c_write( fw, buf, 4 )) < 0 ) return st;
+	if ( (st = bb_i2c_stop ( fw         )) < 0 ) return st;
 	return 0;
 }
 
@@ -45,12 +48,13 @@ int
 dac47cxReset(FWInfo *fw)
 {
 uint8_t     buf[2];
+int         st;
 
 	buf[0] = 0x00; /* special address */
 	buf[1] = 0x06;
-	if ( bb_i2c_start( fw, 0 )       < 0 ) return -1;
-	if ( bb_i2c_write( fw, buf, 2 )  < 0 ) return -1;
-	if ( bb_i2c_stop ( fw         )  < 0 ) return -1;
+	if ( (st = bb_i2c_start( fw, 0 ))       < 0 ) return st;
+	if ( (st = bb_i2c_write( fw, buf, 2 ))  < 0 ) return st;
+	if ( (st = bb_i2c_stop ( fw         ))  < 0 ) return st;
 	return 0;
 }
 
@@ -98,9 +102,10 @@ int
 dac47cxDetectMax(FWInfo *fw)
 {
 uint16_t val;
+int      st;
 
-	if ( dac47cxReset( fw )          < 0 ) return -1;
-	if ( dac47cxGet  ( fw, 0, &val ) < 0 ) return -1;
+	if ( (st = dac47cxReset( fw ))          < 0 ) return st;
+	if ( (st = dac47cxGet  ( fw, 0, &val )) < 0 ) return st;
 	_dacMax = val;
 	_dacMax = ((_dacMax + 1) << 1) - 1;
 	return _dacMax;
@@ -180,10 +185,11 @@ int
 dac47cxSet(FWInfo *fw, unsigned channel, int val)
 {
 int maxDac = 0;
+int st;
 
 	if ( channel > 1 ) {
 		fprintf(stderr, "Error -- dac47cxSet(): invalid channel\n");
-		return -2;
+		return -EINVAL;
 	}
 
 	maxDac = dacMax(fw);
@@ -196,18 +202,19 @@ int maxDac = 0;
 		fprintf(stderr,"Warning -- dac47cxSet(): small value clipped to %d\n", 0);
 		val = 0;
 	}
-	if ( dac47cxWriteReg( fw, REG_VAL0 + channel, val ) < 0 ) return -1;
+	if ( (st = dac47cxWriteReg( fw, REG_VAL0 + channel, val )) < 0 ) return st;
 	return 0;
 }
 
 int
 dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val)
 {
+int st;
 	if ( channel > 1 ) {
 		fprintf(stderr, "Error -- dac47cxGet(): invalid channel\n");
-		return -2;
+		return -EINVAL;
 	}
-	if ( dac47cxReadReg( fw, REG_VAL0 + channel, val ) < 0 ) return -1;
+	if ( (st = dac47cxReadReg( fw, REG_VAL0 + channel, val )) < 0 ) return st;
 	return 0;
 }
 int
@@ -238,12 +245,13 @@ dac47cxGetVolt(FWInfo *fw, unsigned channel, float *valp)
 {
 uint16_t val;
 int      maxDac = dacMax(fw);
+int      st;
 
 	if ( channel > 1 ) {
 		fprintf(stderr, "dac47xxGetVolt(): invalid channel\n");
-		return -2;
+		return -EINVAL;
 	}
-	if ( dac47cxGet( fw, channel, &val ) < 0 ) return -1;
+	if ( (st = dac47cxGet( fw, channel, &val )) < 0 ) return st;
 
 	*valp = tick2Volt( fw, val, maxDac );
 
@@ -253,6 +261,7 @@ int      maxDac = dacMax(fw);
 int
 dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel)
 {
+int st;
 	switch ( sel ) {
 		case DAC47XX_VREF_INTERNAL_X1:
 			/* select internal bandgap (leave at gain 1)
@@ -262,13 +271,13 @@ dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel)
 			 *  - select on ch0
 			 *  - other channels must be in external, buffered mode
 			 */
-			if ( dac47cxWriteReg(fw, REG_VREF, VREF_CH1(VREF_EXT_BUF) | VREF_CH0(VREF_INTERNAL)) < 0 ) {
-				return -1;
+			if ( (st = dac47cxWriteReg(fw, REG_VREF, VREF_CH1(VREF_EXT_BUF) | VREF_CH0(VREF_INTERNAL))) < 0 ) {
+				return st;
 			}
 			break;
 		default:
 			fprintf(stderr, "Error -- dac47cxSetRefSelection(): invalid/unsupported choice\n");
-			return -1;
+			return -ENOTSUP;
 	}
 	return 0;
 }

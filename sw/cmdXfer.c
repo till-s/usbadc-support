@@ -28,11 +28,11 @@ typedef enum { RX, ESC, DONE } RxState;
 
 int fifoOpen(const char *devn, unsigned speed)
 {
-int                rval = -1;
 int                fd   = -1;
 char               msg[256];
 struct termios     atts;
-size_t             i;
+size_t             i,put;
+int                err  = 0;
 
     /* Special trick: open the TTY twice. If another program (minicom!)
      * already has the port opened (but w/o TIOCEXCL) then our first
@@ -86,7 +86,7 @@ size_t             i;
 	}
 
 	if ( tcsetattr( fd, TCSAFLUSH, &atts ) ) {
-		perror( "tcgetattr failed" );
+		perror( "tcsetattr failed" );
 		goto bail;
 	}
 
@@ -105,19 +105,20 @@ size_t             i;
 	for ( i = 0; i < 4; i++ ) {
 		msg[i] = COMMA;
 	}
-	if ( i != write( fd, msg, i ) ) {
+	put = write( fd, msg, i );
+	if ( i != put ) {
 		perror("Writing syncing commas failed");
+		err = put < 0 ? -errno : -EIO;
 		goto bail;
 	}
 
-	rval = fd;
-	fd   = -1;
+	return fd;
 
 bail:
 	if ( fd >= 0 ) {
 		close( fd );
 	}
-	return rval;
+	return err ? err : -errno;
 }
 
 int
@@ -262,7 +263,7 @@ struct timespec timeout;
 		if ( i <= 0 ) {
 			if ( 0 == i ) {
 				/* Timeout */
-				return FIFO_ERR_TIMEOUT;
+				return -ETIMEDOUT;
 			}
 			perror("select failure");
 			goto bail;
@@ -274,6 +275,9 @@ struct timespec timeout;
 			}
 			if ( (i = write(fd, tbufs + puts, tlens)) <= 0 ) {
 				perror("fifoXferFrame: writing FIFO failed");
+				if ( 0 == i ) {
+					errno = EIO;
+				}
 				goto bail;
 			}
 			puts  += i;
@@ -282,6 +286,9 @@ struct timespec timeout;
 		if ( FD_ISSET( fd, &rfds ) ) {
 			if ( (i = read(fd, rbufs, rlens)) <= 0 ) {
 				perror("fifoXferFrame: reading FIFO failed");
+				if ( 0 == i ) {
+					errno = EIO;
+				}
 				goto bail;
 			}
 			if ( fifoDebug > 0 ) {
@@ -327,5 +334,5 @@ struct timespec timeout;
 	return tot;
 
 bail:
-	return -1;
+	return -errno;
 }

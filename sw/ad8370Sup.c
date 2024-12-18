@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <math.h>
+#include <errno.h>
 
 #include "ad8370Sup.h"
 #include "fwComm.h"
@@ -47,11 +48,11 @@ double         gain    =  pow( 10.0,  (MAXGAIN - att) / 20.0 );
 unsigned       cod;
 
 	if ( channel > 1 ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 	if ( att < 0.0 ) {
 		fprintf(stderr, "ad837028SetAtt: value out of range (0..20)\n");
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 
 	if ( att >= 65.0 ) {
@@ -135,7 +136,7 @@ opGetAtt(FWInfo *fw, unsigned channel, double *att)
 {
 	double val = (double)ad8370GetAtt( fw, channel );
 	if ( isnan( val ) ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 	if ( val < 0.0 ) {
 		return (int)val;

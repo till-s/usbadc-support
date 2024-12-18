@@ -8,6 +8,8 @@
 #include <inttypes.h>
 #include <math.h>
 #include <termios.h>
+#include <errno.h>
+#include <string.h>
 
 #include "cmdXfer.h"
 #include "fwComm.h"
@@ -132,11 +134,11 @@ unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
 			sup |= (1<<SPI_PGA);                break;
 		default:
 			fprintf(stderr, "spi_get_subcmd(): unsupported board/hw version %i\n", fw->brdVers);
-			return -1;
+			return -ENOTSUP;
 	}
 	if ( ! ((1<<type) & sup) ) {
 		fprintf(stderr, "spi_get_subcmd(): SPI device %i not supported on this board/hw\n", type);
-		return -1;
+		return -ENOTSUP;
 	}
 	switch ( type ) {
 		case SPI_NONE  : return BITS_FW_CMD_BB_NONE;
@@ -198,7 +200,7 @@ int
 fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 {
 	if ( channel >= fw->numChannels ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 	if ( pscl ) {
 		double scl    = fw_get_full_scale_volts( fw );
@@ -211,7 +213,7 @@ fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 		}
 		st = pgaGetAtt( fw, channel, &att );
 		if ( st < 0 ) {
-			if ( FW_CMD_ERR_NOTSUP != st ) {
+			if ( -ENOTSUP != st ) {
 				return st;
 			}
 			/* NOTSUP means no additional attenuation */
@@ -220,7 +222,7 @@ fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 		}
 		st = fecGetAtt( fw, channel, &att );
 		if ( st < 0 ) {
-			if ( FW_CMD_ERR_NOTSUP != st ) {
+			if ( -ENOTSUP != st ) {
 				return st;
 			}
 			/* NOTSUP means no additional attenuation */
@@ -238,7 +240,7 @@ static int
 brdV1TCA6408Bits(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
 {
 	if ( channel >= fw->numChannels ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 	switch ( which ) {
 		case ATTENUATOR:   return channel ? (1<<2) : (1<<6);
@@ -246,7 +248,7 @@ brdV1TCA6408Bits(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
 		case ACMODE:       return channel ? (1<<3) : (1<<7);
 		case DACRANGE:     return channel ? (1<<0) : (1<<1);
 		default:
-		return FW_CMD_ERR_INVALID;
+		return -ENOTSUP;
 	}
 }
 
@@ -260,7 +262,7 @@ int64_t rval;
 
 	got = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 	if ( got < 0 ) {
-		return (int64_t)-1;
+		return (int64_t)got;
 	}
 	rval = 0;
 	for ( i = 0; i < got; i++ ) {
@@ -310,7 +312,7 @@ int     st;
 	fw->debug          = 0;
 	fw->ownFd          = 0;
 	fw->features       = 0;
-	fw->sampleSize     = FW_CMD_ERR_NOTSUP;
+	fw->sampleSize     = -ENOTSUP;
 	fw->numChannels    = 2;
 	fw->fullScaleVolts = 0.0;
 
@@ -326,7 +328,7 @@ int     st;
 
 	}
 
-	if ( ( vers = __fw_get_version( fw ) ) == (int64_t) -1 ) {
+	if ( ( vers = __fw_get_version( fw ) ) < 0 ) {
 		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
 		free( fw );
 		return 0;
@@ -461,7 +463,7 @@ int     st;
 
 	st = fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
 	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
-		st = FW_CMD_ERR_NOTSUP;
+		st = -ENOTSUP;
 	}
 	return st;
 }
@@ -473,7 +475,7 @@ uint8_t cmdLoc = cmd;
 int     st;
 	st = fifoXferFrameVec( fw->fd, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
 	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
-		st = FW_CMD_ERR_NOTSUP;
+		st = -ENOTSUP;
 	}
 	return st;
 }
@@ -490,10 +492,11 @@ bb_i2c_set(FWInfo *fw, int scl, int sda)
 {
 uint8_t bbbyte =  ((scl ? 1 : 0) << SCL_SHFT) | ((sda ? 1 : 0) << SDA_SHFT) | I2C_MASK;
 uint8_t x = bbbyte;
+int     st;
 
-	if ( fw_xfer_bb( fw, BITS_FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 ) < 0 ) {
+	if ( (st = fw_xfer_bb( fw, BITS_FW_CMD_BB_I2C, &bbbyte, &bbbyte, 1 )) < 0 ) {
 		fprintf(stderr, "bb_i2c_set: unable to set levels\n");
-		return -1;
+		return st;
 	}
 	if ( fw->debug ) {
 		pr_i2c_dbg(x, bbbyte);
@@ -504,24 +507,25 @@ uint8_t x = bbbyte;
 int
 bb_i2c_start(FWInfo *fw, int restart)
 {
+	int st;
 	if ( fw->debug ) {
 		printf("bb_i2c_start(restart = %i):\n", restart);
 	}
 	if ( restart ) {
-		if ( bb_i2c_set(fw, 0, 1) < 0 ) {
-			return -1;
+		if ( (st = bb_i2c_set(fw, 0, 1)) < 0 ) {
+			return st;
 		}
-		if ( bb_i2c_set(fw, 1, 1) < 0 ) {
-			return -1;
+		if ( (st = bb_i2c_set(fw, 1, 1)) < 0 ) {
+			return st;
 		}
 	}
 
-	if ( bb_i2c_set(fw, 1, 0) < 0 ) {
-		return -1;
+	if ( (st = bb_i2c_set(fw, 1, 0)) < 0 ) {
+		return st;
 	}
 
-	if ( bb_i2c_set(fw, 0, 0) < 0 ) {
-		return -1;
+	if ( (st = bb_i2c_set(fw, 0, 0)) < 0 ) {
+		return st;
 	}
 
 	return 0;
@@ -530,15 +534,16 @@ bb_i2c_start(FWInfo *fw, int restart)
 int
 bb_i2c_stop(FWInfo *fw)
 {
+	int st;
 	if ( fw->debug ) {
 		printf("bb_i2c_stop:\n");
 	}
-	if ( bb_i2c_set( fw, 1, 0 ) < 0 ) {
-		return -1;
+	if ( (st = bb_i2c_set( fw, 1, 0 )) < 0 ) {
+		return st;
 	}
 
-	if ( bb_i2c_set( fw, 1, 1 ) < 0 ) {
-		return -1;
+	if ( (st = bb_i2c_set( fw, 1, 1 )) < 0 ) {
+		return st;
 	}
 	return 0;
 }
@@ -548,6 +553,7 @@ __bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval)
 {
 uint8_t buf[2];
 int     csWasHi = !! ( lastval & (1 << CS_SHFT) );
+int     st;
 
 	if ( SPI_MODE0 == mode || SPI_MODE1 == mode ) {
        lastval &= ~(1 << SCLK_SHFT);
@@ -563,9 +569,9 @@ int     csWasHi = !! ( lastval & (1 << CS_SHFT) );
 	lastval ^= (1 << CS_SHFT);
 	buf[1]   = lastval;
 
-	if ( fw_xfer_bb( fw, subcmd, buf, buf, sizeof(buf) ) < 0 ) {
+	if ( (st = fw_xfer_bb( fw, subcmd, buf, buf, sizeof(buf) )) < 0 ) {
 		fprintf(stderr, "Unable to set CS to %d\n", !csWasHi);
-		return -1;
+		return st;
 	}
 	return lastval;
 }
@@ -647,17 +653,18 @@ const uint8_t    *tbuf;
 uint8_t          *rbuf;
 const uint8_t    *zbuf;
 uint8_t           last;
+int               st;
 
 	if ( ( el = spi_get_subcmd( fw, type ) ) < 0 ) {
 		/* message already printed */
-		return -1;
+		return el;
 	}
 	subcmd = (uint8_t) el;
 
 
 	/* assert CS */
 	if ( (el = __bb_spi_cs( fw, mode, subcmd, SPI_MASK | (1 << CS_SHFT) )) < 0 ) {
-		return -1;
+		return el;
 	}
 	last = el;
 
@@ -680,9 +687,9 @@ uint8_t           last;
 			/* keep a copy of the last bbo */
 			last = buf[stretchlen - 1];
 
-			if ( fw_xfer_bb( fw, subcmd, buf, buf, stretchlen ) ) {
+			if ( (st = fw_xfer_bb( fw, subcmd, buf, buf, stretchlen ) ) < 0 ) {
 				fprintf(stderr, "bb_spi_xfer_vec(): fw_xfer_bb failed\n");
-				return -1;
+				return st;
 			}
 
 			if ( rbuf ) {
@@ -698,8 +705,8 @@ uint8_t           last;
 	}
 
 	/* deassert CS */
-	if ( __bb_spi_cs( fw, mode, subcmd, last ) < 0 ) {
-		return -1;
+	if ( (st = __bb_spi_cs( fw, mode, subcmd, last )) < 0 ) {
+		return st;
 	}
 
 	return rval;
@@ -723,7 +730,7 @@ size_t nelms = 0;
 static int
 bb_i2c_xfer(FWInfo *fw, uint16_t val)
 {
-int i;
+int i,st;
 uint8_t xbuf[3*9];
 uint8_t rbuf[3*9];
 	for ( i = 0; i < 3*9; i+= 3 ) {
@@ -734,9 +741,9 @@ uint8_t rbuf[3*9];
 		xbuf[i + 2] = (I2C_MASK | (0 << SCL_SHFT) | sda);
 		val <<= 1;
 	}
-	if ( fw_xfer_bb( fw, BITS_FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf)) ) {
+	if ( (st = fw_xfer_bb( fw, BITS_FW_CMD_BB_I2C, xbuf, rbuf, sizeof(xbuf))) < 0 ) {
 		fprintf(stderr, "bb_i2c_xfer failed\n");
-		return -1;
+		return st;
 	}
 	val = 0;
 	for ( i = 0; i < 3*9; i+= 3 ) {
@@ -761,7 +768,7 @@ size_t   i;
 		/* ACK all but the last bit */
 		v = ( 0xff << 1 ) | (i == len - 1 ? I2C_NAK : 0);
 		if ( ( got = bb_i2c_xfer( fw, v ) ) < 0 ) {
-			return -1;
+			return got;
 		}
 		buf[i] = ( got >> 1 ) & 0xff;
 	}
@@ -777,7 +784,7 @@ size_t   i;
 	for ( i = 0; i < len; i++ ) {
 		v = ( buf[i] << 1 ) | I2C_NAK; /* set ACK when sending; releases to the slave */
 		if ( ( got = bb_i2c_xfer( fw, v ) ) < 0 ) {
-			return -1;
+			return got;
 		}
 		if ( ( got & I2C_NAK ) ) {
 			if ( fw->debug ) {
@@ -795,21 +802,29 @@ bb_i2c_rw_a8(FWInfo *fw, uint8_t sla, uint8_t addr, uint8_t *data, size_t len)
 uint8_t buf[3];
 int     wrl;
 int     rval = -1;
+int     st;
 
     wrl        = 0;
 	buf[wrl++] = sla & ~I2C_READ;
 	buf[wrl++] = addr;
-	if ( bb_i2c_start( fw, 0 ) )
-		return -1;
-	if ( bb_i2c_write( fw, buf, wrl ) < wrl ) {
+	if ( (rval = bb_i2c_start( fw, 0 )) < 0 )
+		return rval;
+	if ( (rval = bb_i2c_write( fw, buf, wrl )) < wrl ) {
+		if ( rval >= 0 ) {
+			/* NAK on first byte => -ENODEV */
+			rval = (0 == rval ? -ENODEV : -EIO );
+		}
 		goto bail;
 	}
 	if ( !!(sla & I2C_READ) ) {
-		if ( bb_i2c_start( fw, 1 ) ) {
+		if ( (rval = bb_i2c_start( fw, 1 )) < 0 ) {
 			goto bail;
 		}
 		buf[0] = sla;
-		if ( bb_i2c_write( fw, buf, 1 ) < 1 ) {
+		if ( (rval = bb_i2c_write( fw, buf, 1 )) < 1 ) {
+			if ( rval >= 0 ) {
+				rval = -EIO;
+			}
 			goto bail;
 		}
 		rval = bb_i2c_read( fw, data, len );
@@ -819,8 +834,8 @@ int     rval = -1;
 
 bail:
 	/* attempt to stop */
-	if ( bb_i2c_stop( fw ) < 0 ) {
-		rval = -1;
+	if ( (st = bb_i2c_stop( fw )) < 0 && rval >= 0 ) {
+		rval = st;
 	}
 	return rval;
 }
@@ -846,7 +861,7 @@ bb_i2c_rw_reg(FWInfo *fw, uint8_t sla, uint8_t reg, int val)
 
 
 /*
- * RETURNS: read value, -1 on error;
+ * RETURNS: read value, negative status on error;
  */
 int
 bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg)
@@ -855,7 +870,7 @@ bb_i2c_read_reg(FWInfo *fw, uint8_t sla, uint8_t reg)
 }
 
 /*
- * RETURNS: 0 on success, -1 on error;
+ * RETURNS: 0 on success, negative status on error;
  */
 int
 bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val)
@@ -870,13 +885,13 @@ uint8_t buf[1];
 uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
 long    rval;
 	if ( fw->apiVers < FW_API_VERSION_3 ) {
-		return FW_CMD_ERR_NOTSUP;
+		return -ENOTSUP;
 	}
 	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 	if ( 1 == rval ) {
 		return buf[0];
 	}
-	return FW_CMD_ERR_INVALID;
+	return -EINVAL;
 }
 
 static long
@@ -900,21 +915,22 @@ uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
 			*psz = 512UL * ((unsigned long)((buf[1]<<8) | buf[0]) + 1);
 			ret  = 0;
 			break;
-		case FW_CMD_ERR:
-			fprintf(stderr, "Error: buf_get_size() -- unspecified error occurred\n");
-			break;
-		case FW_CMD_ERR_NOTSUP:
+		case -ENOTSUP:
 			*psz = 0UL;
 			ret  = BUF_SIZE_NOTSUP;
 			break;
-		case FW_CMD_ERR_TIMEOUT:
+		case -ETIMEDOUT:
 			fprintf(stderr, "Error: buf_get_size() -- timeout; command unsupported?\n");
 			break;
-		case FW_CMD_ERR_INVALID:
+		case -EINVAL:
 			fprintf(stderr, "Error: buf_get_size() -- invalid arguments.\n");
 			break;
 		default:
-			fprintf(stderr, "Error: buf_get_size() -- unexpected frame size/status %ld\n", rval);
+			if ( rval < 0 ) {
+				fprintf(stderr, "Error: buf_get_size() -- error occurred: %s\n", strerror(-rval));
+			} else {
+				fprintf(stderr, "Error: buf_get_size() -- unexpected frame size/status %ld\n", rval);
+			}
 			break;
 	}
 
@@ -1084,11 +1100,11 @@ int       len;
 uint32_t  smask = set ? set->mask : ACQ_PARAM_MSK_GET;
 
 	if ( ! fw ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 
 	if ( ! (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
-		return FW_CMD_ERR_NOTSUP;
+		return -ENOTSUP;
 	}
 
 	if ( ! set || (ACQ_PARAM_MSK_GET == smask) ) {
@@ -1148,7 +1164,7 @@ printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
 	if ( ( smask & ACQ_PARAM_MSK_NSM ) ) {
 		if ( fw->apiVers < FW_API_VERSION_2 ) {
 			if ( set->nsamples != fw->memSize ) {
-				return FW_CMD_ERR_NOTSUP;
+				return -ENOTSUP;
 			}
 			smask &= ~ACQ_PARAM_MSK_NSM;
 		}
@@ -1254,14 +1270,14 @@ printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
 
 	if ( got < 0 ) {
 		fprintf(stderr, "Error: acq_set_params(); fifo transfer failed\n");
-		return -1;
+		return got;
 	}
 
 	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_TOT_LEN_V2 : BITS_FW_CMD_ACQ_TOT_LEN_V1;
 
 	if ( got < len ) {
 		fprintf(stderr, "Error: acq_set_params(); fifo transfer short\n");
-		return -1;
+		return -ENODATA;
 	}
 
 	if ( ! get ) {
@@ -1353,7 +1369,7 @@ AcqParams p;
 		if ( nsamples == fw->memSize ) {
 			return 0;
 		}
-		return FW_CMD_ERR_NOTSUP;
+		return -ENOTSUP;
 	}
 	p.mask          = ACQ_PARAM_MSK_NSM;
 	p.nsamples      = nsamples;
@@ -1472,7 +1488,7 @@ fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 	int     st;
 
 	if ( addr >= 256 || (addr + len) > 256 ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 
 	pbuf[0]     = (uint8_t)addr;
@@ -1490,7 +1506,7 @@ fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 	if ( st < 0 ) {
 		return st;
 	}
-	return (len + 1 != st) || status ? FW_CMD_ERR : len;
+	return (len + 1 != st) || status ? -EIO : len;
 }
 
 int
@@ -1504,7 +1520,7 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 	int     st;
 
 	if ( addr >= 256 || (addr + len) > 256 ) {
-		return FW_CMD_ERR_INVALID;
+		return -EINVAL;
 	}
 
     tvec[0].buf = &byteAddr;
@@ -1519,99 +1535,99 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 	if ( st < 0 ) {
 		return st;
 	}
-	return (1 != st ) || status ? FW_CMD_ERR : len;
+	return (1 != st ) || status ? -EIO : len;
 }
 
 int
 fw_inv_cmd(FWInfo *fw)
 {
 	int st = fw_xfer( fw, BITS_FW_CMD_UNSUPPORTED, 0, 0, 0 );
-	return (FW_CMD_ERR_NOTSUP == st) ? 0 : st;
+	return (-ENOTSUP == st) ? 0 : st;
 }
 
 int
 pgaReadReg(FWInfo *fw, unsigned ch, unsigned reg)
 {
-	return fw && fw->pga && fw->pga->readReg ? fw->pga->readReg(fw, ch, reg) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->pga && fw->pga->readReg ? fw->pga->readReg(fw, ch, reg) : -ENOTSUP;
 }
 
 int
 pgaWriteReg(FWInfo *fw, unsigned ch, unsigned reg, unsigned val)
 {
-	return fw && fw->pga && fw->pga->writeReg ? fw->pga->writeReg(fw, ch, reg, val) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->pga && fw->pga->writeReg ? fw->pga->writeReg(fw, ch, reg, val) : -ENOTSUP;
 }
 
 int
 pgaGetAttRange(FWInfo*fw, double *min, double *max)
 {
-	return fw && fw->pga && fw->pga->getAttRange ? fw->pga->getAttRange(fw, min, max) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->pga && fw->pga->getAttRange ? fw->pga->getAttRange(fw, min, max) : -ENOTSUP;
 }
 
 int
 pgaGetAtt(FWInfo *fw, unsigned channel, double *att)
 {
-	return fw && fw->pga && fw->pga->getAtt ? fw->pga->getAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->pga && fw->pga->getAtt ? fw->pga->getAtt(fw, channel, att) : -ENOTSUP;
 }
 
 int
 pgaSetAtt(FWInfo *fw, unsigned channel, double att)
 {
-	return fw && fw->pga && fw->pga->setAtt ? fw->pga->setAtt(fw, channel, att) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->pga && fw->pga->setAtt ? fw->pga->setAtt(fw, channel, att) : -ENOTSUP;
 }
 
 
 int
 fecGetAttRange(FWInfo*fw, double *min, double *max)
 {
-	return fw && fw->fec && fw->fec->getAttRange ? fw->fec->getAttRange(fw->fec, min, max) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getAttRange ? fw->fec->getAttRange(fw->fec, min, max) : -ENOTSUP;
 }
 
 int
 fecGetAtt(FWInfo *fw, unsigned channel, double *att)
 {
-	return fw && fw->fec && fw->fec->getAtt ? fw->fec->getAtt(fw->fec, channel, att) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getAtt ? fw->fec->getAtt(fw->fec, channel, att) : -ENOTSUP;
 }
 
 int
 fecSetAtt(FWInfo *fw, unsigned channel, double att)
 {
-	return fw && fw->fec && fw->fec->setAtt ? fw->fec->setAtt(fw->fec, channel, att) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setAtt ? fw->fec->setAtt(fw->fec, channel, att) : -ENOTSUP;
 }
 
 int
 fecGetACMode(FWInfo *fw, unsigned channel)
 {
-	return fw && fw->fec && fw->fec->getACMode ? fw->fec->getACMode(fw->fec, channel) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getACMode ? fw->fec->getACMode(fw->fec, channel) : -ENOTSUP;
 }
 
 int
 fecSetACMode(FWInfo *fw, unsigned channel, unsigned val)
 {
-	return fw && fw->fec && fw->fec->setACMode ? fw->fec->setACMode(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setACMode ? fw->fec->setACMode(fw->fec, channel, val) : -ENOTSUP;
 }
 
 int
 fecGetTermination(FWInfo *fw, unsigned channel)
 {
-	return fw && fw->fec && fw->fec->getTermination ? fw->fec->getTermination(fw->fec, channel) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getTermination ? fw->fec->getTermination(fw->fec, channel) : -ENOTSUP;
 }
 
 int
 fecSetTermination(FWInfo *fw, unsigned channel, unsigned	val)
 {
-	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw->fec, channel, val) : -ENOTSUP;
 }
 
 int
 fecGetDACRangeHi(FWInfo *fw, unsigned channel)
 {
-	return fw && fw->fec && fw->fec->getDACRangeHi ? fw->fec->getDACRangeHi(fw->fec, channel) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->getDACRangeHi ? fw->fec->getDACRangeHi(fw->fec, channel) : -ENOTSUP;
 }
 
 int
 fecSetDACRangeHi(FWInfo *fw, unsigned channel, unsigned	val)
 {
-	return fw && fw->fec && fw->fec->setDACRangeHi ? fw->fec->setDACRangeHi(fw->fec, channel, val) : FW_CMD_ERR_NOTSUP;
+	return fw && fw->fec && fw->fec->setDACRangeHi ? fw->fec->setDACRangeHi(fw->fec, channel, val) : -ENOTSUP;
 }
 
 

@@ -2,6 +2,7 @@
 #include "fwComm.h"
 #include "versaClkSup.h"
 #include <math.h>
+#include <errno.h>
 
 #define CLK_I2C_SLA 0xd4
 
@@ -49,11 +50,12 @@ versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 int
 versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)
 {
-	if ( writeReg( fw, 0x17, (idiv >> 4 )        ) < 0 ) return -1;
-	if ( writeReg( fw, 0x18, (idiv << 4 ) & 0xf0 ) < 0 ) return -1;
-	if ( writeReg( fw, 0x19, (fdiv >> 16)        ) < 0 ) return -1;
-	if ( writeReg( fw, 0x1A, (fdiv >>  8)        ) < 0 ) return -1;
-	if ( writeReg( fw, 0x1B, (fdiv >>  0)        ) < 0 ) return -1;
+	int st;
+	if ( (st = writeReg( fw, 0x17, (idiv >> 4 )         )) < 0 ) return st;
+	if ( (st = writeReg( fw, 0x18, (idiv << 4 )  & 0xf0 )) < 0 ) return st;
+	if ( (st = writeReg( fw, 0x19, (fdiv >> 16)         )) < 0 ) return st;
+	if ( (st = writeReg( fw, 0x1A, (fdiv >>  8)         )) < 0 ) return st;
+	if ( (st = writeReg( fw, 0x1B, (fdiv >>  0)         )) < 0 ) return st;
 	return versaClkVCOCal( fw );
 }
 
@@ -71,14 +73,14 @@ versaClkSetFBDiv(FWInfo *fw, unsigned idiv, unsigned fdiv)
 int
 versaClkVCOCal(FWInfo *fw)
 {
-int           val;
+int           val,st;
 unsigned      calRegRsvd = 0x1c;
-	if ( (val = readReg( fw, calRegRsvd )) < 0 ) return -1;
+	if ( (val = readReg( fw, calRegRsvd )) < 0 ) return val;
     val &= 0x7f;
-	if ( writeReg( fw, calRegRsvd , val )  < 0 ) return -1;
+	if ( (st  = writeReg( fw, calRegRsvd , val ))  < 0 ) return val;
     /* raising bit 7 triggers calibration */
     val |= 0x80;
-	if ( writeReg( fw, calRegRsvd , val )  < 0 ) return -1;
+	if ( (st  = writeReg( fw, calRegRsvd , val ))  < 0 ) return val;
 	return 0;
 }
 
@@ -90,17 +92,17 @@ int           val;
 unsigned      idiv = 0;
 unsigned long fdiv = 0;
 
-	if ( (val = readReg( fw, idivReg + 0 )) < 0 ) return -1;
+	if ( (val = readReg( fw, idivReg + 0 )) < 0 ) return val;
 	idiv = ((uint8_t) val) & 0xf;
-	if ( (val = readReg( fw, idivReg + 1 )) < 0 ) return -1;
+	if ( (val = readReg( fw, idivReg + 1 )) < 0 ) return val;
 	idiv = (idiv << 4) | ((((uint8_t)val) & 0xf0) >> 4);
-	if ( (val = readReg( fw, fdivReg + 0 )) < 0 ) return -1;
+	if ( (val = readReg( fw, fdivReg + 0 )) < 0 ) return val;
 	fdiv = (uint8_t) val;
-	if ( (val = readReg( fw, fdivReg + 1 )) < 0 ) return -1;
+	if ( (val = readReg( fw, fdivReg + 1 )) < 0 ) return val;
 	fdiv = (fdiv << 8) | (uint8_t)val;
-	if ( (val = readReg( fw, fdivReg + 2 )) < 0 ) return -1;
+	if ( (val = readReg( fw, fdivReg + 2 )) < 0 ) return val;
 	fdiv = (fdiv << 8) | (uint8_t)val;
-	if ( (val = readReg( fw, fdivReg + 3 )) < 0 ) return -1;
+	if ( (val = readReg( fw, fdivReg + 3 )) < 0 ) return val;
 	fdiv = (fdiv << lstShft) | ((uint8_t)val >> (8 - lstShft));
 
 	*div = (double)idiv + (double)fdiv / exp2(24.0);
@@ -135,7 +137,7 @@ static int checkOut(const char *nm, unsigned outp)
 {
 	if ( outp > 4 || outp < 1 ) {
 		fprintf(stderr, "%s: invalid output (must be 1..4)\n", nm);
-		return -1;
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -145,12 +147,13 @@ versaClkSetOutCfg(FWInfo *fw, unsigned outp, VersaClkOutMode mode, VersaClkOutSl
 {
 unsigned outCReg = OUTP1_CR + ((outp - 1) * 2);
 uint8_t  val;
+int      st;
 
-	if ( checkOut( "versaClkSetOutCfg()", outp ) ) return -3;
+	if ( (st = checkOut( "versaClkSetOutCfg()", outp ) ) < 0 ) return st;
 
 	val = ( ( mode & 0x7 ) << 5 ) | ( ( level & 0x3 ) << 3 ) | ( (slew & 0x3) << 0 );
 
-	if ( writeReg( fw, outCReg , val )  < 0       ) return -1;
+	if ( (st = writeReg( fw, outCReg , val ))  < 0       ) return st;
 
 	return 0;
 }
@@ -221,15 +224,15 @@ unsigned spreReg = ( outp == 1 ) ? PSRC_CR            : SKEW_INT_CR1 + ((outp - 
 uint8_t  spreBit = ( outp == 1 ) ? PSRC_CR_EN_REFMODE : SKEW_INT_CR_EN_AUX;
 
 uint8_t  mux1Val, mux2Val, spreVal;
-int      val;
+int      val, st;
 
-	if ( checkOut( "versaClkSetFODRoute()", outp ) ) return -3;
+	if ( (val = checkOut( "versaClkSetFODRoute()", outp )) < 0 ) return val;
 
-    if ( (val = readReg( fw, mux1Reg )) < 0 ) return -1;
+    if ( (val = readReg( fw, mux1Reg )) < 0 ) return val;
     mux1Val = (uint8_t)val;
-    if ( (val = readReg( fw, mux2Reg )) < 0 ) return -1;
+    if ( (val = readReg( fw, mux2Reg )) < 0 ) return val;
     mux2Val = (uint8_t)val;
-    if ( (val = readReg( fw, spreReg )) < 0 ) return -1;
+    if ( (val = readReg( fw, spreReg )) < 0 ) return val;
     spreVal = (uint8_t)val;
 
     /* switch mux2 off (enable select bits as required below) */
@@ -259,7 +262,7 @@ int      val;
             unsigned fdivReg = mux2Reg  + 1;
 			int      i;
 			for ( i = 0; i < 4; i++ ) {
-				if ( (val = readReg( fw, fdivReg + i )) < 0 ) return -1;
+				if ( (val = readReg( fw, fdivReg + i )) < 0 ) return val;
 				if ( 3 == i ) {
 					val &= 0xfc;
 				}
@@ -276,9 +279,9 @@ int      val;
         break;
 	}
 
-    if ( writeReg( fw, spreReg, spreVal ) < 0 ) return -1;
-    if ( writeReg( fw, mux1Reg, mux1Val ) < 0 ) return -1;
-    if ( writeReg( fw, mux2Reg, mux2Val ) < 0 ) return -1;
+    if ( (st = writeReg( fw, spreReg, spreVal )) < 0 ) return st;
+    if ( (st = writeReg( fw, mux1Reg, mux1Val )) < 0 ) return st;
+    if ( (st = writeReg( fw, mux2Reg, mux2Val )) < 0 ) return st;
 
 	return 0;
 }
@@ -289,12 +292,12 @@ versaClkSetOutDiv(FWInfo *fw, unsigned outp, unsigned idiv, unsigned long fdiv)
 unsigned divCReg = ODIV1_CR + ((outp - 1) * 0x10);
 unsigned fdivReg = divCReg  + 1;
 unsigned idivReg = fdivReg  + 0xb;
-int      val;
+int      val, st;
 uint8_t  divCVal;
 
-	if ( checkOut( "versaClkSetOutDiv()", outp ) ) return -3;
+	if ( ( val = checkOut( "versaClkSetOutDiv()", outp ) ) < 0 ) return val;
 
-	if ( ( val = readReg( fw, divCReg ) ) < 0 )    return -1;
+	if ( ( val = readReg( fw, divCReg ) ) < 0 )    return val;
     divCVal = (uint8_t)val;
 
 	if ( 0 == idiv && 0 == fdiv ) {
@@ -307,7 +310,7 @@ uint8_t  divCVal;
     if ( (divCVal & ODIV_CR_SEL_EXT) ) {
 		if ( ! (divCVal & ODIV_CR_EN_FOD) ) {
 			fprintf(stderr, "versaClkSetOutDiv: WARNING: output %d is chained and not using FOD\n", outp);
-			return -2;
+			return -EFAULT;
 		}
 		if ( fdiv != 0 ) {
 			fprintf(stderr, "versaClkSetOutDiv: WARNING: output %d is chained; truncating fractional part\n", outp);
@@ -318,12 +321,12 @@ uint8_t  divCVal;
 		}
 	}
 
-	if ( writeReg( fw, idivReg + 0, (idiv >> 4 )        ) < 0 ) return -1;
-	if ( writeReg( fw, idivReg + 1, (idiv << 4 ) & 0xf0 ) < 0 ) return -1;
-	if ( writeReg( fw, fdivReg + 0, (fdiv >> 22)        ) < 0 ) return -1;
-	if ( writeReg( fw, fdivReg + 1, (fdiv >> 14)        ) < 0 ) return -1;
-	if ( writeReg( fw, fdivReg + 2, (fdiv >>  6)        ) < 0 ) return -1;
-	if ( writeReg( fw, fdivReg + 3, (fdiv <<  2) & 0xfc ) < 0 ) return -1;
+	if ( (st = writeReg( fw, idivReg + 0, (idiv >> 4 )        )) < 0 ) return st;
+	if ( (st = writeReg( fw, idivReg + 1, (idiv << 4 ) & 0xf0 )) < 0 ) return st;
+	if ( (st = writeReg( fw, fdivReg + 0, (fdiv >> 22)        )) < 0 ) return st;
+	if ( (st = writeReg( fw, fdivReg + 1, (fdiv >> 14)        )) < 0 ) return st;
+	if ( (st = writeReg( fw, fdivReg + 2, (fdiv >>  6)        )) < 0 ) return st;
+	if ( (st = writeReg( fw, fdivReg + 3, (fdiv <<  2) & 0xfc )) < 0 ) return st;
 
 #ifdef USE_INT_MODE
 	if ( 0 == fdiv ) {
@@ -334,7 +337,7 @@ uint8_t  divCVal;
     /* In non-chained mode we explicitly enable the FOD */
     divCVal |= ODIV_CR_EN_FOD;
 
-	if ( writeReg( fw, divCReg, divCVal ) < 0 ) return -1;
+	if ( (st = writeReg( fw, divCReg, divCVal )) < 0 ) return st;
 	
 	return 0;
 }
@@ -345,8 +348,9 @@ versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div)
 unsigned divCReg = ODIV1_CR + ((outp - 1) * 0x10);
 unsigned fdivReg = divCReg  + 1;
 unsigned idivReg = fdivReg  + 0xb;
+int      st;
 
-	if ( checkOut( "versaClkGetOutDiv()", outp ) ) return -3;
+	if ( (st = checkOut( "versaClkGetOutDiv()", outp )) < 0 ) return st;
 
 	/* FIXME - deal with routing ? */
 

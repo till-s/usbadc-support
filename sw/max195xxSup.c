@@ -1,6 +1,7 @@
 #include "max195xxSup.h"
 #include "fwComm.h"
 #include <stdio.h>
+#include <errno.h>
 
 static int
 do_io( FWInfo *fw, int rdnwr, unsigned reg, uint8_t *val )
@@ -9,7 +10,7 @@ uint8_t buf[4];
 int     rv;
 
 	if ( reg > 0xa || 9 == reg ) {
-		return -2;
+		return -EINVAL;
 	}
 
 	buf[2] = 0x00;
@@ -50,7 +51,7 @@ uint8_t val;
 	rv = max195xxReadReg( fw, 0xa, &val ); 
 	if ( rv < 0 ) return rv;
 
-	return (val & 0x11) == 0x11 ? 0 : -3;
+	return (val & 0x11) == 0x11 ? 0 : -EBUSY;
 }
 
 #if 0
@@ -117,7 +118,7 @@ int     rv;
 static int delay2bits(int delay)
 {
 	if ( delay > 3 || delay < -3 ) {
-		return -1;
+		return -EINVAL;
 	}
 	return delay >= 0 ? delay : (4 - delay);
 }
@@ -126,8 +127,8 @@ int
 max195xxSetTiming( FWInfo *fw, int dclkDelay, int dataDelay)
 {
 uint8_t val;
-	if ( ( dclkDelay = delay2bits( dclkDelay )) < 0 ) return -2;
-	if ( ( dataDelay = delay2bits( dataDelay )) < 0 ) return -2;
+	if ( ( dclkDelay = delay2bits( dclkDelay )) < 0 ) return dclkDelay;
+	if ( ( dataDelay = delay2bits( dataDelay )) < 0 ) return dataDelay;
 	val = (dclkDelay << DCLK_TIME_SHIFT) | (dataDelay << DATA_TIME_SHIFT);
 	return max195xxWriteReg( fw, TIMING_REG, val );
 }
