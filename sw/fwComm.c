@@ -16,6 +16,7 @@
 #include "lmh6882Sup.h"
 #include "ad8370Sup.h"
 #include "tca6408FECSup.h"
+#include "at24EepromSup.h"
 
 #define CS_SHFT   0
 #define SCLK_SHFT 1
@@ -98,6 +99,7 @@ struct FWInfo {
 	int             sampleSize;
 	PGAOps         *pga;
 	FECOps         *fec;
+	AT24EEPROM     *eeprom;
 };
 
 static int
@@ -375,8 +377,10 @@ int     st;
 			fw->pga = &lmh6882PGAOps;
 		break;
 
-		case 1:
 		case 2:
+			fw->eeprom         = at24EepromCreate( fw, 0x50, 128, 8 );
+			/* fall through */
+		case 1:
 			fw->pga            = &ad8370PGAOps;
 			fw->fec            = tca6408FECSupCreate( fw, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
 	        fw->fullScaleVolts = 0.0098;
@@ -397,6 +401,9 @@ uint8_t v = SPI_MASK | I2C_MASK;
 		fw_xfer_bb(fw, BITS_FW_CMD_BB_NONE, &v, &v, sizeof(v) );
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
+		}
+		if ( fw->eeprom ) {
+			at24EepromDestroy( fw->eeprom );
 		}
 		fecClose( fw );
 		free( fw );
@@ -1637,4 +1644,22 @@ fecClose(FWInfo *fw)
 	if ( fw && fw->fec && fw->fec->close ) {
 		fw->fec->close( fw->fec );
 	}
+}
+
+int
+eepromGetSize(FWInfo *fw)
+{
+	return fw->eeprom ? at24EepromGetSize( fw->eeprom ) : -ENODEV;
+}
+
+int
+eepromRead(FWInfo *fw, unsigned off, uint8_t *buf, size_t len)
+{
+	return fw->eeprom ? at24EepromRead( fw->eeprom, off, buf, len ) : -ENODEV;
+}
+
+int
+eepromWrite(FWInfo *fw, unsigned off, uint8_t *buf, size_t len)
+{
+	return fw->eeprom ? at24EepromWrite( fw->eeprom, off, buf, len ) : -ENODEV;
 }

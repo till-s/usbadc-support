@@ -68,6 +68,9 @@ cdef extern from "fwComm.h":
   int            fecGetAtt(FWInfo *, unsigned channel, double *att) nogil
   int            fecSetAtt(FWInfo *, unsigned channel, double att) nogil
   void           fecClose(FWInfo *) nogil
+  int            eepromGetSize(FWInfo *) nogil
+  int            eepromRead(FWInfo *, unsigned off, uint8_t *buf, size_t len) nogil
+  int            eepromWrite(FWInfo *, unsigned off, uint8_t *buf, size_t len) nogil
 
 
 cpdef enum SPIDev:

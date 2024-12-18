@@ -328,6 +328,10 @@ int    fecGetAtt(FWInfo *, unsigned channel, double *att);
 int    fecSetAtt(FWInfo *, unsigned channel, double att);
 void   fecClose(FWInfo *);
 
+int    eepromGetSize(FWInfo *);
+int    eepromRead(FWInfo *, unsigned off, uint8_t *buf, size_t len);
+int    eepromWrite(FWInfo *, unsigned off, uint8_t *buf, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

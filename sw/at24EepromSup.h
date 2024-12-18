@@ -8,9 +8,9 @@ extern "C" {
 
 struct FWInfo;
 
-struct AT24EEPROM;
+typedef struct AT24EEPROM AT24EEPROM;
 
-struct AT24EEPROM *at24EepromCreate(
+AT24EEPROM *at24EepromCreate(
 	struct FWInfo *fw,
 	uint8_t        sla,    /* 7-bit address (e.g., 0x50) */
 	unsigned       size,   /* size in bytes              */
@@ -18,18 +18,18 @@ struct AT24EEPROM *at24EepromCreate(
 );
 
 void
-at24EepromDestroy(struct AT24EEPROM *);
+at24EepromDestroy(AT24EEPROM *);
 
 int
-at24EepromGetSize(struct AT24EEPROM *eeprom);
+at24EepromGetSize(AT24EEPROM *eeprom);
 
 /* return bytes read or negative status on error */
 int
-at24EepromRead(struct AT24EEPROM *eeprom, unsigned off, uint8_t *buf, size_t len);
+at24EepromRead(AT24EEPROM *eeprom, unsigned off, uint8_t *buf, size_t len);
 
 /* return bytes written or negative status on error */
 int
-at24EepromWrite(struct AT24EEPROM *eeprom, unsigned off, uint8_t *buf, size_t len);
+at24EepromWrite(AT24EEPROM *eeprom, unsigned off, uint8_t *buf, size_t len);
 
 #ifdef __cplusplus
 }
