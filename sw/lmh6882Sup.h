@@ -38,7 +38,3 @@ extern struct PGAOps lmh6882PGAOps;
 #ifdef __cplusplus
 }
 #endif
-
-#endif
-
-

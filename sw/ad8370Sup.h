@@ -27,7 +27,3 @@ extern struct PGAOps ad8370PGAOps;
 #ifdef __cplusplus
 }
 #endif
-
-#endif
-
-

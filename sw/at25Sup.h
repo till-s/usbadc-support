@@ -66,5 +66,3 @@ at25_resume_updwn(FWInfo *fw);
 #ifdef __cplusplus
 }
 #endif
-
-#endif

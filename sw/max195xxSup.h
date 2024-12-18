@@ -50,6 +50,3 @@ max195xxEnableClkTermination( FWInfo *fw, int on );
 #ifdef __cplusplus
 }
 #endif
-
-
-#endif

@@ -38,5 +38,3 @@ int fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, co
 #ifdef __cplusplus
 }
 #endif
-
-#endif

@@ -74,5 +74,3 @@ versaClkSetOutCfg(FWInfo *fw, unsigned outp, VersaClkOutMode mode, VersaClkOutSl
 #ifdef __cplusplus
 }
 #endif
-
-#endif

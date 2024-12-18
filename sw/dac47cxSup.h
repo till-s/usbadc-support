@@ -48,5 +48,3 @@ dac47cxDetectMax(FWInfo *fw);
 #ifdef __cplusplus
 }
 #endif
-
-#endif

@@ -12,5 +12,3 @@ fileMap(const char *fnam,  uint8_t **mapp, off_t *sizp, off_t creatsz, int readO
 #ifdef __cplusplus
 }
 #endif
-
-#endif

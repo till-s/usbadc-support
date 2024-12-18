@@ -15,6 +15,3 @@ fegRegWrite(FWInfo *fw, uint8_t v);
 #ifdef __cplusplus
 }
 #endif
-
-
-#endif

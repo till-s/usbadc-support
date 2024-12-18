@@ -331,5 +331,3 @@ void   fecClose(FWInfo *);
 #ifdef __cplusplus
 }
 #endif
-
-#endif

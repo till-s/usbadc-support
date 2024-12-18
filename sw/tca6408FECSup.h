@@ -28,5 +28,3 @@ struct FECOps *tca6408FECSupCreate(
 #ifdef __cplusplus
 }
 #endif
-
-#endif
