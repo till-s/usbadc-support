@@ -1,5 +1,4 @@
-#ifndef USBADC_AT25_SUP_H
-#define USBADC_AT25_SUP_H
+#pragma once
 
 #include <sys/types.h>
 #include <stdint.h>

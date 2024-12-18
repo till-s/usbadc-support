@@ -1,5 +1,4 @@
-#ifndef USBADC_DAC47CX_SUP
-#define USBADC_DAC47CX_SUP
+#pragma once
 
 #include <stdint.h>
 

@@ -1,5 +1,4 @@
-#ifndef USBADC_LMH6882_SUP_H
-#define USBADC_LMH6882_SUP_H
+#pragma once
 
 #include <stdint.h>
 

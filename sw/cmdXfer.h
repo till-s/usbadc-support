@@ -1,5 +1,4 @@
-#ifndef CMD_XFER_H
-#define CMD_XFER_H
+#pragma once
 
 #ifdef __cplusplus
 #include <cstdint>

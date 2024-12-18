@@ -1,5 +1,4 @@
-#ifndef USBADC_FW_COMM_H
-#define USBADC_FW_COMM_H
+#pragma once
 
 #include <sys/types.h>
 #include <stdint.h>

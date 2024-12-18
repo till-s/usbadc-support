@@ -1,5 +1,4 @@
-#ifndef USBADC_VERSACLK_SUP_H
-#define USBADC_VERSACLK_SUP_H
+#pragma once
 
 #include <stdint.h>
 

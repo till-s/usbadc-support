@@ -1,5 +1,4 @@
-#ifndef USBADC_AD8370_SUP_H
-#define USBADC_AD8370_SUP_H
+#pragma once
 
 #include <stdint.h>
 

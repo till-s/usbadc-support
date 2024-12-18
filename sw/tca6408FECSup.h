@@ -1,5 +1,4 @@
-#ifndef TCA_6408_FEC_SUP_H
-#define TCA_6408_FEC_SUP_H
+#pragma once
 
 #include <stdint.h>
 

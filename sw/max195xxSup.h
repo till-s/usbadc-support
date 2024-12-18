@@ -1,5 +1,4 @@
-#ifndef USBADC_MAX195XX_SUP_H
-#define USBADC_MAX195XX_SUP_H
+#pragma once
 
 #include <stdint.h>
 

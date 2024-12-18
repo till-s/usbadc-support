@@ -1,5 +1,4 @@
-#ifndef FEG_REG_SUP_H
-#define FEG_REG_SUP_H
+#pragma once
 
 #include "fwComm.h"
 
