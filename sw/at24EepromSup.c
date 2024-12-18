@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "fwComm.h"
-#include "at24Eeprom.h"
+#include "at24EepromSup.h"
 
 typedef struct AT24EEPROM {
 	struct FWInfo *fw;
