@@ -614,6 +614,7 @@ int                dumpPrms  = 0;
 const char        *trgOp     = 0;
 const char        *regOp     = 0;
 const char        *feOp      = 0;
+AT25Flash         *flash     = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
@@ -788,21 +789,25 @@ const char        *feOp      = 0;
 	if ( test_spi ) {
 		char *wrk;
 		char *op;
+		if ( ! (flash = at25FlashOpen( fw, 0 )) ) {
+			fprintf(stderr, "Opening AT25 Flash failed\n");
+			goto bail;
+		}
 
 		for ( op = test_spi; (op = strtok_r( op, ",", &wrk )); op = 0 /* for strtok_r */  ) {
 
 			if ( strstr(op, "ForceBB") ) {
 				fw_disable_features( fw, FW_FEATURE_SPI_CONTROLLER );
 			} else if ( strstr(op, "Reset") ) {
-				if ( at25_reset( fw ) < 0 ) {
+				if ( at25_reset( flash ) < 0 ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Resume") ) {
-				if ( at25_resume_updwn( fw ) < 0 ) {
+				if ( at25_resume_updwn( flash ) < 0 ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Id") ) {
-				if ( at25_id( fw ) < 0 ) {
+				if ( at25_print_id( flash ) < 0 ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Rd") ) {
@@ -849,7 +854,7 @@ const char        *feOp      = 0;
 					msize = buflen;
 				}
 
-				if ( ( i = at25_spi_read( fw, flashAddr, maddr, msize ) ) < 0 ) {
+				if ( ( i = at25_spi_read( flash, flashAddr, maddr, msize ) ) < 0 ) {
 					goto bail;
 				}
 
@@ -865,24 +870,24 @@ const char        *feOp      = 0;
 					printf("\n");
 				}
 			} else if ( strstr(op, "St") ) {
-				if ( (i = at25_status( fw )) < 0 ) {
+				if ( (i = at25_status( flash )) < 0 ) {
 					goto bail;
 				}
 				printf("SPI Flash status: 0x%02x\n", i);
 			} else if ( strstr(op, "Gunlock") ) {
-				if ( at25_global_unlock( fw ) ) {
+				if ( at25_global_unlock( flash ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Glock") ) {
-				if ( at25_global_lock( fw ) ) {
+				if ( at25_global_lock( flash ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Wena") ) {
-				if ( at25_write_ena( fw ) ) {
+				if ( at25_write_ena( flash ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Wdis") ) {
-				if ( at25_write_dis( fw ) ) {
+				if ( at25_write_dis( flash ) ) {
 					goto bail;
 				}
 			} else if ( strstr(op, "Prog") ) {
@@ -913,7 +918,7 @@ const char        *feOp      = 0;
 					goto bail;
 				}
 
-				if ( at25_prog( fw, flashAddr, progMap, progSize, cmd ) < 0 ) {
+				if ( at25_prog( flash, flashAddr, progMap, progSize, cmd ) < 0 ) {
 					fprintf(stderr, "Programming flash failed\n");
 					goto bail;
 				}
@@ -957,7 +962,7 @@ const char        *feOp      = 0;
 					continue;
 				}
 
-				if ( (st = at25_status( fw )) < 0 ) {
+				if ( (st = at25_status( flash )) < 0 ) {
 					fprintf(stderr, "at25_status() failed\n");
 					goto bail;
 				}
@@ -969,12 +974,12 @@ const char        *feOp      = 0;
 
 				while ( aligned < i ) {
 
-					if ( at25_global_unlock( fw ) ) {
+					if ( at25_global_unlock( flash ) ) {
 						fprintf(stderr, "at25_global_unlock() failed\n");
 						goto bail;
 					}
 
-					if ( at25_block_erase( fw, aligned, bsz ) < 0 ) {
+					if ( at25_block_erase( flash, aligned, bsz ) < 0 ) {
 						fprintf(stderr, "at25_block_erase(%d) failed\n", i);
 						goto bail;
 					}
@@ -1078,6 +1083,9 @@ const char        *feOp      = 0;
 	rval = 0;
 
 bail:
+	if ( flash ) {
+		at25FlashClose( flash );
+	}
 	if ( fw ) {
 		fw_close( fw );
 	}
