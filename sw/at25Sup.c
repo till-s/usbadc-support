@@ -66,7 +66,7 @@ do_xfer_spi(AT25Flash *flash, const uint8_t *hdr, unsigned hlen, const uint8_t *
 
 
 AT25Flash *
-at25FlashOpen(FWInfo *fw, unsigned instance)
+at25_open(FWInfo *fw, unsigned instance)
 {
 AT25Flash      *rv, *ok = 0;
 int             st;
@@ -122,20 +122,20 @@ bail:
 }
 
 size_t
-at25FlashGetBlockSize(AT25Flash *flash)
+at25_get_block_size(AT25Flash *flash)
 {
 	return flash && flash->devInfo ? flash->devInfo->blockSize : 0;
 }
 
 size_t
-at25FlashGetSizeBytes(AT25Flash *flash)
+at25_get_size_bytes(AT25Flash *flash)
 {
 	return flash && flash->devInfo ? flash->devInfo->sizeBytes : 0;
 }
 
 
 void
-at25FlashClose(AT25Flash *flash)
+at25_close(AT25Flash *flash)
 {
 	free( flash );
 }
@@ -344,10 +344,11 @@ uint8_t op = AT25_OP_ERASE_ALL;
 
 uint8_t buf[4];
 int     l, st;
+size_t  deviceBlockSize = at25_get_block_size( flash );
 
-	if ( sz <= 4*1024 ) {
+	if ( sz <= 4*1024 && deviceBlockSize <= 4*1024 ) {
 		op = AT25_OP_ERASE_4K;
-	} else if ( sz <= 32*1024 ) {
+	} else if ( sz <= 32*1024 && deviceBlockSize <= 32*1024 ) {
 		op = AT25_OP_ERASE_32K;
 	} else if ( sz <= 64*1024 ) {
 		op = AT25_OP_ERASE_64K;

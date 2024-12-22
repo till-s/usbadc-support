@@ -14,16 +14,16 @@ typedef struct AT25Flash AT25Flash;
 typedef struct FWInfo    FWInfo;
 
 AT25Flash *
-at25FlashOpen(FWInfo *fw, unsigned instance);
+at25_open(FWInfo *fw, unsigned instance);
 
 void
-at25FlashClose(AT25Flash *flash);
+at25_close(AT25Flash *flash);
 
 size_t
-at25FlashGetBlockSize(AT25Flash *flash);
+at25_get_block_size(AT25Flash *flash);
 
 size_t
-at25FlashGetSizeBytes(AT25Flash *flash);
+at25_get_size_bytes(AT25Flash *flash);
 
 int
 at25_spi_read(AT25Flash *flash, unsigned addr, uint8_t *rbuf, size_t len);

@@ -789,7 +789,7 @@ AT25Flash         *flash     = 0;
 	if ( test_spi ) {
 		char *wrk;
 		char *op;
-		if ( ! (flash = at25FlashOpen( fw, 0 )) ) {
+		if ( ! (flash = at25_open( fw, 0 )) ) {
 			fprintf(stderr, "Opening AT25 Flash failed\n");
 			goto bail;
 		}
@@ -1084,7 +1084,7 @@ AT25Flash         *flash     = 0;
 
 bail:
 	if ( flash ) {
-		at25FlashClose( flash );
+		at25_close( flash );
 	}
 	if ( fw ) {
 		fw_close( fw );
