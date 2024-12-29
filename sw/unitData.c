@@ -138,10 +138,17 @@ UnitData *ud = NULL;
 unsigned  off, itemsize;
 unsigned  layoutVersion;
 
+	*result = NULL;
+
 	if ( bufSize <= O_PAYLOAD ) {
 		if ( (st = illFormed( __PRETTY_FUNCTION__, "incomplete data" )) ) {
 			goto bail;
 		}
+	}
+	/* empty flash/eeprom ? */
+	if ( TAG_TERM == buf[O_VERSION] ) {
+		st = -ENODATA;
+		goto bail;
 	}
 	if ( MAKE_CHECK( buf[O_VERSION] ) != buf[O_CHECK] ) {
 		if ( (st = illFormed( __PRETTY_FUNCTION__, "check byte does not match version" )) ) {
@@ -196,6 +203,18 @@ unsigned  layoutVersion;
 				fprintf(stderr, "Warning: (%s) - unsupported tag 0x%02" PRIx8 "\n", __PRETTY_FUNCTION__, buf[off + IO_TAG]);
 				break;
 		}
+	}
+
+	if ( ! ud->scaleVolt ) {
+		fprintf(stderr, "Error: (%s) - incomplete data; ScaleVolt not found\n", __PRETTY_FUNCTION__);
+		st = -ENODATA;
+		goto bail;
+	}
+
+	if ( ! ud->offsetVolt ) {
+		fprintf(stderr, "Error: (%s) - incomplete data; OffsetVolt not found\n", __PRETTY_FUNCTION__);
+		st = -ENODATA;
+		goto bail;
 	}
 
 	*result = ud;
