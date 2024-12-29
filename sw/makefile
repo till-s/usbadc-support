@@ -4,7 +4,7 @@ CFLAGS=-O2 -Wall -g -fpic
 
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
-LOBJS+=tca6408FECSup.o at24EepromSup.o
+LOBJS+=tca6408FECSup.o at24EepromSup.o unitData.o
 
 PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
@@ -24,6 +24,9 @@ pyfwcomm.o: $(PYFWCOMM_C)
 $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
 	cython3  $<
 
+unitDataTst: unitDataTst.c libfwcomm.a
+	$(CC) $(CFLAGS) -o $@ $^ -L. -lfwcomm
+
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -39,6 +42,7 @@ versaClkSup.o: fwComm.h versaClkSup.h
 clean:
 	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
 	$(RM) -rf __pycache__
+	$(RM) unitDataTst
 
 pyfwcomm.so: pyfwcomm.o $(LOBJS)
 	$(CC) $^ -shared -o $@
