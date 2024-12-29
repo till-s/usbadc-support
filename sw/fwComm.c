@@ -17,6 +17,8 @@
 #include "ad8370Sup.h"
 #include "tca6408FECSup.h"
 #include "at24EepromSup.h"
+#include "unitData.h"
+#include "unitDataFlash.h"
 
 #define CS_SHFT   0
 #define SCLK_SHFT 1
@@ -94,12 +96,14 @@ struct FWInfo {
 	uint64_t        features;
 	AcqParams       acqParams;
 	double          samplingFreq;
-	double          fullScaleVolts;
+	double         *fullScaleVolts;
 	unsigned        numChannels;
 	int             sampleSize;
+	double         *attOffset;
 	PGAOps         *pga;
 	FECOps         *fec;
 	AT24EEPROM     *eeprom;
+	const UnitData *unitData;
 };
 
 static int
@@ -187,9 +191,12 @@ fw_disable_features(FWInfo *fw, uint64_t mask)
 }
 
 double
-fw_get_full_scale_volts(FWInfo *fw)
+fw_get_full_scale_volts(FWInfo *fw, unsigned channel)
 {
-	return fw->fullScaleVolts;
+	if ( channel >= fw->numChannels ) {
+		return 0.0/0.0;
+	}
+	return fw->fullScaleVolts[channel];
 }
 
 unsigned
@@ -205,7 +212,7 @@ fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 		return -EINVAL;
 	}
 	if ( pscl ) {
-		double scl    = fw_get_full_scale_volts( fw );
+		double scl    = fw_get_full_scale_volts( fw, channel );
 		double totAtt = 0.0;
 		double att;
 		int    st;
@@ -273,6 +280,26 @@ int64_t rval;
 	return rval;
 }
 
+static double
+computeAttOffset(double *attOffset, unsigned numChannels, const UnitData *ud)
+{
+int    minIdx   = 0;
+double minScale = unitDataGetScaleVolt( ud, minIdx );
+double scl;
+int    i;
+
+	for ( i = minIdx + 1; i < numChannels; ++i ) {
+		if ( (scl = unitDataGetScaleVolt( ud, i )) < minScale ) {
+			minScale = scl;
+			minIdx   = i;
+		}
+	}
+	for ( i = 0; i < numChannels; ++i ) {
+		attOffset[i] = 20*log10(unitDataGetScaleVolt( ud, i ) /  minScale);
+	}
+	return minScale;
+}
+
 FWInfo *
 fw_open(const char *devn, unsigned speed)
 {
@@ -303,6 +330,7 @@ fw_open_fd(int fd)
 FWInfo *fw;
 int64_t vers;
 int     st;
+int     i;
 
 	if ( ! (fw = calloc(1, sizeof(*fw))) ) {
 		perror("fw_open(): no memory");
@@ -316,7 +344,21 @@ int     st;
 	fw->features       = 0;
 	fw->sampleSize     = -ENOTSUP;
 	fw->numChannels    = 2;
-	fw->fullScaleVolts = 0.0;
+
+	fw->attOffset      = calloc( sizeof(*fw->attOffset), fw->numChannels );
+	if ( ! fw->attOffset ) {
+		perror("fw_open(): no memory");
+		goto bail;
+	}
+	fw->fullScaleVolts = calloc( sizeof(*fw->fullScaleVolts), fw->numChannels );
+	if ( ! fw->fullScaleVolts ) {
+		perror("fw_open(): no memory");
+		goto bail;
+	}
+	for ( i = 0; i < fw->numChannels; ++i ) {
+		fw->fullScaleVolts[i] = 1.0;
+		fw->attOffset[i]      = 0.0;
+	}
 
 	switch ( __buf_get_size( fw, &fw->memSize, &fw->memFlags ) ) {
 		case BUF_SIZE_FAILED:
@@ -374,7 +416,7 @@ int     st;
 
 	switch ( fw->brdVers ) {
 		case 0:
-			fw->pga = &lmh6882PGAOps;
+			fw->pga            = &lmh6882PGAOps;
 		break;
 
 		case 2:
@@ -383,14 +425,46 @@ int     st;
 		case 1:
 			fw->pga            = &ad8370PGAOps;
 			fw->fec            = tca6408FECSupCreate( fw, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
-	        fw->fullScaleVolts = 0.0098;
+			for ( i = 0; i < fw->numChannels; ++i ) {
+	        	fw->fullScaleVolts[i] = 0.0098;
+			}
 		break;
 
 		default:
 		break;
 	}
 
+	st = unitDataFromFlash( &fw->unitData, fw );
+	if ( st < 0 ) {
+		if ( -ENODATA == st ) {
+			UnitData *ud;
+			fprintf(stderr, "WARNING: No calibration data found in flash; using defaults\n");
+			ud = unitDataCreate( fw->numChannels );
+			for ( i = 0; i < fw->numChannels; ++i ) {
+				unitDataSetScaleVolt( ud, i, fw->fullScaleVolts[i] );
+			}
+			fw->unitData = ud;
+		}
+		if ( ! fw->unitData ) {
+			goto bail;
+		}
+	} else {
+		if ( unitDataGetNumChannels( fw->unitData ) != fw->numChannels ) {
+			fprintf(stderr, "ERROR: # channels in calibration data does not match!\n");
+			goto bail;
+		}
+	}
+
+	fw->fullScaleVolts[0] = computeAttOffset( fw->attOffset, fw->numChannels, fw->unitData );
+	for ( i = 1; i < fw->numChannels; ++i ) {
+		fw->fullScaleVolts[i] = fw->fullScaleVolts[0];
+	}
+	
 	return fw;
+
+bail:
+	fw_close( fw );
+	return NULL;
 }
 
 void
@@ -405,7 +479,9 @@ uint8_t v = SPI_MASK | I2C_MASK;
 		if ( fw->eeprom ) {
 			at24EepromDestroy( fw->eeprom );
 		}
+		unitDataFree( fw->unitData );
 		fecClose( fw );
+		free( fw->attOffset );
 		free( fw );
 	}
 }
@@ -1571,15 +1647,28 @@ pgaGetAttRange(FWInfo*fw, double *min, double *max)
 }
 
 int
-pgaGetAtt(FWInfo *fw, unsigned channel, double *att)
+pgaGetAtt(FWInfo *fw, unsigned channel, double *attp)
 {
-	return fw && fw->pga && fw->pga->getAtt ? fw->pga->getAtt(fw, channel, att) : -ENOTSUP;
+int st;
+double att;
+	if ( channel >= fw->numChannels ) {
+		return -EINVAL;
+	}
+	
+	st = fw && fw->pga && fw->pga->getAtt ? fw->pga->getAtt(fw, channel, &att) : -ENOTSUP;
+	if ( 0 == st ) {
+		*attp = att - fw->attOffset[channel];
+	}
+	return st;
 }
 
 int
 pgaSetAtt(FWInfo *fw, unsigned channel, double att)
 {
-	return fw && fw->pga && fw->pga->setAtt ? fw->pga->setAtt(fw, channel, att) : -ENOTSUP;
+	if ( channel >= fw->numChannels ) {
+		return -EINVAL;
+	}
+	return fw && fw->pga && fw->pga->setAtt ? fw->pga->setAtt(fw, channel, att + fw->attOffset[channel]) : -ENOTSUP;
 }
 
 

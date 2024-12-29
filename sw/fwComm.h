@@ -65,7 +65,7 @@ fw_disable_features(FWInfo *fw, uint64_t mask);
 
 // full-scale at zero attenuation
 double
-fw_get_full_scale_volts(FWInfo *fw);
+fw_get_full_scale_volts(FWInfo *fw, unsigned channel);
 
 int
 fw_get_current_scale(FWInfo *fw, unsigned channel, double *scl);
