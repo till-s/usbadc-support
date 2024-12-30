@@ -537,161 +537,86 @@ cdef class I2CDev(FwDev):
     return self.i2cRW( sla, off, pybuf )
 
 cdef class FEC(FwDev):
+  cdef double min_, max_
 
   def __init__(self, *args, **kwargs):
-    pass
-
-  def hasACModeCtl(self, int channel):
-    raise RuntimeError("Front-End has no AC-coupling controller switch")
-
-  def hasAttenuatorCtl(self, int channel):
-    raise RuntimeError("Front-End has no Attenuator controls")
-
-  def hasDACRangeCtl(self, int channel):
-    raise RuntimeError("Front-End has no DAC range controls")
-
-  def hasTerminationCtl(self, int channel):
-    raise RuntimeError("Front-End has no Termination controls")
-
-  def outReg(self, int channel):
-    raise RuntimeError("No output register?")
+    cdef int st
+    with self._mgr as fw, nogil:
+      st = fecGetAttRange( fw, &self.min_, &self.max_ )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End has no Attenuator controls")
 
   def setAttenuator(self, int channel, bool on):
-    raise RuntimeError("Front-End has no Attenuator controls")
-
-  def getAttenuator(self, int channel):
-    raise RuntimeError("Front-End has no Attenuator controls")
-
-  def setTermination(self, int channel, bool on):
-    raise RuntimeError("Front-End has no Termination controls")
-
-  def getTermination(self, int channel):
-    raise RuntimeError("Front-End has no Termination controls")
-
-  def setACMode(self, int channel, bool on):
-    raise RuntimeError("Front-End has no AC-coupling controller switch")
-
-  def getACMode(self, int channel):
-    raise RuntimeError("Front-End has no AC-coupling controller switch")
-
-  def setDacRangeHi(self, int channel, bool on):
-    raise RuntimeError("Front-End has no DAC range controls")
-
-  def getDacRangeHi(self, int channel):
-    raise RuntimeError("Front-End has no DAC range controls")
-
-
-cdef class I2CFEC(FEC):
-
-  cdef I2CDev _dev
-  cdef int    _sla
-
-  def __init__(self, sla, *args, **kwargs):
-    super().__init__(*args, **kwargs)
-    self._dev = I2CDev( self.mgr() )
-    self._sla = sla
-
-  def outReg(self, int channel):
-    return 1
-
-  def getBit(self, int channel, int bit):
-    ctl = self._dev.i2cReadReg( self._sla, self.outReg( channel ) )
-    return bool(ctl & (1<<bit))
-
-  def setBit(self, int channel, int bit, int val):
-    ctl = self._dev.i2cReadReg( self._sla, self.outReg(channel) )
-    if ( val ):
-      ctl |=  (1 << bit)
+    cdef int st
+    cdef double val
+    if on:
+      val = self.max_
     else:
-      ctl &= ~(1 << bit)
-    self._dev.i2cWriteReg( self._sla, self.outReg(channel), ctl )
-
-  def getACCtlBit(self, int channel):
-    return self.getBit( channel, self.hasACModeCtl(channel) )
-
-  def getAttCtlBit(self, int channel):
-    return self.getBit( channel, self.hasAttenuatorCtl(channel) )
-
-  def getTermCtlBit(self, int channel):
-    return self.getBit( channel, self.hasTerminationCtl(channel) )
-
-  def getDACCtlBit(self, int channel):
-    return self.getBit( channel, self.hasDACRangeCtl(channel) )
-
-  def setACCtlBit(self, int channel, int val):
-    self.setBit( channel, self.hasACModeCtl(channel), val )
-
-  def setAttCtlBit(self, int channel, int val):
-    self.setBit( channel, self.hasAttenuatorCtl(channel), val )
-
-  def setTermCtlBit(self, int channel, int val):
-    self.setBit( channel, self.hasTerminationCtl(channel), val )
-
-  def setDACCtlBit(self, int channel, int val):
-    self.setBit( channel, self.hasDACRangeCtl(channel), val )
-
-  def setAttenuator(self, int channel, bool on):
-    self.setAttCtlBit( channel, on )
+      val = self.min_
+    with self._mgr as fw, nogil:
+      st = fecSetAtt( fw, channel, val )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'setAttenuator' failed")
 
   def getAttenuator(self, int channel):
-    return self.getAttCtlBit( channel )
+    cdef int st
+    cdef double val
+    with self._mgr as fw, nogil:
+      st = fecGetAtt( fw, channel, &val )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'getAttenuator' failed")
+    return abs(self.max_ - val) < abs(self.min_ - val)
 
   def setTermination(self, int channel, bool on):
-    self.setTermCtlBit( channel, on )
+    cdef int st, val
+    # bool is a python object and cannot be used w/o gil
+    val = on
+    with self._mgr as fw, nogil:
+      st = fecSetTermination( fw, channel, val )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'setTermination' failed")
 
   def getTermination(self, int channel):
-    return self.getTermCtlBit( channel )
+    cdef int st
+    with self._mgr as fw, nogil:
+      st = fecGetTermination( fw, channel )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'getTermination' failed")
+    return st > 0
 
   def setACMode(self, int channel, bool on):
-    self.setACCtlBit( channel, not on )
+    cdef int st, val
+    # bool is a python object and cannot be used w/o gil
+    val = on
+    with self._mgr as fw, nogil:
+      st = fecSetACMode( fw, channel, val )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'setACMode' failed")
 
   def getACMode(self, int channel):
-    return not self.getACCtlBit( channel )
+    cdef int st
+    with self._mgr as fw, nogil:
+      st = fecGetACMode( fw, channel )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'getACMode' failed")
+    return st > 0
 
   def setDacRangeHi(self, int channel, bool on):
-    self.setDACCtlBit( channel, not on )
+    cdef int st, val
+    # bool is a python object and cannot be used w/o gil
+    val = on
+    with self._mgr as fw, nogil:
+      st = fecSetDACRangeHi( fw, channel, val )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'setDACRangeHi' failed")
 
   def getDacRangeHi(self, int channel):
-    return not self.getDACCtlBit( channel )
-
-  def allOutputs(self):
-    raise RuntimeError("subclass must implement 'allOutputs'")
-
-
-cdef class GpioFECv1(I2CFEC):
-
-  def __init__(self, *args, **kwargs):
-    # TCA6408
-    super().__init__( 0x20, *args, **kwargs)
-
-  def init(self):
-    for ch in [0,1]:
-      self.setTermination(ch, False)
-      self.setAttenuator (ch, True )
-      self.setACMode     (ch, False)
-      self.setDacRangeHi (ch, True )
-    self.allOutputs()
-
-  def c(self, channel):
-    if not channel in [0,1]:
-      raise ValueError("Invalid channel number")
-    return channel
-
-  def hasACModeCtl(self, int channel):
-    return { 0: 7, 1: 3 }[self.c(channel)]
-
-  def hasAttenuatorCtl(self, int channel):
-    return { 0: 6, 1: 2 }[self.c(channel)]
-
-  def hasDACRangeCtl(self, int channel):
-    return { 0: 1, 1: 0 }[self.c(channel)]
-
-  def hasTerminationCtl(self, int channel):
-    return { 0: 5, 1: 4 }[self.c(channel)]
-
-  def allOutputs(self):
-    # set control reg. to all outputs
-    self._dev.i2cWriteReg( self._sla, 3, 0x00 )
+    cdef int st
+    with self._mgr as fw, nogil:
+      st = fecGetDACRangeHi( fw, channel )
+    if ( st < 0 ):
+      raise RuntimeError("Front-End 'getDACRangeHi' failed")
+    return st > 0
 
 cdef class FwComm:
   cdef FwMgr           _mgr
@@ -710,8 +635,6 @@ cdef class FwComm:
   cdef object          _callable
   cdef object          _buf
   cdef float           _timo
-  cdef float           _clkFRef
-  cdef dict            _clkOut
 
   def exc(self):
     raise TimeoutError("foo")
@@ -774,7 +697,6 @@ cdef class FwComm:
     self._callable  = None
     self._buf       = None
     self._timo      = -1.0
-    self._clkFRef   = 25.0E6
 
   def __init__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
@@ -794,7 +716,7 @@ cdef class FwComm:
       self._fec = FEC( self._mgr )
       self._led = LED( self._mgr )
     elif ( 1 == brdVers or 2 == brdVers ):
-      self._fec = GpioFECv1( self._mgr )
+      self._fec = FEC( self._mgr )
       self._led = LEDv1( self._mgr )
     else:
       self._fec = FEC( self._mgr )
@@ -803,7 +725,6 @@ cdef class FwComm:
     with self._mgr as fw, nogil:
       self._bufsz    = buf_get_size( fw )
       self._bufflags = buf_get_flags( fw )
-    self.setBoardInfo()
     st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
     if ( st != 0 ):
       raise OSError("pthread_create failed with status {:d}".format(st))
@@ -815,114 +736,19 @@ cdef class FwComm:
     with self._mgr as fw, nogil:
       fw_set_debug( fw, level )
 
-  # parameters that must be set by the constructor
-  def setBoardInfo( self ):
-    brdVrs      = self.boardVersion()
-    self._clkOut = dict()
-    if   ( 0 == brdVrs ):
-       self._clkOut["EXT" ] = 1
-       self._clkOut["ADC" ] = 2
-       self._clkOut["FPGA"] = 4
-    elif ( 1 == brdVrs ):
-       self._clkOut["EXT" ] = 2
-       self._clkOut["ADC" ] = 3
-       self._clkOut["FPGA"] = 1
-       self._clkFRef = 26.0E6
-    elif ( 2 == brdVrs ):
-       self._clkOut["EXT" ] = 2
-       self._clkOut["ADC" ] = 3
-       self._clkOut["FPGA"] = 1
-       self._clkFRef = 25.0E6
-    else:
-      raise RuntimeError("Unsupported board version")
-
   def init( self, force = False ):
-    print("DLL Locked: ", self._adc.dllLocked())
-    if self._adc.dllLocked() and not force:
-      # assume init has been done already
-      return
-    outs   = dict()
-    dflt   = {"IOSTD": OUT_CMOS, "LEVEL": LEVEL_18}
-    brdVrs = self.boardVersion()
-    if   ( 0 == brdVrs ):
-       fADC        = 130.0E6
-    elif ( 1 == brdVrs ):
-       outs["ADC"] = {"IOSTD": OUT_LVDS}
-       fADC        = 120.0E6
-    elif ( 2 == brdVrs ):
-       outs["EXT"]  = {"IOSTD": OUT_CMOS, "LEVEL": LEVEL_33}
-       outs["ADC"]  = {"IOSTD": OUT_LVDS, "LEVEL": LEVEL_33}
-       outs["FPGA"] = {"IOSTD": OUT_CMOS, "LEVEL": LEVEL_33}
-       fADC         = 130.0E6
-    else:
-      raise RuntimeError("Unsupported board version")
-    for k,v in self._clkOut.items():
-      try:
-        std = outs[k]["IOSTD"]
-      except KeyError:
-        std = dflt["IOSTD"]
-      try:
-        lvl = outs[k]["LEVEL"]
-      except KeyError:
-        lvl = dflt["LEVEL"]
-      print("Setting output {:d} to {:d}".format(v, std))
-      self._clk.setOutCfg( v, std, SLEW_100, lvl )
-    fVCO   = self._clkFRef * self._clk.getFBDiv()
-    outDiv = fVCO / fADC / 2.0
-
-    self._clk.setOutDiv( self._clkOut["ADC"], outDiv )
-    self._clk.setOutDiv( self._clkOut["EXT"], 4095.0 )
-    self._clk.setFODRoute( self._clkOut["EXT"], CASC_FOD )
-    self._clk.setFODRoute( self._clkOut["ADC"], NORMAL   )
-    # board-specific FEC init
-    self._fec.init()
-
-    self._dac.reset()
-    self._dac.setRefInternalX1()
-    self._adc.reset()
-    # wait a little bit before initializing the ADC
-    sleep(0.1)
-    # initialize the ADC
-    if not self._adc.dllLocked():
-      raise RuntimeError("ADC may have no clock")
-    if ( 2 == brdVrs ):
-      self._adc.setMuxedModeA()
-    else:
-      self._adc.setMuxedModeB()
-    if ( 0 == brdVrs ):
-	  # Empirically found setting for the prototype board
-      self._adc.setTiming( -1, 3 )
-    else:
-      # on artix board with constraints the 'nominal' settings
-      # seem much better
-      self._adc.setTiming( 0, 0 )
-    if ( 0 == brdVrs ):
-      # set common-mode voltage (also important for PGA output)
-      #
-      # ADC: common mode input voltage range 0.4..1.4V
-      # ADC: controls common mode voltage of PGA
-      # PGA: output common mode voltage: 2*OCM
-      # Resistive divider 232/(232+178)
-      #
-      # PGA VOCM = 2*ADC_VCM
-      #
-      # Valid range for PGA: 2..3V (2.5V best)
-      #
-      # Common-mode register 8:
-      #   bit 6..4, 2..0:
-      #         000       -> 0.9 V
-      #         001       -> 1.05V
-      #         010       -> 1.2V
-      #
-      # With 1.2V -> VOCM of PGA becomes 2.4V   (near optimum)
-      #           -> VICM of ADC becomes 1.358V (close to max)
-      # With 1.05 -> VOCM of PGA becomes 2.1V   (close to min)
-      #           -> VICM of ADC becomes 1.188V (OK)
-      #
-      self._adc.setCMVolt( Max195xxCMVolt.CM_1050mV, Max195xxCMVolt.CM_1050mV )
+    cdef int st,forceVal
+    forceVal = force
+    with self._mgr as fw, nogil:
+      st = scopeInit( fw, forceVal ) 
+    if ( st < 0 ):
+      raise RuntimeError("scopeInit failed")
 
   def getAdcClkFreq(self):
-    return self._clkFRef * self._clk.getFBDiv() / self._clk.getOutDiv(self._clkOut["ADC"]) / 2.0
+    cdef double f
+    with self._mgr as fw, nogil:
+      f = buf_get_sampling_freq( fw )
+    return f
 
   def dacSetVolt( self, ch, v):
     self._dac.setVolt( ch, v )

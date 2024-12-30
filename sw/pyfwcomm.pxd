@@ -18,6 +18,7 @@ cdef extern from "fwComm.h":
   uint8_t        fw_get_api_version(FWInfo *) nogil
   uint8_t        fw_get_board_version(FWInfo *) nogil
   unsigned long  buf_get_size(FWInfo *) nogil
+  double         buf_get_sampling_freq(FWInfo *) nogil
   uint8_t        buf_get_flags(FWInfo *) nogil
   int            buf_flush(FWInfo *) nogil
   int            buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len) nogil
@@ -169,3 +170,6 @@ cpdef enum VersaClkOutLevel:
   LEVEL_18 = 0
   LEVEL_25 = 2
   LEVEL_33 = 3
+
+cdef extern from "scopeInit.h":
+  int            scopeInit(FWInfo *fw, int force) nogil
