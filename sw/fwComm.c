@@ -243,6 +243,23 @@ fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
 	return 0;
 }
 
+double
+fw_get_reference_freq(FWInfo *fw)
+{
+	switch ( fw->brdVers ) {
+		case 0:
+		case 2:
+			return 25.0E6;
+		break;
+		case 1:
+			return 26.0E6;
+		break;
+		default:
+		break;
+	}
+	return 0.0/0.0;
+}
+
 #define BRD_V1_TCA6408_SLA 0x20
 
 static int
@@ -331,6 +348,7 @@ FWInfo *fw;
 int64_t vers;
 int     st;
 int     i;
+double  dfltScaleVolts = 1.0;
 
 	if ( ! (fw = calloc(1, sizeof(*fw))) ) {
 		perror("fw_open(): no memory");
@@ -432,6 +450,32 @@ int     i;
 
 		default:
 		break;
+	}
+
+	switch ( fw->brdVers ) {
+		case 0:
+			/* at full attenuation the gain is 6dB; final division by 10
+			 * yields gain at 0dB.
+			 */
+			dfltScaleVolts = 0.75 / (2.0 * (232.0/(232.0+178.0))) / 10.0;
+			break;
+		case 1:
+			/* at 40dB attenuation the PGA gain is -6dB * output load factor.
+			 * Full scale of the ADC is 0.75V, translating to full-scale
+			 * at the input by dividing by the PGA gain.
+			 * Finally: divide by 100 to yield gain at attenuation 0
+			 */
+			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/200.0)) / 100.0;
+			break;
+		case 2:
+			/* diff. load on this HW is 301 Ohm */
+			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0)) / 100.0;
+			break;
+		default:
+		break;
+	}
+	for ( i = 0; i < fw->numChannels; ++i ) {
+		fw->fullScaleVolts[i] = dfltScaleVolts;
 	}
 
 	st = unitDataFromFlash( &fw->unitData, fw );

@@ -63,12 +63,16 @@ fw_disable_features(FWInfo *fw, uint64_t mask);
 /* set 'I2C_READ' when writing the i2c address */
 #define I2C_READ (1<<0)
 
-// full-scale at zero attenuation
+/* full-scale at zero attenuation */
 double
 fw_get_full_scale_volts(FWInfo *fw, unsigned channel);
 
 int
 fw_get_current_scale(FWInfo *fw, unsigned channel, double *scl);
+
+/* Reference frequency of ADC PLL; NaN if there is no PLL */
+double
+fw_get_reference_freq(FWInfo *fw);
 
 /* Low-level i2c commands */
 int

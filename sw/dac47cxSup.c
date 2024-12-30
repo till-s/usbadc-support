@@ -18,14 +18,23 @@ int         st;
 	buf[0] = SLA;
 	buf[1] = ( 0x06 | ( (reg & 0x1f) << 3 ) );
 	if ( (st = bb_i2c_start( fw, 0      )) < 0 ) return st;
-	if ( (st = bb_i2c_write( fw, buf, 2 )) < 0 ) return st;
-	if ( (st = bb_i2c_start( fw, 1      )) < 0 ) return st;
+	if ( (st = bb_i2c_write( fw, buf, 2 )) < 0 ) goto bail;
+	if ( 0 == st ) {
+		/* NAK on first byte */
+		st = -ENODEV;
+		goto bail;
+	}
+	if ( (st = bb_i2c_start( fw, 1      )) < 0 ) goto bail;
 	buf[0] = SLA | I2C_READ;
-	if ( (st = bb_i2c_write( fw, buf, 1 )) < 0 ) return st;
-	if ( (st = bb_i2c_read ( fw, buf, 2 )) < 0 ) return st;
-	if ( (st = bb_i2c_stop ( fw         )) < 0 ) return st;
+	if ( (st = bb_i2c_write( fw, buf, 1 )) < 0 ) goto bail;
+	if ( (st = bb_i2c_read ( fw, buf, 2 )) < 0 ) goto bail;
+
+	st = 0;
+
+bail:
+	bb_i2c_stop ( fw );
 	*val = ( buf[0] << 8 ) | buf[1];
-	return 0;
+	return st;
 }
 
 int
@@ -40,8 +49,15 @@ int         st;
 	buf[3] = ( val >> 0 ) & 0xff;
 	if ( (st = bb_i2c_start( fw, 0      )) < 0 ) return st;
 	if ( (st = bb_i2c_write( fw, buf, 4 )) < 0 ) return st;
-	if ( (st = bb_i2c_stop ( fw         )) < 0 ) return st;
-	return 0;
+	if ( 0 == st ) {
+		/* NAK on first byte */
+		st = -ENODEV;
+		goto bail;
+	}
+	st = 0;
+bail:
+	bb_i2c_stop ( fw );
+	return st;
 }
 
 int
@@ -53,9 +69,17 @@ int         st;
 	buf[0] = 0x00; /* special address */
 	buf[1] = 0x06;
 	if ( (st = bb_i2c_start( fw, 0 ))       < 0 ) return st;
-	if ( (st = bb_i2c_write( fw, buf, 2 ))  < 0 ) return st;
-	if ( (st = bb_i2c_stop ( fw         ))  < 0 ) return st;
-	return 0;
+	if ( (st = bb_i2c_write( fw, buf, 2 ))  < 0 ) goto bail;
+	if ( 0 == st ) {
+		/* NAK on first byte */
+		st = -ENODEV;
+		goto bail;
+	}
+	st = 0;
+
+bail:
+	bb_i2c_stop ( fw );
+	return st;
 }
 
 #define REG_VREF 8

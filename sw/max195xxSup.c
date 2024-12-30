@@ -104,6 +104,8 @@ int     rv;
 }
 #endif
 
+#define OUT_FORMAT_REG 1
+
 #define TIMING_REG 3
 
 #define DA_BYPASS   (1<<7)
@@ -152,6 +154,45 @@ int     rv;
 		default:        val |= 0x00; break; /* two's complement */
 	}
 	return max195xxWriteReg( fw, TEST_REG, val );
+}
+
+int
+max195xxGetMuxMode(FWInfo *fw)
+{
+uint8_t val;
+int     rv;
+	rv = max195xxReadReg( fw, OUT_FORMAT_REG, &val );
+	if ( rv < 0 ) {
+		return rv;
+	}
+	if ( (val & 2) ) {
+		return (val & 4) ? MUX_PORT_B : MUX_PORT_A;
+	} 
+	return MUX_OFF;
+}
+
+int
+max195xxSetMuxMode(FWInfo *fw, Max195xxMuxMode m)
+{
+uint8_t val;
+int     rv;
+	rv = max195xxReadReg( fw, OUT_FORMAT_REG, &val );
+	if ( rv < 0 ) {
+		return rv;
+	}
+	val &= 0xf9;
+	switch ( m ) {
+		default: /* fall through */
+		case MUX_OFF:
+			break;
+		case MUX_PORT_A:
+			val |= 0x02;
+			break;
+		case MUX_PORT_B:
+			val |= 0x06;
+			break;
+	}
+	return max195xxWriteReg( fw, OUT_FORMAT_REG, val );
 }
 
 int

@@ -31,7 +31,15 @@ typedef enum { NO_TEST, RAMP_TEST, AA55_TEST } Max195xxTestMode;
 int
 max195xxSetTestMode(FWInfo *fw, Max195xxTestMode m);
 
+typedef enum { MUX_OFF, MUX_PORT_A, MUX_PORT_B } Max195xxMuxMode;
+
 typedef enum { CM_0450mV = 7, CM_0600mV = 6, CM_0750mV = 5, CM_0900mV = 0, CM_1050mV = 1, CM_1200mV = 2, CM_1350mV = 3 } Max195xxCMVolt;
+
+int
+max195xxGetMuxMode(FWInfo *fw);
+
+int
+max195xxSetMuxMode(FWInfo *fw, Max195xxMuxMode mode);
 
 int
 max195xxSetCMVolt( FWInfo *fw, Max195xxCMVolt cmA, Max195xxCMVolt cmB );
