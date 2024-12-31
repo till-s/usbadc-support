@@ -5,7 +5,7 @@ CFLAGS=-O2 -Wall -g -fpic
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
 LOBJS+=tca6408FECSup.o at24EepromSup.o unitData.o unitDataFlash.o
-LOBJS+=scopeInit.o
+LOBJS+=scopeSup.o
 
 PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 

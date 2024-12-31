@@ -171,5 +171,5 @@ cpdef enum VersaClkOutLevel:
   LEVEL_25 = 2
   LEVEL_33 = 3
 
-cdef extern from "scopeInit.h":
+cdef extern from "scopeSup.h":
   int            scopeInit(FWInfo *fw, int force) nogil

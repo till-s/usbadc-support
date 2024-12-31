@@ -1,4 +1,4 @@
-#include "scopeInit.h"
+#include "scopeSup.h"
 #include "fwComm.h"
 #include "versaClkSup.h"
 #include "max195xxSup.h"
