@@ -6,6 +6,7 @@
 
 #include "lmh6882Sup.h"
 #include "fwComm.h"
+#include "scopeSup.h"
 
 int
 lmh6882ReadReg(FWInfo *fw, uint8_t reg)

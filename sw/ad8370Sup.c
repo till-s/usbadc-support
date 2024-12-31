@@ -6,6 +6,7 @@
 
 #include "ad8370Sup.h"
 #include "fwComm.h"
+#include "scopeSup.h"
 
 int
 ad8370Write(FWInfo *fw, int channel, uint8_t val)

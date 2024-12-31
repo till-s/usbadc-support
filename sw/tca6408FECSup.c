@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "fwComm.h"
+#include "scopeSup.h"
 #include "tca6408FECSup.h"
 
 #define OUT_REG 0x01
@@ -136,6 +137,7 @@ opClose(FECOps *ops)
 
 struct FECOps *tca6408FECSupCreate(
 	struct FWInfo *fw,
+	unsigned       numChannels,
 	uint8_t        sla,
 	double         attMin,
 	double         attMax,
@@ -184,7 +186,7 @@ int            dir;
 	if ( DIR_ALL_OUT != dir ) {
 		/* set output values before changing direction! */
 
-		for ( chn = 0; chn < fw_get_num_channels( fw ); ++chn ) {
+		for ( chn = 0; chn < numChannels; ++chn ) {
 			opSetTermination( &fec->ops, chn, 0 );
 			opSetACMode     ( &fec->ops, chn, 1 );
 			opSetAtt        ( &fec->ops, chn, attMax );

@@ -18,6 +18,7 @@ struct FWInfo;
 
 struct FECOps *tca6408FECSupCreate(
 	struct FWInfo *fw,
+	unsigned       numChannels,
 	uint8_t        sla,
 	double         attMin,
 	double         attMax,

@@ -15,21 +15,9 @@ cdef extern from "fwComm.h":
   void           fw_close(FWInfo *) nogil
   void           fw_set_debug(FWInfo *fw, int level) nogil
   uint32_t       fw_get_version(FWInfo *) nogil
+  uint64_t       fw_get_features(FWInfo *) nogil
   uint8_t        fw_get_api_version(FWInfo *) nogil
   uint8_t        fw_get_board_version(FWInfo *) nogil
-  unsigned long  buf_get_size(FWInfo *) nogil
-  double         buf_get_sampling_freq(FWInfo *) nogil
-  uint8_t        buf_get_flags(FWInfo *) nogil
-  int            buf_flush(FWInfo *) nogil
-  int            buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len) nogil
-  int            buf_read_flt(FWInfo *, uint16_t *hdr, float *buf, size_t len) nogil
-  int            acq_set_level(FWInfo *, int16_t level, uint16_t hysteresis) nogil
-  int            acq_set_npts(FWInfo *, int32_t npts) nogil
-  int            acq_set_nsamples(FWInfo *, int32_t nsamples) nogil
-  int            acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation) nogil
-  int            acq_set_source(FWInfo *, TriggerSource src, int rising) nogil
-  int            acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout) nogil
-  int            acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale) nogil
   int            fw_reg_read(FWInfo *, uint32_t, uint8_t *, size_t, unsigned) nogil
   int            fw_reg_write(FWInfo *, uint32_t, uint8_t *, size_t, unsigned) nogil
 
@@ -47,28 +35,11 @@ cdef extern from "fwComm.h":
     uint8_t       cic0Shift
     uint8_t       cic1Shift
     int32_t       scale
-  int            ACQ_PARAM_TIMEOUT_INF
-  int            acq_set_params(FWInfo *, AcqParams *set, AcqParams *get) nogil
   int            bb_spi_raw(FWInfo *, SPIDev, int clk, int mosi, int cs, int hiz) nogil
   int            bb_i2c_read_reg(FWInfo *, uint8_t sla, uint8_t reg) nogil
   int            bb_i2c_write_reg(FWInfo *, uint8_t sla, uint8_t reg, uint8_t val) nogil
   int            bb_i2c_rw_a8(FWInfo *fw, uint8_t sla, uint8_t addr, uint8_t *data, size_t len) nogil
 
-  int            pgaReadReg(FWInfo *, unsigned ch, unsigned reg) nogil
-  int            pgaWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val) nogil
-  int            pgaGetAttRange(FWInfo*, double *min, double *max) nogil
-  int            pgaGetAtt(FWInfo *, unsigned channel, double *att) nogil
-  int            pgaSetAtt(FWInfo *, unsigned channel, double att) nogil
-  int            fecGetACMode(FWInfo *, unsigned channel) nogil
-  int            fecSetACMode(FWInfo *, unsigned channel, unsigned on) nogil
-  int            fecGetTermination(FWInfo *, unsigned channel) nogil
-  int            fecSetTermination(FWInfo *, unsigned channel, unsigned on) nogil
-  int            fecGetDACRangeHi(FWInfo *, unsigned channel) nogil
-  int            fecSetDACRangeHi(FWInfo *, unsigned channel, unsigned on) nogil
-  int            fecGetAttRange(FWInfo*, double *min, double *max) nogil
-  int            fecGetAtt(FWInfo *, unsigned channel, double *att) nogil
-  int            fecSetAtt(FWInfo *, unsigned channel, double att) nogil
-  void           fecClose(FWInfo *) nogil
   int            eepromGetSize(FWInfo *) nogil
   int            eepromRead(FWInfo *, unsigned off, uint8_t *buf, size_t len) nogil
   int            eepromWrite(FWInfo *, unsigned off, uint8_t *buf, size_t len) nogil
@@ -172,4 +143,39 @@ cpdef enum VersaClkOutLevel:
   LEVEL_33 = 3
 
 cdef extern from "scopeSup.h":
-  int            scopeInit(FWInfo *fw, int force) nogil
+  ctypedef struct ScopePvt:
+    pass
+  ScopePvt      *scope_open(FWInfo *fw) nogil
+  void           scope_close(ScopePvt *) nogil
+
+  int            scope_init(ScopePvt *, int force) nogil
+  unsigned long  buf_get_size(ScopePvt *) nogil
+  double         buf_get_sampling_freq(ScopePvt *) nogil
+  uint8_t        buf_get_flags(ScopePvt *) nogil
+  int            buf_flush(ScopePvt *) nogil
+  int            buf_read(ScopePvt *, uint16_t *hdr, uint8_t *buf, size_t len) nogil
+  int            buf_read_flt(ScopePvt *, uint16_t *hdr, float *buf, size_t len) nogil
+  int            ACQ_PARAM_TIMEOUT_INF
+  int            acq_set_params(ScopePvt *, AcqParams *set, AcqParams *get) nogil
+  int            acq_set_level(ScopePvt *, int16_t level, uint16_t hysteresis) nogil
+  int            acq_set_npts(ScopePvt *, int32_t npts) nogil
+  int            acq_set_nsamples(ScopePvt *, int32_t nsamples) nogil
+  int            acq_set_decimation(ScopePvt *, uint8_t cic0Decimation, uint32_t cic1Decimation) nogil
+  int            acq_set_source(ScopePvt *, TriggerSource src, int rising) nogil
+  int            acq_set_autoTimeoutMs(ScopePvt *, uint32_t timeout) nogil
+  int            acq_set_scale(ScopePvt *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale) nogil
+  int            pgaReadReg(ScopePvt *, unsigned ch, unsigned reg) nogil
+  int            pgaWriteReg(ScopePvt *, unsigned ch, unsigned reg, unsigned val) nogil
+  int            pgaGetAttRange(ScopePvt*, double *min, double *max) nogil
+  int            pgaGetAtt(ScopePvt *, unsigned channel, double *att) nogil
+  int            pgaSetAtt(ScopePvt *, unsigned channel, double att) nogil
+  int            fecGetACMode(ScopePvt *, unsigned channel) nogil
+  int            fecSetACMode(ScopePvt *, unsigned channel, unsigned on) nogil
+  int            fecGetTermination(ScopePvt *, unsigned channel) nogil
+  int            fecSetTermination(ScopePvt *, unsigned channel, unsigned on) nogil
+  int            fecGetDACRangeHi(ScopePvt *, unsigned channel) nogil
+  int            fecSetDACRangeHi(ScopePvt *, unsigned channel, unsigned on) nogil
+  int            fecGetAttRange(ScopePvt*, double *min, double *max) nogil
+  int            fecGetAtt(ScopePvt *, unsigned channel, double *att) nogil
+  int            fecSetAtt(ScopePvt *, unsigned channel, double att) nogil
+  void           fecClose(ScopePvt *) nogil

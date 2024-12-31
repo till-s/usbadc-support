@@ -9,7 +9,7 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS, FW_CMD_SPI, FW_CMD_REG_RD8, FW_CMD_REG_WR8 } FWCmd;
+typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_ADC_FLUSH, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS, FW_CMD_SPI, FW_CMD_REG_RD8, FW_CMD_REG_WR8 } FWCmd;
 
 typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG, SPI_VGA, SPI_VGB } SPIDev;
 
@@ -40,9 +40,6 @@ fw_get_version(FWInfo *fw);
 uint8_t
 fw_get_board_version(FWInfo *fw);
 
-unsigned
-fw_get_num_channels(FWInfo *fw);
-
 #define FW_API_VERSION_1 (1)
 #define FW_API_VERSION_2 (2)
 #define FW_API_VERSION_3 (3)
@@ -62,17 +59,6 @@ fw_disable_features(FWInfo *fw, uint64_t mask);
 
 /* set 'I2C_READ' when writing the i2c address */
 #define I2C_READ (1<<0)
-
-/* full-scale at zero attenuation */
-double
-fw_get_full_scale_volts(FWInfo *fw, unsigned channel);
-
-int
-fw_get_current_scale(FWInfo *fw, unsigned channel, double *scl);
-
-/* Reference frequency of ADC PLL; NaN if there is no PLL */
-double
-fw_get_reference_freq(FWInfo *fw);
 
 /* Low-level i2c commands */
 int
@@ -156,185 +142,22 @@ int
 fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned flags);
 
 /*
- * ADC Buffer / acquisition readout
- */
-
-unsigned long
-buf_get_size(FWInfo *);
-
-/* buffer uses 16-bit samples */
-#define FW_BUF_FLG_16B (1<<0)
-
-uint8_t
-buf_get_flags(FWInfo *);
-
-/* Requres API vers. 3; returns -ENOTSUP if API is older */
-int
-buf_get_sample_size(FWInfo *);
-
-/* Requres API vers. 3; returns NaN if not supported */
-double
-buf_get_sampling_freq(FWInfo *);
-
-int
-buf_flush(FWInfo *);
-
-#define FW_BUF_HDR_FLG_OVR(ch) (1<<(ch))
-
-int
-buf_read(FWInfo *, uint16_t *hdr, uint8_t *buf, size_t len);
-
-int
-buf_read_flt(FWInfo *fw, uint16_t *hdr, float *buf, size_t nelms);
-
-/*
  * Send 'invalid' command - can be used to trigger ILAs
  */
 int
 fw_inv_cmd(FWInfo *fw);
 
-typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
-
-/* Immediate (manual) trigger can be achieved by
- * setting the auto-timeout to 0
- */
-
-#define ACQ_PARAM_MSK_SRC (1<<0) /* trigger source                */
-#define ACQ_PARAM_MSK_EDG (1<<1) /* trigger edge                  */
-#define ACQ_PARAM_MSK_LVL (1<<2) /* trigger level and hysteresis  */
-#define ACQ_PARAM_MSK_NPT (1<<3) /* number of pre-trigger samples */
-#define ACQ_PARAM_MSK_AUT (1<<4) /* auto timeout                  */
-#define ACQ_PARAM_MSK_DCM (1<<5) /* decimation                    */
-#define ACQ_PARAM_MSK_SCL (1<<6) /* scale                         */
-/* number of samples requires firmware V2 */
-#define ACQ_PARAM_MSK_NSM (1<<7) /* number of samples to acquire  */
-#define ACQ_PARAM_MSK_TGO (1<<8) /* ext. trigger-output enable    */
-
-#define ACQ_LD_SCALE_ONE 30
-#define ACQ_SCALE_ONE (1L<<ACQ_LD_SCALE_ONE)
-
-
-#define ACQ_PARAM_MSK_GET (0)
-#define ACQ_PARAM_MSK_ALL (0xff)
-
-#define ACQ_PARAM_TIMEOUT_INF (0xffff)
-
-typedef struct AcqParams {
-    uint32_t      mask;
-    /* note that when the source is switched to external then
-     * the 'trigOutEn' feature is automatically switched off
-	 * by firmware
-     */
-	TriggerSource src;
-    int           trigOutEn;
-	int           rising;
-	int16_t       level;
-    uint16_t      hysteresis;
-	uint32_t      npts;
-	uint32_t      nsamples;
-	uint32_t      autoTimeoutMS;
-	uint8_t       cic0Decimation;
-	uint32_t      cic1Decimation;
-	uint8_t       cic0Shift;
-	uint8_t       cic1Shift;
-	int32_t       scale;
-} AcqParams;
-
-/* Set new parameters and obtain previous parameters.
- * A new acquisition is started if any mask bit is set.
- *
- * Either 'set' or 'get' may be NULL with obvious semantics.
- */
-
-int
-acq_set_params(FWInfo *, AcqParams *set, AcqParams *get);
-
-/*
- * Helpers
- */
-int
-acq_manual(FWInfo *);
-
-int
-acq_set_level(FWInfo *, int16_t level, uint16_t hysteresis);
-
-int
-acq_set_npts(FWInfo *, uint32_t npts);
-
-int
-acq_set_nsamples(FWInfo *, uint32_t nsamples);
-
-int32_t
-acq_default_cic1Scale(uint32_t cic1Decimation);
-
-int
-acq_set_decimation(FWInfo *, uint8_t cic0Decimation, uint32_t cic1Decimation);
-
-int
-acq_set_scale(FWInfo *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale);
-
-/* rising: 1, falling: -1, leave previous value: 0 */
-int
-acq_set_source(FWInfo *, TriggerSource src, int rising);
-
-/* Note that this feature is automatically switched off by firmware
- * if the trigger-source is set to 'external' (uses the same wire)
- */
-int
-acq_set_trig_out_en(FWInfo *, int on);
-
-int
-acq_set_autoTimeoutMs(FWInfo *, uint32_t timeout);
-
-typedef struct PGAOps {
-	int    (*readReg)(FWInfo *, unsigned ch, unsigned reg);
-	int    (*writeReg)(FWInfo *, unsigned ch, unsigned reg, unsigned val);
-	//  min-max attenuation in db; return 0 on success
-	int    (*getAttRange)(FWInfo*, double *min, double *max);
-	int    (*getAtt)(FWInfo *, unsigned channel, double *att);
-	int    (*setAtt)(FWInfo *, unsigned channel, double att);
-} PGAOps;
-
-typedef struct FECOps FECOps;
-
-struct FECOps {
-	// returns 0, 1, negative error
-	int    (*getACMode)(FECOps *, unsigned channel);
-	int    (*setACMode)(FECOps *, unsigned channel, unsigned on);
-	int    (*getTermination)(FECOps *, unsigned channel);
-	int    (*setTermination)(FECOps *, unsigned channel, unsigned on);
-	// assume 2-step attenuator on/off
-	int    (*getAttRange)(FECOps*, double *min, double *max);
-	int    (*getAtt)(FECOps *, unsigned channel, double *att);
-	int    (*setAtt)(FECOps *, unsigned channel, double att);
-	int    (*getDACRangeHi)(FECOps*, unsigned channel);
-	int    (*setDACRangeHi)(FECOps*, unsigned channel, unsigned on);
-	void   (*close)(FECOps *);
-};
-
-int    pgaReadReg(FWInfo *, unsigned ch, unsigned reg);
-int    pgaWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val);
-// at min-att
-//  min-max attenuation in db; return 0 on success; stage 0 is closest to ADC
-int    pgaGetAttRange(FWInfo*, double *min, double *max);
-int    pgaGetAtt(FWInfo *, unsigned channel, double *att);
-int    pgaSetAtt(FWInfo *, unsigned channel, double att);
-
-// returns 0, 1, negative error
-int    fecGetACMode(FWInfo *, unsigned channel);
-int    fecSetACMode(FWInfo *, unsigned channel, unsigned on);
-int    fecGetTermination(FWInfo *, unsigned channel);
-int    fecSetTermination(FWInfo *, unsigned channel, unsigned on);
-int    fecGetDACRangeHi(FWInfo *, unsigned channel);
-int    fecSetDACRangeHi(FWInfo *, unsigned channel, unsigned on);
-int    fecGetAttRange(FWInfo*, double *min, double *max);
-int    fecGetAtt(FWInfo *, unsigned channel, double *att);
-int    fecSetAtt(FWInfo *, unsigned channel, double att);
-void   fecClose(FWInfo *);
-
 int    eepromGetSize(FWInfo *);
 int    eepromRead(FWInfo *, unsigned off, uint8_t *buf, size_t len);
 int    eepromWrite(FWInfo *, unsigned off, uint8_t *buf, size_t len);
+
+#define BUF_SIZE_FAILED ((long)-1L)
+#define BUF_SIZE_NOTSUP ((long)-2L)
+int
+__fw_has_buf(FWInfo *fw, size_t *psz, unsigned *pflg);
+
+int
+__fw_get_sampling_freq_mhz(FWInfo *fw);
 
 #ifdef __cplusplus
 }

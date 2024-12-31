@@ -1,7 +1,3 @@
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-/* for exp10() */
-#endif
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -13,12 +9,8 @@
 
 #include "cmdXfer.h"
 #include "fwComm.h"
-#include "lmh6882Sup.h"
-#include "ad8370Sup.h"
-#include "tca6408FECSup.h"
 #include "at24EepromSup.h"
-#include "unitData.h"
-#include "unitDataFlash.h"
+#include "scopeSup.h"
 
 #define CS_SHFT   0
 #define SCLK_SHFT 1
@@ -55,55 +47,18 @@
 #define BITS_FW_CMD_REG_RD8     (0<<4)
 #define BITS_FW_CMD_REG_WR8     (1<<4)
 
-#define BITS_FW_CMD_ACQ_MSK_SRC  7
-#define BITS_FW_CMD_ACQ_SHF_SRC  0
-#define BITS_FW_CMD_ACQ_SHF_EDG  3
-#define BITS_FW_CMD_ACQ_SHF_TGO  4
-
-#define BITS_FW_CMD_ACQ_IDX_MSK     0
-#define BITS_FW_CMD_ACQ_LEN_MSK_V1  sizeof(uint8_t)
-#define BITS_FW_CMD_ACQ_LEN_MSK_V2  sizeof(uint32_t)
-#define BITS_FW_CMD_ACQ_LEN_SRC     1
-#define BITS_FW_CMD_ACQ_LEN_LVL     2
-#define BITS_FW_CMD_ACQ_LEN_NPT_V1  2
-#define BITS_FW_CMD_ACQ_LEN_NPT_V2  3
-#define BITS_FW_CMD_ACQ_LEN_NSM_V1  0
-#define BITS_FW_CMD_ACQ_LEN_NSM_V2  3
-#define BITS_FW_CMD_ACQ_LEN_AUT     2
-#define BITS_FW_CMD_ACQ_LEN_DCM     3
-#define BITS_FW_CMD_ACQ_LEN_SCL     4
-#define BITS_FW_CMD_ACQ_LEN_HYS     2
-
-#define BITS_FW_CMD_ACQ_TOT_LEN_V1 15
-#define BITS_FW_CMD_ACQ_TOT_LEN_V2 24
-
-#define BITS_FW_CMD_ACQ_DCM0_SHFT 20
-
 #define BITS_FW_CMD_UNSUPPORTED   0xff
-
-#define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
 
 struct FWInfo {
 	int             fd;
 	uint8_t         cmd;
 	int             debug;
 	int             ownFd;
-	unsigned long   memSize;
-	uint8_t         memFlags;
 	uint32_t        gitHash;
 	uint8_t         brdVers;
 	uint8_t         apiVers;
 	uint64_t        features;
-	AcqParams       acqParams;
-	double          samplingFreq;
-	double         *fullScaleVolts;
-	unsigned        numChannels;
-	int             sampleSize;
-	double         *attOffset;
-	PGAOps         *pga;
-	FECOps         *fec;
 	AT24EEPROM     *eeprom;
-	const UnitData *unitData;
 };
 
 static int
@@ -111,14 +66,6 @@ fw_xfer_bb(FWInfo *fw, uint8_t subcmd, const uint8_t *tbuf, uint8_t *rbuf, size_
 
 static int
 __bb_spi_cs(FWInfo *fw, SPIMode mode, uint8_t subcmd, uint8_t lastval);
-
-static int
-__buf_get_sampling_freq_mhz(FWInfo *fw);
-
-#define BUF_SIZE_FAILED ((long)-1L)
-#define BUF_SIZE_NOTSUP ((long)-2L)
-static long
-__buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg);
 
 void
 fw_set_debug(FWInfo *fw, int level)
@@ -166,6 +113,7 @@ fw_get_cmd(FWCmd aCmd)
 	switch ( aCmd ) {
 		case FW_CMD_VERSION    : return BITS_FW_CMD_VER;
 		case FW_CMD_ADC_BUF    : return BITS_FW_CMD_ADCBUF;
+		case FW_CMD_ADC_FLUSH  : return BITS_FW_CMD_ADCBUF | BITS_FW_CMD_ADCFLUSH;
 		case FW_CMD_BB_SPI     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
 		case FW_CMD_BB_I2C     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
 		case FW_CMD_ACQ_PARMS  : return BITS_FW_CMD_ACQPRM;
@@ -190,94 +138,6 @@ fw_disable_features(FWInfo *fw, uint64_t mask)
 	fw->features &= ~mask;
 }
 
-double
-fw_get_full_scale_volts(FWInfo *fw, unsigned channel)
-{
-	if ( channel >= fw->numChannels ) {
-		return 0.0/0.0;
-	}
-	return fw->fullScaleVolts[channel];
-}
-
-unsigned
-fw_get_num_channels(FWInfo *fw)
-{
-	return fw->numChannels;
-}
-
-int
-fw_get_current_scale(FWInfo *fw, unsigned channel, double *pscl)
-{
-	if ( channel >= fw->numChannels ) {
-		return -EINVAL;
-	}
-	if ( pscl ) {
-		double scl    = fw_get_full_scale_volts( fw, channel );
-		double totAtt = 0.0;
-		double att;
-		int    st;
-		if ( 0.0 == scl ) {
-			/* don't bother */
-			return scl;
-		}
-		st = pgaGetAtt( fw, channel, &att );
-		if ( st < 0 ) {
-			if ( -ENOTSUP != st ) {
-				return st;
-			}
-			/* NOTSUP means no additional attenuation */
-		} else {
-			totAtt += att;
-		}
-		st = fecGetAtt( fw, channel, &att );
-		if ( st < 0 ) {
-			if ( -ENOTSUP != st ) {
-				return st;
-			}
-			/* NOTSUP means no additional attenuation */
-		} else {
-			totAtt += att;
-		}
-		*pscl = scl * exp10( totAtt/20.0 );
-	}
-	return 0;
-}
-
-double
-fw_get_reference_freq(FWInfo *fw)
-{
-	switch ( fw->brdVers ) {
-		case 0:
-		case 2:
-			return 25.0E6;
-		break;
-		case 1:
-			return 26.0E6;
-		break;
-		default:
-		break;
-	}
-	return 0.0/0.0;
-}
-
-#define BRD_V1_TCA6408_SLA 0x20
-
-static int
-brdV1TCA6408Bits(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
-{
-	if ( channel >= fw->numChannels ) {
-		return -EINVAL;
-	}
-	switch ( which ) {
-		case ATTENUATOR:   return channel ? (1<<2) : (1<<6);
-		case TERMINATION:  return channel ? (1<<4) : (1<<5);
-		case ACMODE:       return channel ? (1<<3) : (1<<7);
-		case DACRANGE:     return channel ? (1<<0) : (1<<1);
-		default:
-		return -ENOTSUP;
-	}
-}
-
 static int64_t
 __fw_get_version(FWInfo *fw)
 {
@@ -295,26 +155,6 @@ int64_t rval;
 		rval = (rval << 8) | buf[i];
 	}
 	return rval;
-}
-
-static double
-computeAttOffset(double *attOffset, unsigned numChannels, const UnitData *ud)
-{
-int    minIdx   = 0;
-double minScale = unitDataGetScaleVolt( ud, minIdx );
-double scl;
-int    i;
-
-	for ( i = minIdx + 1; i < numChannels; ++i ) {
-		if ( (scl = unitDataGetScaleVolt( ud, i )) < minScale ) {
-			minScale = scl;
-			minIdx   = i;
-		}
-	}
-	for ( i = 0; i < numChannels; ++i ) {
-		attOffset[i] = 20*log10(unitDataGetScaleVolt( ud, i ) /  minScale);
-	}
-	return minScale;
 }
 
 FWInfo *
@@ -344,15 +184,12 @@ FWInfo *rv;
 FWInfo *
 fw_open_fd(int fd)
 {
-FWInfo *fw;
-int64_t vers;
-int     st;
-int     i;
-double  dfltScaleVolts = 1.0;
+FWInfo  *fw;
+int64_t  vers;
 
-	if ( ! (fw = calloc(1, sizeof(*fw))) ) {
+	if ( ! (fw = calloc( sizeof( *fw ), 1 )) ) {
 		perror("fw_open(): no memory");
-		return 0;
+		return NULL;
 	}
 
 	fw->fd             = fd;
@@ -360,25 +197,8 @@ double  dfltScaleVolts = 1.0;
 	fw->debug          = 0;
 	fw->ownFd          = 0;
 	fw->features       = 0;
-	fw->sampleSize     = -ENOTSUP;
-	fw->numChannels    = 2;
 
-	fw->attOffset      = calloc( sizeof(*fw->attOffset), fw->numChannels );
-	if ( ! fw->attOffset ) {
-		perror("fw_open(): no memory");
-		goto bail;
-	}
-	fw->fullScaleVolts = calloc( sizeof(*fw->fullScaleVolts), fw->numChannels );
-	if ( ! fw->fullScaleVolts ) {
-		perror("fw_open(): no memory");
-		goto bail;
-	}
-	for ( i = 0; i < fw->numChannels; ++i ) {
-		fw->fullScaleVolts[i] = 1.0;
-		fw->attOffset[i]      = 0.0;
-	}
-
-	switch ( __buf_get_size( fw, &fw->memSize, &fw->memFlags ) ) {
+	switch ( __fw_has_buf( fw, NULL, NULL ) ) {
 		case BUF_SIZE_FAILED:
 			fprintf(stderr, "Error: fw_open_fd unable to retrieve target memory size\n");
 			break;
@@ -392,8 +212,7 @@ double  dfltScaleVolts = 1.0;
 
 	if ( ( vers = __fw_get_version( fw ) ) < 0 ) {
 		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
-		free( fw );
-		return 0;
+		goto bail;
 	}
 
 	fw->gitHash = ( vers & 0xffffffff );
@@ -407,103 +226,14 @@ double  dfltScaleVolts = 1.0;
 
 	/* abiVers etc. valid after this point */
 
-	fw->samplingFreq = 0.0/0.0;
-
-	if ( ( fw->features & FW_FEATURE_ADC ) ) {
-		if ( (st = acq_set_params( fw, NULL, &fw->acqParams )) ) {
-			fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
-		}
-
-		fw->sampleSize = (fw->memFlags & FW_BUF_FLG_16B) ? 10 : 8;
-
-		if ( fw->apiVers >= FW_API_VERSION_3 ) {
-			if ( (st = __buf_get_sampling_freq_mhz( fw )) <= 0 ) {
-				fprintf(stderr, "Error %d: unable to read sample frequency\n", st);
-			} else {
-				fw->samplingFreq = 1.0E6 * (double)st;
-			}
-			fw->sampleSize = FW_BUF_FLG_GET_SMPLSZ( fw->memFlags );
-		} else {
-			if ( 0 == fw->brdVers ) {
-				fw->samplingFreq = 130.0E6;
-			} else if ( 1 == fw->brdVers ) {
-				fw->samplingFreq = 120.0E6;
-			}
-		}
-	}
-
 	switch ( fw->brdVers ) {
-		case 0:
-			fw->pga            = &lmh6882PGAOps;
-		break;
-
 		case 2:
 			fw->eeprom         = at24EepromCreate( fw, 0x50, 128, 8 );
-			/* fall through */
-		case 1:
-			fw->pga            = &ad8370PGAOps;
-			fw->fec            = tca6408FECSupCreate( fw, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
-			for ( i = 0; i < fw->numChannels; ++i ) {
-	        	fw->fullScaleVolts[i] = 0.0098;
-			}
-		break;
-
-		default:
-		break;
-	}
-
-	switch ( fw->brdVers ) {
-		case 0:
-			/* at full attenuation the gain is 6dB; final division by 10
-			 * yields gain at 0dB.
-			 */
-			dfltScaleVolts = 0.75 / (2.0 * (232.0/(232.0+178.0))) / 10.0;
-			break;
-		case 1:
-			/* at 40dB attenuation the PGA gain is -6dB * output load factor.
-			 * Full scale of the ADC is 0.75V, translating to full-scale
-			 * at the input by dividing by the PGA gain.
-			 * Finally: divide by 100 to yield gain at attenuation 0
-			 */
-			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/200.0)) / 100.0;
-			break;
-		case 2:
-			/* diff. load on this HW is 301 Ohm */
-			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0)) / 100.0;
 			break;
 		default:
-		break;
-	}
-	for ( i = 0; i < fw->numChannels; ++i ) {
-		fw->fullScaleVolts[i] = dfltScaleVolts;
+			break;
 	}
 
-	st = unitDataFromFlash( &fw->unitData, fw );
-	if ( st < 0 ) {
-		if ( -ENODATA == st ) {
-			UnitData *ud;
-			fprintf(stderr, "WARNING: No calibration data found in flash; using defaults\n");
-			ud = unitDataCreate( fw->numChannels );
-			for ( i = 0; i < fw->numChannels; ++i ) {
-				unitDataSetScaleVolt( ud, i, fw->fullScaleVolts[i] );
-			}
-			fw->unitData = ud;
-		}
-		if ( ! fw->unitData ) {
-			goto bail;
-		}
-	} else {
-		if ( unitDataGetNumChannels( fw->unitData ) != fw->numChannels ) {
-			fprintf(stderr, "ERROR: # channels in calibration data does not match!\n");
-			goto bail;
-		}
-	}
-
-	fw->fullScaleVolts[0] = computeAttOffset( fw->attOffset, fw->numChannels, fw->unitData );
-	for ( i = 1; i < fw->numChannels; ++i ) {
-		fw->fullScaleVolts[i] = fw->fullScaleVolts[0];
-	}
-	
 	return fw;
 
 bail:
@@ -523,9 +253,6 @@ uint8_t v = SPI_MASK | I2C_MASK;
 		if ( fw->eeprom ) {
 			at24EepromDestroy( fw->eeprom );
 		}
-		unitDataFree( fw->unitData );
-		fecClose( fw );
-		free( fw->attOffset );
 		free( fw );
 	}
 }
@@ -1005,45 +732,28 @@ bb_i2c_write_reg(FWInfo *fw, uint8_t sla, uint8_t reg, uint8_t val)
 	return bb_i2c_rw_reg(fw, sla, reg, val);
 }
 
-static int
-__buf_get_sampling_freq_mhz(FWInfo *fw)
+int
+__fw_has_buf(FWInfo *fw, size_t *psz, unsigned *pflg)
 {
-uint8_t buf[1];
-uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
-long    rval;
-	if ( fw->apiVers < FW_API_VERSION_3 ) {
-		return -ENOTSUP;
-	}
-	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
-	if ( 1 == rval ) {
-		return buf[0];
-	}
-	return -EINVAL;
-}
-
-static long
-__buf_get_size(FWInfo *fw, unsigned long *psz, uint8_t *pflg)
-{
-uint8_t buf[4];
-long    rval;
-long    ret = BUF_SIZE_FAILED;
-uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
-
-    *psz  = 0;
-    *pflg = 0;
+uint8_t  buf[4];
+long     rval;
+int      ret = BUF_SIZE_FAILED;
+uint8_t  cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
+size_t   sz  = 0;
+unsigned flg = 0;
 
 	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
 
 	switch ( rval ) {
 		case 3:
-			*pflg = buf[2];
+			flg = (uint8_t)buf[2];
 			/* fall through */
 		case 2: /* older fw version has no flags */
-			*psz = 512UL * ((unsigned long)((buf[1]<<8) | buf[0]) + 1);
+			sz = 512UL * ((size_t)((buf[1]<<8) | buf[0]) + 1);
 			ret  = 0;
 			break;
 		case -ENOTSUP:
-			*psz = 0UL;
+			sz = 0UL;
 			ret  = BUF_SIZE_NOTSUP;
 			break;
 		case -ETIMEDOUT:
@@ -1060,104 +770,31 @@ uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
 			}
 			break;
 	}
+	
+	if ( pflg ) {
+		*pflg = flg;
+	}
+	if ( psz ) {
+		*psz = sz;
+	}
 
 	return ret;
 }
 
-unsigned long
-buf_get_size(FWInfo *fw)
-{
-	return fw->memSize;
-}
-
-uint8_t
-buf_get_flags(FWInfo *fw)
-{
-	return fw->memFlags;
-}
-
-double
-buf_get_sampling_freq(FWInfo *fw)
-{
-	return fw->samplingFreq;
-}
-
 int
-buf_get_sample_size(FWInfo *fw)
+__fw_get_sampling_freq_mhz(FWInfo *fw)
 {
-	return fw->sampleSize;
-}
-
-int
-buf_flush(FWInfo *fw)
-{
-	return buf_read(fw, 0, 0, 0);
-}
-
-int
-buf_read(FWInfo *fw, uint16_t *hdr, uint8_t *buf, size_t len)
-{
-uint8_t h[2];
-rbufvec v[2];
-size_t  rcnt;
-int     rv;
-int     i;
-const union {
-	uint8_t  b[2];
-	uint16_t s;
-} isLE = { s : 1 };
-
-	v[0].buf = h;
-	v[0].len = sizeof(h);
-	v[1].buf = buf;
-	v[1].len = len;
-
-	rcnt = (! hdr && 0 == len ? 0 : 2);
-
-	uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF );
-	if ( 0 == len ) {
-		cmd |= BITS_FW_CMD_ADCFLUSH;
+uint8_t buf[1];
+uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
+long    rval;
+	if ( fw->apiVers < FW_API_VERSION_3 ) {
+		return -ENOTSUP;
 	}
-	rv = fw_xfer_vec( fw, cmd, 0, 0, v, rcnt );
-	if ( hdr ) {
-		*hdr = (h[1]<<8) | h[0];
+	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
+	if ( 1 == rval ) {
+		return buf[0];
 	}
-	if ( ! isLE.b[0] && !! (buf_get_flags(fw) & FW_BUF_FLG_16B) ) {
-		for ( i = 0; i < (len & ~1); i+=2 ) {
-			uint8_t tmp = buf[i];
-			buf[i  ] = buf[i+1];
-			buf[i+1] = tmp;
-		}
-	}
-	if ( rv >= 2 ) {
-		rv -= 2;
-	}
-	return rv;
-}
-
-int
-buf_read_flt(FWInfo *fw, uint16_t *hdr, float *buf, size_t nelms)
-{
-int       rv;
-ssize_t   i;
-int8_t   *i8_p  = (int8_t*)buf;
-int16_t  *i16_p = (int16_t*)buf;
-int       elsz  = ( (buf_get_flags( fw ) & FW_BUF_FLG_16B) ? 2 : 1 );
-
-
-	rv = buf_read( fw, hdr, (uint8_t*)buf, nelms*elsz );
-	if ( rv > 0 ) {
-		if ( 2 == elsz ) {
-			for ( i = nelms - 1; i >= 0; i-- ) {
-				buf[i] = (float)(i16_p[i]);
-			}
-		} else {
-			for ( i = nelms - 1; i >= 0; i-- ) {
-				buf[i] = (float)(i8_p[i]);
-			}
-		}
-	}
-	return rv;
+	return -EINVAL;
 }
 
 uint8_t
@@ -1178,420 +815,6 @@ fw_get_version(FWInfo *fw)
 {
 	return fw->gitHash;
 }
-
-static void
-putBuf(uint8_t **bufp, uint32_t val, int len)
-{
-int i;
-
-	for ( i = 0; i < len; i++ ) {
-		**bufp  = (val & 0xff);
-		val   >>= 8;
-		(*bufp)++;
-	}
-}
-
-static uint32_t
-getBuf(uint8_t **bufp, int len)
-{
-int      i;
-uint32_t rv = 0;
-
-	for ( i = len - 1; i >= 0; i-- ) {
-		rv = (rv << 8 ) | (*bufp)[ i ];
-	}
-	(*bufp) += len;
-
-	return rv;
-}
-
-
-/* Set new parameters and obtain previous parameters.
- * A new acquisition is started if any mask bit is set.
- *
- * Either 'set' or 'get' may be NULL with obvious semantics.
- */
-
-int
-acq_set_params(FWInfo *fw, AcqParams *set, AcqParams *get)
-{
-uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
-uint8_t   buf[BITS_FW_CMD_ACQ_TOT_LEN_V2];
-uint8_t  *bufp;
-uint8_t   v8;
-uint32_t  v24;
-uint32_t  v32;
-uint32_t  nsamples;
-int       got;
-int       len;
-uint32_t  smask = set ? set->mask : ACQ_PARAM_MSK_GET;
-
-	if ( ! fw ) {
-		return -EINVAL;
-	}
-
-	if ( ! (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
-		return -ENOTSUP;
-	}
-
-	if ( ! set || (ACQ_PARAM_MSK_GET == smask) ) {
-		if ( get == &fw->acqParams ) {
-			/* read the cache !! */
-			if ( ! set ) {
-				set   = get;
-			}
-		} else {
-			if ( get ) {
-				*get = fw->acqParams;
-			}
-			return 0;
-		}
-	}
-
-	/* parameter validation and updating of cache */
-	if ( ( smask & ACQ_PARAM_MSK_SRC ) ) {
-		fw->acqParams.src    = set->src;
-	}
-
-	if ( ( smask & ACQ_PARAM_MSK_TGO ) ) {
-		fw->acqParams.trigOutEn = set->trigOutEn;
-	}
-
-    if ( EXT == fw->acqParams.src && !! fw->acqParams.trigOutEn ) {
-printf("Forcing ext trigger output OFF\n");
-		fw->acqParams.trigOutEn = set->trigOutEn = 0;
-		smask |= ACQ_PARAM_MSK_TGO;
-	}
-
-	if ( ( smask & ACQ_PARAM_MSK_EDG ) ) {
-		fw->acqParams.rising = set->rising;
-	}
-
-	if ( ( smask & ACQ_PARAM_MSK_DCM ) ) {
-        if ( 1 >= set->cic0Decimation ) {
-printf("Forcing cic1 decimation to 1\n");
-			set->cic1Decimation = 1;
-        }
-printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
-		/* If they change the decimation but not explicitly the scale
-		 * then adjust the scale automatically
-		 */
-		if (  ! ( smask & ACQ_PARAM_MSK_SCL ) ) {
-			smask         |= ACQ_PARAM_MSK_SCL;
-			set->cic0Shift = 0;
-			set->cic1Shift = 0;
-			set->scale     = acq_default_cic1Scale( set->cic1Decimation );
-		}
-		fw->acqParams.cic0Decimation = set->cic0Decimation;
-		fw->acqParams.cic1Decimation = set->cic1Decimation;
-	}
-
-	nsamples = fw->acqParams.nsamples;
-
-	if ( ( smask & ACQ_PARAM_MSK_NSM ) ) {
-		if ( fw->apiVers < FW_API_VERSION_2 ) {
-			if ( set->nsamples != fw->memSize ) {
-				return -ENOTSUP;
-			}
-			smask &= ~ACQ_PARAM_MSK_NSM;
-		}
-		if ( set->nsamples > fw->memSize ) {
-			set->nsamples = fw->memSize;
-		}
-		if ( set->nsamples < 1 ) {
-			set->nsamples = 1;
-		}
-		nsamples = set->nsamples;
-        fw->acqParams.nsamples = set->nsamples;
-	}
-
-    bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK;
-	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
-    putBuf( &bufp, smask, len );
-
-	v8  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
-	v8 |= (set->rising    ? 1 : 0)              << BITS_FW_CMD_ACQ_SHF_EDG;
-	v8 |= (set->trigOutEn ? 1 : 0)              << BITS_FW_CMD_ACQ_SHF_TGO;
-    putBuf( &bufp, v8, BITS_FW_CMD_ACQ_LEN_SRC );
-
-	if ( ( smask & ACQ_PARAM_MSK_LVL ) ) {
-		fw->acqParams.level      = set->level;
-        fw->acqParams.hysteresis = set->hysteresis;
-	}
-
-	putBuf( &bufp, set->level, BITS_FW_CMD_ACQ_LEN_LVL );
-
-	if ( ( smask & ACQ_PARAM_MSK_NPT ) ) {
-		if ( (set->npts >= nsamples ) ) {
-			set->npts = nsamples - 1;
-			fprintf(stderr, "acq_set_params: WARNING npts >= nsamples requested; clipping to %" PRId32 "\n", set->npts);
-		}
-		fw->acqParams.npts = set->npts;
-	}
-
-	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_NPT_V2 : BITS_FW_CMD_ACQ_LEN_NPT_V1;
-	putBuf( &bufp, set->npts, len );
-
-	/* this implicitly does nothing for V1 */
-	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_NSM_V2 : BITS_FW_CMD_ACQ_LEN_NSM_V1;
-	/* firmware uses nsamples - 1 */
-	putBuf( &bufp, nsamples - 1, len );
-
-	if ( ( smask & ACQ_PARAM_MSK_AUT ) ) {
-		if ( set->autoTimeoutMS > (1<<sizeof(uint16_t)*8) - 1 ) {
-			set->autoTimeoutMS = (1<<sizeof(uint16_t)*8) - 1;
-		}
-		fw->acqParams.autoTimeoutMS = set->autoTimeoutMS;
-	}
-
-	putBuf( &bufp, set->autoTimeoutMS, BITS_FW_CMD_ACQ_LEN_AUT );
-
-	if ( set->cic0Decimation > 16 ) {
-		v24 = 15;
-	} else if ( 0 == set->cic0Decimation ) {
-		v24 = 1 - 1;
-	} else {
-		v24 = set->cic0Decimation - 1;
-	}
-    v24 <<= BITS_FW_CMD_ACQ_DCM0_SHFT;
-
-	if ( 0 != v24 ) {
-		if ( set->cic1Decimation > (1<<16) ) {
-			v24 |= (1<<16) - 1;
-		} else if ( 0 == set->cic1Decimation ) {
-			v24 |= 1 - 1;
-		} else {
-			v24 |= set->cic1Decimation - 1;
-		}
-	}
-
-	putBuf( &bufp, v24, BITS_FW_CMD_ACQ_LEN_DCM );
-
-	v32 = set->cic0Shift;
-    if ( v32 > 15 ) {
-		v32 = 15;
-	}
-	v32 <<= 7;
-	if ( set->cic1Shift > 16*4 - 1 ) {
-		v32 |= 16*4 - 1;
-	} else {
-		v32 |= set->cic1Shift;
-	}
-	v32 <<= 20;
-
-	v32 |= ( (set->scale >> (32 - 18)) & ( (1<<18) - 1 ) );
-
-	if ( ( smask & ACQ_PARAM_MSK_SCL ) ) {
-			fw->acqParams.cic0Shift = set->cic0Shift;
-			fw->acqParams.cic1Shift = set->cic1Shift;
-			fw->acqParams.scale     = set->scale;
-	}
-
-	putBuf( &bufp, v32, BITS_FW_CMD_ACQ_LEN_SCL );
-
-	if ( fw->apiVers >= FW_API_VERSION_2 ) {
-		putBuf( &bufp, set->hysteresis, BITS_FW_CMD_ACQ_LEN_HYS );
-	}
-
-	got = fw_xfer( fw, cmd, buf, buf, sizeof(buf) );
-
-	if ( got < 0 ) {
-		fprintf(stderr, "Error: acq_set_params(); fifo transfer failed\n");
-		return got;
-	}
-
-	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_TOT_LEN_V2 : BITS_FW_CMD_ACQ_TOT_LEN_V1;
-
-	if ( got < len ) {
-		fprintf(stderr, "Error: acq_set_params(); fifo transfer short\n");
-		return -ENODATA;
-	}
-
-	if ( ! get ) {
-		return 0;
-	}
-
-	get->mask = ACQ_PARAM_MSK_ALL;
-
-	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
-    bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK + len;
-    v8   = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SRC );
-
-	switch ( (v8 >> BITS_FW_CMD_ACQ_SHF_SRC) & BITS_FW_CMD_ACQ_MSK_SRC) {
-		case 0:  get->src = CHA; break;
-		case 1:  get->src = CHB; break;
-		default: get->src = EXT; break;
-	}
-
-	get->rising         = !! ( (v8 >> BITS_FW_CMD_ACQ_SHF_EDG) & 1 );
-	get->trigOutEn      = !! ( (v8 >> BITS_FW_CMD_ACQ_SHF_TGO) & 1 );
-
-	get->level          = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_LVL );
-
-	len  = fw->apiVers >= FW_API_VERSION_2 ? BITS_FW_CMD_ACQ_LEN_NPT_V2 : BITS_FW_CMD_ACQ_LEN_NPT_V1;
-	get->npts           = getBuf( &bufp, len );
-
-	if ( fw->apiVers < FW_API_VERSION_2 ) {
-		get->nsamples   = fw->memSize;
-	} else {
-		/* firmware uses nsamples - 1 */
-		get->nsamples   = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_NSM_V2 ) + 1;
-	}
-
-	get->autoTimeoutMS  = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_AUT );
-
-	v32                 = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_DCM );
-
-    get->cic0Decimation = ((v32 >> BITS_FW_CMD_ACQ_DCM0_SHFT) & 0xf   ) + 1; /* zero-based */
-    get->cic1Decimation = ((v32 >>                         0) & 0xffff) + 1; /* zero-based */
-
-	v32                 = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SCL );
-
-	get->cic0Shift      = ( v32 >> (20 + 7) ) & 0x1f;
-	get->cic1Shift      = ( v32 >> (20    ) ) & 0x7f;
-	get->scale          = ( v32 & ((1<<20) - 1)) << (32 - 18);
-
-	if ( fw->apiVers >= FW_API_VERSION_2 ) {
-		get->hysteresis     = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_HYS );
-	} else {
-		get->hysteresis     = 0;
-	}
-	return 0;
-}
-
-/*
- * Helpers
- */
-int
-acq_manual(FWInfo *fw)
-{
-	return acq_set_autoTimeoutMs(fw, 0);
-}
-
-int
-acq_set_level(FWInfo *fw, int16_t level, uint16_t hyst)
-{
-AcqParams p;
-	p.mask          = ACQ_PARAM_MSK_LVL;
-	p.level         = level;
-    p.hysteresis    = hyst;
-	return acq_set_params( fw, &p, 0 );
-}
-
-int
-acq_set_npts(FWInfo *fw, uint32_t npts)
-{
-AcqParams p;
-	p.mask          = ACQ_PARAM_MSK_NPT;
-	p.npts          = npts;
-	return acq_set_params( fw, &p, 0 );
-}
-
-int
-acq_set_nsamples(FWInfo *fw, uint32_t nsamples)
-{
-AcqParams p;
-
-	if ( (fw->apiVers < FW_API_VERSION_2) || ! (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
-		if ( nsamples == fw->memSize ) {
-			return 0;
-		}
-		return -ENOTSUP;
-	}
-	p.mask          = ACQ_PARAM_MSK_NSM;
-	p.nsamples      = nsamples;
-	return acq_set_params( fw, &p, 0 );
-}
-
-
-#define CIC1_SHF_STRIDE  8
-#define CIC1_STAGES      4
-#define STRIDE_STAGS_RAT 2
-
-int32_t
-acq_default_cic1Scale(uint32_t cic1Decimation)
-{
-uint32_t nbits;
-/* details based on the ration of shifter stride to number of CIC
- * stages being an integer number
- */
-uint32_t shift;
-double   scale;
-
-	if ( cic1Decimation < 2 ) {
-		shift = 0;
-        nbits = 0;
-	} else {
-        nbits = (uint32_t)floor( log2( (double)(cic1Decimation - 1) ) ) + 1;
-        /* implicit 'floor' in integer operation */
-		shift = (nbits - 1) / STRIDE_STAGS_RAT;
-	}
-	/* Correct the CIC1 gain */
-
-	scale = 1./pow((double)cic1Decimation, (double)CIC1_STAGES);
-
-	/* Adjust for built-in shifter operation */
-	scale /= exp2(-(double)(shift * CIC1_SHF_STRIDE));
-	return (int32_t)floor( scale * (double)ACQ_SCALE_ONE );
-}
-
-int
-acq_set_decimation(FWInfo *fw, uint8_t cic0Decimation, uint32_t cic1Decimation)
-{
-AcqParams p;
-	p.mask           = ACQ_PARAM_MSK_DCM;
-	p.cic0Decimation = cic0Decimation;
-	p.cic1Decimation = cic1Decimation;
-	return acq_set_params( fw, &p, 0 );
-}
-
-int
-acq_set_scale(FWInfo *fw, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale)
-{
-AcqParams p;
-	p.mask           = ACQ_PARAM_MSK_SCL;
-	p.cic0Shift      = cic0RShift;
-	p.cic1Shift      = cic1RShift;
-	p.scale          = scale;
-	return acq_set_params( fw, &p, 0 );
-}
-
-
-int
-acq_set_source(FWInfo *fw, TriggerSource src, int rising)
-{
-AcqParams p;
-	p.mask          = ACQ_PARAM_MSK_SRC;
-	p.src           = src;
-	if ( rising ) {
-		p.mask   |= ACQ_PARAM_MSK_EDG;
-		p.rising  = rising > 0 ? 1 : 0;
-	}
-	if ( EXT == src ) {
-		p.mask     |= ACQ_PARAM_MSK_TGO;
-        p.trigOutEn = 0;
-	}
-	return acq_set_params( fw, &p, 0 );
-}
-
-int
-acq_set_trig_out_en(FWInfo *fw, int on)
-{
-AcqParams p;
-	p.mask          = ACQ_PARAM_MSK_TGO;
-	p.trigOutEn     = !!on;
-	return acq_set_params( fw, &p, 0 );
-}
-
-int
-acq_set_autoTimeoutMs(FWInfo *fw, uint32_t timeout)
-{
-AcqParams p;
-	p.mask          = ACQ_PARAM_MSK_AUT;
-	p.autoTimeoutMS = timeout;
-	return acq_set_params( fw, &p, 0 );
-}
-
 uint8_t
 fw_spireg_cmd_read(unsigned ch)
 {
@@ -1670,113 +893,6 @@ fw_inv_cmd(FWInfo *fw)
 {
 	int st = fw_xfer( fw, BITS_FW_CMD_UNSUPPORTED, 0, 0, 0 );
 	return (-ENOTSUP == st) ? 0 : st;
-}
-
-int
-pgaReadReg(FWInfo *fw, unsigned ch, unsigned reg)
-{
-	return fw && fw->pga && fw->pga->readReg ? fw->pga->readReg(fw, ch, reg) : -ENOTSUP;
-}
-
-int
-pgaWriteReg(FWInfo *fw, unsigned ch, unsigned reg, unsigned val)
-{
-	return fw && fw->pga && fw->pga->writeReg ? fw->pga->writeReg(fw, ch, reg, val) : -ENOTSUP;
-}
-
-int
-pgaGetAttRange(FWInfo*fw, double *min, double *max)
-{
-	return fw && fw->pga && fw->pga->getAttRange ? fw->pga->getAttRange(fw, min, max) : -ENOTSUP;
-}
-
-int
-pgaGetAtt(FWInfo *fw, unsigned channel, double *attp)
-{
-int st;
-double att;
-	if ( channel >= fw->numChannels ) {
-		return -EINVAL;
-	}
-	
-	st = fw && fw->pga && fw->pga->getAtt ? fw->pga->getAtt(fw, channel, &att) : -ENOTSUP;
-	if ( 0 == st ) {
-		*attp = att - fw->attOffset[channel];
-	}
-	return st;
-}
-
-int
-pgaSetAtt(FWInfo *fw, unsigned channel, double att)
-{
-	if ( channel >= fw->numChannels ) {
-		return -EINVAL;
-	}
-	return fw && fw->pga && fw->pga->setAtt ? fw->pga->setAtt(fw, channel, att + fw->attOffset[channel]) : -ENOTSUP;
-}
-
-
-int
-fecGetAttRange(FWInfo*fw, double *min, double *max)
-{
-	return fw && fw->fec && fw->fec->getAttRange ? fw->fec->getAttRange(fw->fec, min, max) : -ENOTSUP;
-}
-
-int
-fecGetAtt(FWInfo *fw, unsigned channel, double *att)
-{
-	return fw && fw->fec && fw->fec->getAtt ? fw->fec->getAtt(fw->fec, channel, att) : -ENOTSUP;
-}
-
-int
-fecSetAtt(FWInfo *fw, unsigned channel, double att)
-{
-	return fw && fw->fec && fw->fec->setAtt ? fw->fec->setAtt(fw->fec, channel, att) : -ENOTSUP;
-}
-
-int
-fecGetACMode(FWInfo *fw, unsigned channel)
-{
-	return fw && fw->fec && fw->fec->getACMode ? fw->fec->getACMode(fw->fec, channel) : -ENOTSUP;
-}
-
-int
-fecSetACMode(FWInfo *fw, unsigned channel, unsigned val)
-{
-	return fw && fw->fec && fw->fec->setACMode ? fw->fec->setACMode(fw->fec, channel, val) : -ENOTSUP;
-}
-
-int
-fecGetTermination(FWInfo *fw, unsigned channel)
-{
-	return fw && fw->fec && fw->fec->getTermination ? fw->fec->getTermination(fw->fec, channel) : -ENOTSUP;
-}
-
-int
-fecSetTermination(FWInfo *fw, unsigned channel, unsigned	val)
-{
-	return fw && fw->fec && fw->fec->setTermination ? fw->fec->setTermination(fw->fec, channel, val) : -ENOTSUP;
-}
-
-int
-fecGetDACRangeHi(FWInfo *fw, unsigned channel)
-{
-	return fw && fw->fec && fw->fec->getDACRangeHi ? fw->fec->getDACRangeHi(fw->fec, channel) : -ENOTSUP;
-}
-
-int
-fecSetDACRangeHi(FWInfo *fw, unsigned channel, unsigned	val)
-{
-	return fw && fw->fec && fw->fec->setDACRangeHi ? fw->fec->setDACRangeHi(fw->fec, channel, val) : -ENOTSUP;
-}
-
-
-void
-fecClose(FWInfo *fw)
-{
-	if ( fw && fw->fec && fw->fec->close ) {
-		fw->fec->close( fw->fec );
-	}
 }
 
 int

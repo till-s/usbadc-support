@@ -15,6 +15,7 @@
 #include "dac47cxSup.h"
 #include "max195xxSup.h"
 #include "fegRegSup.h"
+#include "scopeSup.h"
 
 /* covers image size of xc3s200a for multiboot */
 #ifndef  FLASHADDR_DFLT
@@ -144,14 +145,14 @@ double s;
 	return 0;
 }
 
-static void pronoff(FWInfo *fw, const char *prefix, const char *onstr, const char *offstr, int (*f)(FWInfo*, unsigned))
+static void pronoff(ScopePvt *scp, const char *prefix, const char *onstr, const char *offstr, int (*f)(ScopePvt*, unsigned))
 {
 	unsigned ch;
-	unsigned numCh = fw_get_num_channels( fw );
+	unsigned numCh = scope_get_num_channels( scp );
 	int      vi;
 	printf("    %-15s:", prefix);
 	for ( ch = 0; ch < numCh; ++ch ) {
-		if ( (vi = f( fw, ch )) < 0 ) {
+		if ( (vi = f( scp, ch )) < 0 ) {
 			printf(" NOT SUPPORTED");
 			break;
 		} else {
@@ -163,22 +164,22 @@ static void pronoff(FWInfo *fw, const char *prefix, const char *onstr, const cha
 }
 
 static void
-dumpFrontEndParams(FWInfo *fw)
+dumpFrontEndParams(ScopePvt *scp)
 {
 double   vd1, vd2;
 unsigned ch;
-unsigned numCh = fw_get_num_channels( fw );
+unsigned numCh = scope_get_num_channels( scp );
 
 	printf("Front End Settings:\n");
 	printf("  PGA:");
-	if ( 0 != pgaGetAttRange( fw, &vd1, &vd2 ) ) {
+	if ( 0 != pgaGetAttRange( scp, &vd1, &vd2 ) ) {
 		printf(" NOT SUPPORTED\n");
 	} else {
 		printf("\n");
 		printf("    %-15s: %.0lfdB..%.0lfdB\n", "Range", vd1, vd2);
 		printf("    %-15s:", "Attenuation");
 		for ( ch = 0; ch < numCh; ++ch ) {
-			if ( 0 == pgaGetAtt( fw, ch, &vd1 ) ) {
+			if ( 0 == pgaGetAtt( scp, ch, &vd1 ) ) {
 				printf(" CH %d: %3.1lfdB", ch, vd1);
 			} else {
 				printf(" NOT SUPPORTED");
@@ -188,12 +189,12 @@ unsigned numCh = fw_get_num_channels( fw );
 		printf("\n");
 	}
 	printf("  FEC:\n");
-	pronoff( fw, "Coupling",     "    AC", "    DC", fecGetACMode );
-	pronoff( fw, "Termination",  " 50Ohm", " 1MOhm", fecGetTermination );
-	pronoff( fw, "DACHighRange", "    On", "   Off", fecGetDACRangeHi );
+	pronoff( scp, "Coupling",     "    AC", "    DC", fecGetACMode );
+	pronoff( scp, "Termination",  " 50Ohm", " 1MOhm", fecGetTermination );
+	pronoff( scp, "DACHighRange", "    On", "   Off", fecGetDACRangeHi );
 	printf("    %-15s:", "Attenuation");
 	for ( ch = 0; ch < numCh; ++ch ) {
-		if ( 0 == fecGetAtt( fw, ch, &vd1 ) ) {
+		if ( 0 == fecGetAtt( scp, ch, &vd1 ) ) {
 			/* map channel index to 'A'.. */
 			printf(" CH %X: %4.0lfdB", ch + 10, vd1);
 		} else {
@@ -232,7 +233,7 @@ int iv = -1;
 }
 
 static int
-parseFrontEndParams(FWInfo *fw, const char *ops)
+parseFrontEndParams(ScopePvt *scp, const char *ops)
 {
 char   *str  = strdup( ops );
 int     rval = -1;
@@ -263,7 +264,7 @@ regmatch_t matches[5];
 
 		val = 0;
 		chb = 0;
-		che = fw_get_num_channels( fw ) - 1;
+		che = scope_get_num_channels( scp ) - 1;
 		if ( 0 == regexec( &chanPat, tok, sizeof(matches)/sizeof(matches[0]), matches, 0 ) ) {
 			if ( matches[1].rm_eo > 0 ) {
 				val = tok + matches[1].rm_eo;
@@ -289,7 +290,7 @@ regmatch_t matches[5];
 					goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = fecSetACMode( fw, chb, iv )) < 0 ) {
+				if ( (st = fecSetACMode( scp, chb, iv )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'Coupling' failed: %s\n", strerror(-st));
 					goto bail;
 				}
@@ -301,7 +302,7 @@ regmatch_t matches[5];
 				goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = fecSetTermination( fw, chb, iv )) < 0 ) {
+				if ( (st = fecSetTermination( scp, chb, iv )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'Coupling' failed: %s\n", strerror(-st));
 					goto bail;
 				}
@@ -313,14 +314,14 @@ regmatch_t matches[5];
 				goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = fecSetDACRangeHi( fw, chb, iv )) < 0 ) {
+				if ( (st = fecSetDACRangeHi( scp, chb, iv )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'DACRangeHigh' failed: %s\n", strerror(-st));
 					goto bail;
 				}
 				++chb;
 			}
 		} else if ( 0 == strncasecmp( tok, "FECA", 4 ) ) {
-			if ( fecGetAttRange( fw, &dv1, &dv2 ) < 0 ) {
+			if ( fecGetAttRange( scp, &dv1, &dv2 ) < 0 ) {
 				fprintf(stderr, "Error -- Setting FEC Attenuator not supported?\n");
 				goto bail;
 			}
@@ -329,7 +330,7 @@ regmatch_t matches[5];
 				goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = fecSetAtt( fw, chb, iv ? dv2 : dv1 )) < 0 ) {
+				if ( (st = fecSetAtt( scp, chb, iv ? dv2 : dv1 )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'FECAttenuator' failed: %s\n", strerror(-st));
 					goto bail;
 				}
@@ -341,7 +342,7 @@ regmatch_t matches[5];
 				goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = pgaSetAtt( fw, chb, dv1 )) < 0 ) {
+				if ( (st = pgaSetAtt( scp, chb, dv1 )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'PGAAttenuator' failed: %s\n", strerror(-st));
 					goto bail;
 				}
@@ -565,11 +566,11 @@ const char *p;
 }
 
 static void
-printBufInfo(FILE *f, FWInfo *fw)
+printBufInfo(FILE *f, ScopePvt *scp)
 {
-unsigned long sz = buf_get_size( fw );
-uint8_t       fl = buf_get_flags( fw );
-int           bs = buf_get_sample_size( fw );
+unsigned long sz = buf_get_size( scp );
+uint8_t       fl = buf_get_flags( scp );
+int           bs = buf_get_sample_size( scp );
 const char *  xt = "";
 	if ( bs < 0 ) {
 		bs = ( (fl & FW_BUF_FLG_16B) ? 16 : 8 );
@@ -615,6 +616,7 @@ const char        *trgOp     = 0;
 const char        *regOp     = 0;
 const char        *feOp      = 0;
 AT25Flash         *flash     = 0;
+ScopePvt          *scope     = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
@@ -683,28 +685,41 @@ AT25Flash         *flash     = 0;
 		printf("  Board HW: %8"  PRIu8  "\n", v_brd);
 	}
 
+	if ( (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
+		if ( ! (scope = scope_open( fw )) ) {
+			fprintf(stderr, "ERROR: scope_open failed\n");
+			goto bail;
+		}
+	}
+
+	if ( trgOp || feOp || dumpPrms || dumpAdc ) {
+		if ( ! scope ) {
+			fprintf(stderr, "No scope support in firmware; requested operation not supported\n");
+			goto bail;
+		}
+	}
 
 	if ( trgOp ) {
 		AcqParams p;
 		if ( parseAcqParams( &p, trgOp ) ) {
 			goto bail;
 		}
-		if ( acq_set_params( fw, &p, 0 ) ) {
+		if ( acq_set_params( scope, &p, 0 ) ) {
 			fprintf(stderr, "Error: transferring acquisition parameters failed\n");
 			goto bail;
 		}
 	}
 	if ( feOp ) {
-		parseFrontEndParams( fw, feOp );
+		parseFrontEndParams( scope, feOp );
 	}
 	if ( dumpPrms ) {
 		AcqParams p;
 		p.mask = ACQ_PARAM_MSK_GET;
-		if ( acq_set_params( fw, 0, &p ) ) {
+		if ( acq_set_params( scope, 0, &p ) ) {
 			fprintf(stderr, "Error: transferring acquisition parameters failed\n");
 			goto bail;
 		}
-		dumpFrontEndParams( fw );
+		dumpFrontEndParams( scope );
 		printf("Trigger Source     : %s\n",
 			CHA == p.src ? "Channel A" : (CHB == p.src ? "Channel B" : "External"));
 		printf("Edge               : %s\n", p.rising ? "rising" : "falling");
@@ -726,20 +741,20 @@ AT25Flash         *flash     = 0;
         printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
         printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
         printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/exp2(ACQ_LD_SCALE_ONE));
-		printBufInfo( stdout, fw );
+		printBufInfo( stdout, scope );
 	}
 
 
 	if ( dumpAdc ) {
 		int      j;
 		uint16_t hdr;
-		unsigned long nSamples = buf_get_size( fw );
-		uint8_t       fl       = buf_get_flags( fw );
-		size_t        reqBufSz = nSamples * fw_get_num_channels( fw ) * sizeof(buf[0]);
+		unsigned long nSamples = buf_get_size( scope );
+		uint8_t       fl       = buf_get_flags( scope );
+		size_t        reqBufSz = nSamples * scope_get_num_channels( scope ) * sizeof(buf[0]);
 		if ( (fl & FW_BUF_FLG_16B) ) {
 			reqBufSz *= 2;
 		}
-		printBufInfo( stderr, fw );
+		printBufInfo( stderr, scope );
 		if ( dumpAdc > 0 ) {
 			if ( buflen < reqBufSz ) {
 				buflen = reqBufSz;
@@ -749,9 +764,9 @@ AT25Flash         *flash     = 0;
 					goto bail;
 				}
 			}
-			i = buf_read( fw, &hdr, buf, buflen );
+			i = buf_read( scope, &hdr, buf, buflen );
 		} else {
-			i = buf_flush( fw );
+			i = buf_flush( scope );
 		}
 		if ( i > 0 ) {
 			fprintf(stderr, "ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
@@ -1085,6 +1100,9 @@ AT25Flash         *flash     = 0;
 bail:
 	if ( flash ) {
 		at25_close( flash );
+	}
+	if ( scope ) {
+		scope_close( scope );
 	}
 	if ( fw ) {
 		fw_close( fw );

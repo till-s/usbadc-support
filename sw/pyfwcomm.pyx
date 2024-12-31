@@ -106,6 +106,7 @@ cdef class FwMgr:
   cdef FWInfo     *_fw
   cdef char       *_nm
   cdef Mtx         _mtx
+  cdef ScopePvt   *_scp
 
   def __cinit__( self, str name, speed = 115200, *args, **kwargs ):
     cdef int st
@@ -114,6 +115,8 @@ cdef class FwMgr:
     self._nm  = strdup( name )
     if self._fw is NULL:
       PyErr_SetFromErrnoWithFilenameObject( OSError, name )
+    with self as fw, nogil:
+      self._scp = scope_open( fw )
 
   cdef FWInfo * __enter__(self):
     self._mtx.__enter__()
@@ -124,10 +127,16 @@ cdef class FwMgr:
 
   def __dealloc__(self):
     free( self._nm )
+    scope_close( self._scp )
     fw_close( self._fw )
 
   def name(self):
     return self._nm
+
+  cdef ScopePvt * scope(self):
+    if self._scp is NULL:
+      raise RuntimeError("firmware has no scope support")
+    return self._scp
 
 cdef class FwDev:
   cdef FwMgr _mgr
@@ -142,6 +151,27 @@ cdef class FwDev:
 
   def mgr(self):
     return self._mgr
+
+cdef class ScopeDev:
+  cdef FwMgr _mgr
+
+  def __cinit__(self, FwMgr mgr, *args, **kwargs):
+    self._mgr = mgr
+
+  def init(self):
+    pass
+
+  def mgr(self):
+    return self._mgr
+
+  cdef ScopePvt * __enter__(self):
+    cdef ScopePvt *scp
+    scp = self._mgr.scope()
+    self._mgr.__enter__()
+    return scp
+
+  def __exit__(self, exc_typ, exc_val, trc):
+    return self._mgr.__exit__(exc_typ, exc_val, trc)
 
 cdef class LED(FwDev):
 
@@ -447,20 +477,20 @@ cdef class DAC47CX(FwDev):
     if ( rv < 0 ):
       raise IOError("DAC47CX.getRefInternalX1(): failed")
 
-cdef class Amp(FwDev):
+cdef class Amp(ScopeDev):
 
   def getS2Range(self):
     cdef double attMin, attMax
-    with self._mgr as fw, nogil:
-      rv = pgaGetAttRange(fw, &attMin, &attMax)
+    with self as scp,nogil:
+      rv = pgaGetAttRange(scp, &attMin, &attMax)
     if ( rv < 0 ):
       raise IOError("Amp.getS2Range(): failed")
     return (attMin,attMax)
 
   def getS2Att(self, unsigned channel):
     cdef double att
-    with self._mgr as fw, nogil:
-      rv = pgaGetAtt( fw, channel, &att )
+    with self as scp, nogil:
+      rv = pgaGetAtt( scp, channel, &att )
     if ( rv <= -1 ):
       if ( rv < -1 ):
         raise ValueError("Amp.getS2Att(): invalid channel")
@@ -470,8 +500,8 @@ cdef class Amp(FwDev):
 
   def setS2Att(self, unsigned channel, double att):
     cdef int rv
-    with self._mgr as fw, nogil:
-      rv = pgaSetAtt( fw, channel, att )
+    with self as scp, nogil:
+      rv = pgaSetAtt( scp, channel, att )
     if ( rv < 0 ):
       if ( rv < -1 ):
         raise ValueError("Amp.setS2Att(): invalid channel or attenuation")
@@ -480,16 +510,16 @@ cdef class Amp(FwDev):
 
   def readReg(self, unsigned channel, unsigned reg):
     cdef int rv
-    with self._mgr as fw, nogil:
-      rv = pgaReadReg( fw, channel, reg )
+    with self as scp, nogil:
+      rv = pgaReadReg( scp, channel, reg )
     if ( rv < 0 ):
       raise IOError("Amp.readReg failed")
     return rv
 
   def writeReg(self, unsigned channel, unsigned reg, uint8_t val):
     cdef int rv
-    with self._mgr as fw, nogil:
-      rv = pgaWriteReg( fw, channel, reg, val )
+    with self as scp, nogil:
+      rv = pgaWriteReg( scp, channel, reg, val )
     if ( rv < 0 ):
       raise IOError("Amp.writeReg failed")
 
@@ -536,13 +566,13 @@ cdef class I2CDev(FwDev):
     sla = (sla<<1) & ~I2C_READ
     return self.i2cRW( sla, off, pybuf )
 
-cdef class FEC(FwDev):
+cdef class FEC(ScopeDev):
   cdef double min_, max_
 
   def __init__(self, *args, **kwargs):
     cdef int st
-    with self._mgr as fw, nogil:
-      st = fecGetAttRange( fw, &self.min_, &self.max_ )
+    with self as scp, nogil:
+      st = fecGetAttRange( scp, &self.min_, &self.max_ )
     if ( st < 0 ):
       raise RuntimeError("Front-End has no Attenuator controls")
 
@@ -553,16 +583,16 @@ cdef class FEC(FwDev):
       val = self.max_
     else:
       val = self.min_
-    with self._mgr as fw, nogil:
-      st = fecSetAtt( fw, channel, val )
+    with self as scp, nogil:
+      st = fecSetAtt( scp, channel, val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'setAttenuator' failed")
 
   def getAttenuator(self, int channel):
     cdef int st
     cdef double val
-    with self._mgr as fw, nogil:
-      st = fecGetAtt( fw, channel, &val )
+    with self as scp, nogil:
+      st = fecGetAtt( scp, channel, &val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'getAttenuator' failed")
     return abs(self.max_ - val) < abs(self.min_ - val)
@@ -571,15 +601,15 @@ cdef class FEC(FwDev):
     cdef int st, val
     # bool is a python object and cannot be used w/o gil
     val = on
-    with self._mgr as fw, nogil:
-      st = fecSetTermination( fw, channel, val )
+    with self as scp, nogil:
+      st = fecSetTermination( scp, channel, val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'setTermination' failed")
 
   def getTermination(self, int channel):
     cdef int st
-    with self._mgr as fw, nogil:
-      st = fecGetTermination( fw, channel )
+    with self as scp, nogil:
+      st = fecGetTermination( scp, channel )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'getTermination' failed")
     return st > 0
@@ -588,15 +618,15 @@ cdef class FEC(FwDev):
     cdef int st, val
     # bool is a python object and cannot be used w/o gil
     val = on
-    with self._mgr as fw, nogil:
-      st = fecSetACMode( fw, channel, val )
+    with self as scp, nogil:
+      st = fecSetACMode( scp, channel, val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'setACMode' failed")
 
   def getACMode(self, int channel):
     cdef int st
-    with self._mgr as fw, nogil:
-      st = fecGetACMode( fw, channel )
+    with self as scp, nogil:
+      st = fecGetACMode( scp, channel )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'getACMode' failed")
     return st > 0
@@ -605,21 +635,22 @@ cdef class FEC(FwDev):
     cdef int st, val
     # bool is a python object and cannot be used w/o gil
     val = on
-    with self._mgr as fw, nogil:
-      st = fecSetDACRangeHi( fw, channel, val )
+    with self as scp, nogil:
+      st = fecSetDACRangeHi( scp, channel, val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'setDACRangeHi' failed")
 
   def getDacRangeHi(self, int channel):
     cdef int st
-    with self._mgr as fw, nogil:
-      st = fecGetDACRangeHi( fw, channel )
+    with self as scp, nogil:
+      st = fecGetDACRangeHi( scp, channel )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'getDACRangeHi' failed")
     return st > 0
 
 cdef class FwComm:
   cdef FwMgr           _mgr
+  cdef ScopeDev        _scp
   cdef VersaClk        _clk
   cdef DAC47CX         _dac
   cdef Amp             _amp
@@ -702,32 +733,37 @@ cdef class FwComm:
     cdef int st
     cdef int64_t ver
     self._mgr   = FwMgr( name, speed, args, kwargs )
-    with self._mgr as fw, nogil:
-      st = acq_set_params( fw, NULL, &self._parmCache )
+    self._scp   = ScopeDev( self._mgr )
+    with self._scp as scp, nogil:
+      st = acq_set_params( scp, NULL, &self._parmCache )
     if ( st < 0 ):
       raise IOError("FwComm.__init__(): acq_set_params failed")
-    self._clk    = VersaClk( self._mgr )
-    self._dac    = DAC47CX( self._mgr )
-    self._adc    = Max195xxADC( self._mgr )
-    self._amp    = Amp( self._mgr )
+    self._clk    = VersaClk( self.mgr() )
+    self._dac    = DAC47CX( self.mgr() )
+    self._adc    = Max195xxADC( self.mgr() )
+    self._amp    = Amp( self.mgr() )
 
     brdVers      = self.boardVersion()
     if   ( 0 == brdVers ):
-      self._fec = FEC( self._mgr )
-      self._led = LED( self._mgr )
+      self._fec = FEC( self.mgr() )
+      self._led = LED( self.mgr() )
     elif ( 1 == brdVers or 2 == brdVers ):
-      self._fec = FEC( self._mgr )
-      self._led = LEDv1( self._mgr )
+      self._fec = FEC( self.mgr() )
+      self._led = LEDv1( self.mgr() )
     else:
-      self._fec = FEC( self._mgr )
-      self._led = LED( self._mgr )
+      self._fec = FEC( self.mgr() )
+      self._led = LED( self.mgr() )
 
-    with self._mgr as fw, nogil:
-      self._bufsz    = buf_get_size( fw )
-      self._bufflags = buf_get_flags( fw )
-    st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
-    if ( st != 0 ):
-      raise OSError("pthread_create failed with status {:d}".format(st))
+    try:
+      with self._scp as scp, nogil:
+        self._bufsz    = buf_get_size( scp )
+        self._bufflags = buf_get_flags( scp )
+      st = pthread_create( &self._reader, NULL, self.threadFunc, <void*>self )
+      if ( st != 0 ):
+        raise OSError("pthread_create failed with status {:d}".format(st))
+    except RuntimeError as e:
+      self._bufsz    = 0
+      self._bufflags = 0
 
   def mgr(self):
     return self._mgr
@@ -739,15 +775,15 @@ cdef class FwComm:
   def init( self, force = False ):
     cdef int st,forceVal
     forceVal = force
-    with self._mgr as fw, nogil:
-      st = scopeInit( fw, forceVal ) 
+    with self._scp as scp, nogil:
+      st = scope_init( scp, forceVal ) 
     if ( st < 0 ):
       raise RuntimeError("scopeInit failed")
 
   def getAdcClkFreq(self):
     cdef double f
-    with self._mgr as fw, nogil:
-      f = buf_get_sampling_freq( fw )
+    with self._scp as scp, nogil:
+      f = buf_get_sampling_freq( scp )
     return f
 
   def dacSetVolt( self, ch, v):
@@ -844,8 +880,8 @@ cdef class FwComm:
 
   def flush(self):
     cdef int st
-    with self._mgr as fw, nogil:
-      st = buf_flush( fw )
+    with self._scp as scp, nogil:
+      st = buf_flush( scp )
     return st
 
   def read(self, pyb):
@@ -855,11 +891,11 @@ cdef class FwComm:
     if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
       raise ValueError("FwComm.read arg must support buffer protocol")
     if   ( ( b.itemsize == 1 ) or ( b.itemsize == 2 ) ):
-      with self._mgr as fw, nogil:
-        rv = buf_read( fw, &hdr, <uint8_t*>b.buf, b.len )
+      with self._scp as scp, nogil:
+        rv = buf_read( scp, &hdr, <uint8_t*>b.buf, b.len )
     elif ( b.itemsize == sizeof(float) ):
-      with self._mgr as fw, nogil:
-        rv = buf_read_flt( fw, &hdr, <float*>b.buf, b.len )
+      with self._scp as scp, nogil:
+        rv = buf_read_flt( scp, &hdr, <float*>b.buf, b.len )
     else:
       PyBuffer_Release( &b )
       raise ValueError("FwComm.read arg buffer itemsize must be 1,2 or {:d}".format(sizeof(float)))
@@ -879,8 +915,8 @@ cdef class FwComm:
     l = round( 32767.0 * lvl/100.0 )
     if ( self._parmCache.level == l ):
       return
-    with self._mgr as fw, nogil:
-      st = acq_set_level( fw, l, 1000 )
+    with self._scp as scp, nogil:
+      st = acq_set_level( scp, l, 1000 )
     if ( st < 0 ):
       raise IOError("acqSetTriggerLevelPercent()")
     self._parmCache.level = l
@@ -894,8 +930,8 @@ cdef class FwComm:
       raise ValueError("acqSetNPreTriggerSamples(): # pre-trigger samples out of range")
     if ( self._parmCache.npts == n ):
       return
-    with self._mgr as fw, nogil:
-      st = acq_set_npts( fw, n )
+    with self._scp as scp, nogil:
+      st = acq_set_npts( scp, n )
     if ( st < 0 ):
       raise IOError("acqSetNPreTriggerSamples()")
     self._parmCache.npts = n
@@ -906,8 +942,8 @@ cdef class FwComm:
       raise ValueError("acqSetNSamples(): # samples out of range")
     if ( self._parmCache.nsamples == n ):
       return
-    with self._mgr as fw, nogil:
-      st = acq_set_nsamples( fw, n )
+    with self._scp as scp, nogil:
+      st = acq_set_nsamples( scp, n )
     if ( st < 0 ):
       raise IOError("acqSetNSamples()")
     # fw clips pts; update cache
@@ -948,8 +984,8 @@ cdef class FwComm:
           raise ValueError("acqSetDecimation(): decimation must have a factor in 2..16")
     if ( self._parmCache.cic0Decimation == cic0Dec and self._parmCache.cic1Decimation == cic1Dec ):
       return
-    with self._mgr as fw, nogil:
-      st = acq_set_decimation( fw, cic0Dec, cic1Dec )
+    with self._scp as scp, nogil:
+      st = acq_set_decimation( scp, cic0Dec, cic1Dec )
     if ( st < 0 ):
       raise IOError("acqSetDecimation()")
     self._parmCache.cic0Decimation = cic0Dec
@@ -967,8 +1003,8 @@ cdef class FwComm:
       irising = 1
     else:
       irising = -1
-    with self._mgr as fw, nogil:
-      st = acq_set_source( fw, src, irising )
+    with self._scp as scp, nogil:
+      st = acq_set_source( scp, src, irising )
     if ( st < 0 ):
       raise IOError("acqSetTriggerSource()")
     self._parmCache.src    = src
@@ -986,8 +1022,8 @@ cdef class FwComm:
       timeout = ACQ_PARAM_TIMEOUT_INF
     if ( self._parmCache.autoTimeoutMS == timeout ):
       return
-    with self._mgr as fw, nogil:
-      st = acq_set_autoTimeoutMs( fw, timeout )
+    with self._scp as scp, nogil:
+      st = acq_set_autoTimeoutMs( scp, timeout )
     if ( st < 0 ):
       raise IOError("acqSetAutoTimeoutMs()")
     self._parmCache.autoTimeoutMS = timeout
@@ -1001,8 +1037,8 @@ cdef class FwComm:
     iscale = round( scale * 2.0**30 )
     if ( self._parmCache.scale == iscale ):
       return
-    with self._mgr as fw, nogil:
-      st = acq_set_scale( fw, 0, 0, iscale )
+    with self._scp as scp, nogil:
+      st = acq_set_scale( scp, 0, 0, iscale )
     if ( st < 0 ):
       raise IOError("acqSetScale()")
     self._parmCache.scale = iscale
