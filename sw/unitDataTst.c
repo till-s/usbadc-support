@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <math.h>
 #include "unitData.h"
 
 #define NUM_CH 2
@@ -17,12 +18,15 @@ const UnitData *udTst = 0;
 	UnitData *ud = unitDataCreate( NUM_CH );
 	assert( ud != 0 );
 	assert( unitDataGetNumChannels( ud ) == NUM_CH );
+	assert( isnan( unitDataGetScaleVolts( ud ) ) );
+	assert( 0 == unitDataSetScaleVolts( ud, 1.0 ) );
 	for ( i = 0; i < NUM_CH; i++ ) {
-		assert( 0 == unitDataSetScaleVolt( ud, i, 10.0*(i+1) ) );
-		assert( 0 == unitDataSetOffsetVolt( ud, i,-1.0*(i+1) ) );
+		assert( 0 == unitDataSetScaleRelat( ud, i, 10.0*(i+1) ) );
+		assert( 0 == unitDataSetOffsetVolts( ud, i,-1.0*(i+1) ) );
 	}
-	assert( -EINVAL == unitDataSetScaleVolt( ud, NUM_CH, 100.0 ) );
-	assert( -EINVAL == unitDataSetOffsetVolt( ud, NUM_CH, 100.0 ) );
+	assert( 1.0 == unitDataGetScaleVolts( ud ) );
+	assert( -EINVAL == unitDataSetScaleRelat( ud, NUM_CH, 100.0 ) );
+	assert( -EINVAL == unitDataSetOffsetVolts( ud, NUM_CH, 100.0 ) );
 	bufSz = unitDataGetSerializedSize( NUM_CH );
 	assert( ( buf = calloc( bufSz, 1 ) ) );
 	assert( bufSz == unitDataSerialize( ud, buf, bufSz ) );
@@ -30,8 +34,8 @@ const UnitData *udTst = 0;
 	assert( 0 == unitDataParse( &udTst, buf, bufSz ) );
 	assert( unitDataGetNumChannels( udTst ) == NUM_CH );
 	for ( i = 0; i < NUM_CH; i++ ) {
-		assert( unitDataGetScaleVolt( ud, i )  == 10.0*(i+1) );
-		assert( unitDataGetOffsetVolt( ud, i ) == -1.0*(i+1) );
+		assert( unitDataGetScaleRelat( ud, i )  == 10.0*(i+1) );
+		assert( unitDataGetOffsetVolts( ud, i ) == -1.0*(i+1) );
 	}
 	
 	unitDataFree( ud );
