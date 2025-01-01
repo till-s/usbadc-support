@@ -55,11 +55,11 @@ typedef struct ScopePvt {
 	unsigned        memFlags;
 	AcqParams       acqParams;
 	double          samplingFreq;
-	double         *fullScaleVolts;
 	unsigned        numChannels;
 	int             sampleSize;
 	double         *attOffset;
 	double         *offsetVolts;
+	double         *fullScaleVolts;
 	PGAOps         *pga;
 	FECOps         *fec;
 	const UnitData *unitData;
@@ -192,12 +192,41 @@ computeAttOffset(double *attOffset, double *offsetVolts, double *scaleVolts, uns
 int    i;
 
 	for ( i = 0; i < numChannels; ++i ) {
-		attOffset[i]   = 20*log10( unitDataGetScaleRelat( ud, i ) );
+		attOffset[i]   = 20.0*log10( unitDataGetScaleRelat( ud, i ) );
 		offsetVolts[i] = unitDataGetOffsetVolts( ud, i ); 
 		scaleVolts[i]  = unitDataGetScaleVolts( ud, i );
 	}
 }
 
+int
+scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms)
+{
+unsigned ch;
+	if ( nelms > scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	for ( ch = 0; ch < nelms; ++ch ) {
+		calDataArray[ch].offsetVolts = scp->offsetVolts[ch];
+		calDataArray[ch].scaleRelat  = exp10( scp->attOffset[ch]/20.0 );
+		calDataArray[ch].scaleVolts  = scp->fullScaleVolts[ch];
+	}
+	return 0;
+}
+
+int
+scope_set_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms)
+{
+unsigned ch;
+	if ( nelms > scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	for ( ch = 0; ch < nelms; ++ch ) {
+		scp->offsetVolts[ch]    = calDataArray[ch].offsetVolts;
+		scp->attOffset[ch]      = 20.0*log10( calDataArray[ch].scaleRelat );
+		scp->fullScaleVolts[ch] = calDataArray[ch].scaleVolts;
+	}
+	return 0;
+}
 
 static int
 fecInit(ScopePvt *scp)

@@ -43,6 +43,22 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
 double
 scope_get_reference_freq(ScopePvt *scp);
 
+/* volts = counts/maxCounts * scaleVolts * scaleRelat - offsetVolts
+ * relative gain differences (scaleRelat) may be compensated/calibrated
+ * by tuning the PGA.
+ */
+typedef struct ScopeCalData {
+	double offsetVolts;
+	double scaleRelat;
+	double scaleVolts;
+} ScopeCalData;
+
+int
+scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
+
+int
+scope_set_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
+
 /*
  * ADC Buffer / acquisition readout
  */
