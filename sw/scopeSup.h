@@ -84,6 +84,7 @@ int
 buf_flush(ScopePvt *);
 
 #define FW_BUF_HDR_FLG_OVR(ch) (1<<(ch))
+#define FW_BUF_HDR_FLG_AUTO_TRIGGERED (1<<8)
 
 int
 buf_read(ScopePvt *, uint16_t *hdr, uint8_t *buf, size_t len);

@@ -430,7 +430,6 @@ begin
                   v.busOb.dat    := (others => '0');
                   v.busOb.dat(0) := rWrCC.ovrA;
                   v.busOb.dat(1) := rWrCC.ovrB;
-                  v.busOb.dat(2) := rWrCC.autTrg;
                else
                   busOb.lst <= '1';
                   if ( rdEmp = '0' ) then  -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
@@ -457,9 +456,10 @@ begin
          when HDR  =>
             if ( rdyOb = '1' ) then -- busOb.vld is '1' at this point
                -- rRd.byteCnt is 0 here
-               v.busOb.dat := (others => '0');
-               v.state     := READ;
-               v.busOb.vld := '1';
+               v.busOb.dat    := (others => '0');
+               v.busOb.dat(0) := rWrCC.autTrg;
+               v.state        := READ;
+               v.busOb.vld    := '1';
             end if;
 
          when READ =>
