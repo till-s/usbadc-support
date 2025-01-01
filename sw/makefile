@@ -1,4 +1,4 @@
-all: bbcli
+all: bbcli scopeCal
 
 CFLAGS=-O2 -Wall -g -fpic
 
@@ -25,8 +25,11 @@ pyfwcomm.o: $(PYFWCOMM_C)
 $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
 	cython3  $<
 
-unitDataTst: unitDataTst.c libfwcomm.a
-	$(CC) $(CFLAGS) -o $@ $^ -L. -lfwcomm
+unitDataTst: unitDataTst.o libfwcomm.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lfwcomm
+
+scopeCal: scopeCal.o libfwcomm.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
