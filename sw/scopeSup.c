@@ -1221,4 +1221,26 @@ fecClose(ScopePvt *scp)
 	}
 }
 
+double
+dacGetVolts(ScopePvt *scp, unsigned channel)
+{
+float val;
+	if ( channel >= scope_get_num_channels( scp ) ) {
+		return 0.0/0.0;
+	}
+	if ( dac47cxGetVolt( scp->fw, channel, &val ) < 0 ) {
+		return 0.0/0.0;
+	}
+	return (double)val - scp->offsetVolts[channel];
+}
 
+int
+dacSetVolts(ScopePvt *scp, unsigned channel, double volts)
+{
+float val;
+	if ( channel >= scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	val = (float)volts + scp->offsetVolts[channel];
+	return dac47cxSetVolt( scp->fw, channel, val );
+}

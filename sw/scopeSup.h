@@ -174,7 +174,7 @@ acq_set_autoTimeoutMs(ScopePvt *, uint32_t timeout);
 typedef struct PGAOps {
 	int    (*readReg)(FWInfo *, unsigned ch, unsigned reg);
 	int    (*writeReg)(FWInfo *, unsigned ch, unsigned reg, unsigned val);
-	//  min-max attenuation in db; return 0 on success
+	/*  min-max attenuation in db; return 0 on success */
 	int    (*getAttRange)(FWInfo*, double *min, double *max);
 	int    (*getAtt)(FWInfo *, unsigned channel, double *att);
 	int    (*setAtt)(FWInfo *, unsigned channel, double att);
@@ -183,12 +183,12 @@ typedef struct PGAOps {
 typedef struct FECOps FECOps;
 
 struct FECOps {
-	// returns 0, 1, negative error
+	/* returns 0, 1, negative error */
 	int    (*getACMode)(FECOps *, unsigned channel);
 	int    (*setACMode)(FECOps *, unsigned channel, unsigned on);
 	int    (*getTermination)(FECOps *, unsigned channel);
 	int    (*setTermination)(FECOps *, unsigned channel, unsigned on);
-	// assume 2-step attenuator on/off
+	/* assume 2-step attenuator on/off */
 	int    (*getAttRange)(FECOps*, double *min, double *max);
 	int    (*getAtt)(FECOps *, unsigned channel, double *att);
 	int    (*setAtt)(FECOps *, unsigned channel, double att);
@@ -199,13 +199,14 @@ struct FECOps {
 
 int    pgaReadReg(ScopePvt *, unsigned ch, unsigned reg);
 int    pgaWriteReg(ScopePvt *, unsigned ch, unsigned reg, unsigned val);
-// at min-att
-//  min-max attenuation in db; return 0 on success; stage 0 is closest to ADC
+/* at min-att
+ *  min-max attenuation in db; return 0 on success; stage 0 is closest to ADC
+ */
 int    pgaGetAttRange(ScopePvt*, double *min, double *max);
 int    pgaGetAtt(ScopePvt *, unsigned channel, double *att);
 int    pgaSetAtt(ScopePvt *, unsigned channel, double att);
 
-// returns 0, 1, negative error
+/* returns 0, 1, negative error */
 int    fecGetACMode(ScopePvt *, unsigned channel);
 int    fecSetACMode(ScopePvt *, unsigned channel, unsigned on);
 int    fecGetTermination(ScopePvt *, unsigned channel);
@@ -216,6 +217,11 @@ int    fecGetAttRange(ScopePvt*, double *min, double *max);
 int    fecGetAtt(ScopePvt *, unsigned channel, double *att);
 int    fecSetAtt(ScopePvt *, unsigned channel, double att);
 void   fecClose(ScopePvt *);
+
+/* return NAN on error */
+double dacGetVolts(ScopePvt *, unsigned channel);
+/* return negative error code or 0 on success */
+int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
 
 
 #ifdef __cplusplus
