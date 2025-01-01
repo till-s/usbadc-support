@@ -18,13 +18,13 @@ const UnitData *udTst = 0;
 	UnitData *ud = unitDataCreate( NUM_CH );
 	assert( ud != 0 );
 	assert( unitDataGetNumChannels( ud ) == NUM_CH );
-	assert( isnan( unitDataGetScaleVolts( ud ) ) );
-	assert( 0 == unitDataSetScaleVolts( ud, 1.0 ) );
+	assert( isnan( unitDataGetScaleVolts( ud, 0 ) ) );
 	for ( i = 0; i < NUM_CH; i++ ) {
+		assert( 0 == unitDataSetScaleVolts( ud, i, 1.0 ) );
 		assert( 0 == unitDataSetScaleRelat( ud, i, 10.0*(i+1) ) );
 		assert( 0 == unitDataSetOffsetVolts( ud, i,-1.0*(i+1) ) );
 	}
-	assert( 1.0 == unitDataGetScaleVolts( ud ) );
+	assert( -EINVAL == unitDataSetScaleVolts( ud, NUM_CH, 1.0 ) );
 	assert( -EINVAL == unitDataSetScaleRelat( ud, NUM_CH, 100.0 ) );
 	assert( -EINVAL == unitDataSetOffsetVolts( ud, NUM_CH, 100.0 ) );
 	bufSz = unitDataGetSerializedSize( NUM_CH );

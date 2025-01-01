@@ -11,14 +11,14 @@ typedef struct UnitData UnitData;
 
 unsigned unitDataGetVersion(const UnitData *);
 unsigned unitDataGetNumChannels(const UnitData *);
-double   unitDataGetScaleVolts(const UnitData *);
+double   unitDataGetScaleVolts(const UnitData *, unsigned ch);
 double   unitDataGetScaleRelat(const UnitData *, unsigned ch);
 double   unitDataGetOffsetVolts(const UnitData *, unsigned ch);
 
 /* Create (empty) UnitData object */
 UnitData *unitDataCreate(unsigned numChannels);
 /* returns negative error status or 0 on success */
-int      unitDataSetScaleVolts(UnitData *ud, double value);
+int      unitDataSetScaleVolts(UnitData *ud, unsigned ch, double value);
 int      unitDataSetScaleRelat(UnitData *ud, unsigned ch, double value);
 int      unitDataSetOffsetVolts(UnitData *ud, unsigned ch, double value);
 

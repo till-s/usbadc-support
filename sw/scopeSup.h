@@ -30,11 +30,11 @@ unsigned
 scope_get_num_channels(ScopePvt *scp);
 
 /* full-scale at zero attenuation */
-double
-scope_get_full_scale_volts(ScopePvt *scp);
+int
+scope_get_full_scale_volts(ScopePvt *scp, unsigned channel, double *fullScaleVolts);
 
 int
-scope_set_full_scale_volts(ScopePvt *scp, double fullScaleVolts);
+scope_set_full_scale_volts(ScopePvt *scp, unsigned channel, double fullScaleVolts);
 
 int
 scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);

@@ -55,7 +55,7 @@ typedef struct ScopePvt {
 	unsigned        memFlags;
 	AcqParams       acqParams;
 	double          samplingFreq;
-	double          fullScaleVolts;
+	double         *fullScaleVolts;
 	unsigned        numChannels;
 	int             sampleSize;
 	double         *attOffset;
@@ -186,16 +186,16 @@ double            fVCO, outDiv;
 	return 0;
 }
 
-static double
-computeAttOffset(double *attOffset, double *offsetVolts, unsigned numChannels, const UnitData *ud)
+static void
+computeAttOffset(double *attOffset, double *offsetVolts, double *scaleVolts, unsigned numChannels, const UnitData *ud)
 {
 int    i;
 
 	for ( i = 0; i < numChannels; ++i ) {
 		attOffset[i]   = 20*log10( unitDataGetScaleRelat( ud, i ) );
 		offsetVolts[i] = unitDataGetOffsetVolts( ud, i ); 
+		scaleVolts[i]  = unitDataGetScaleVolts( ud, i );
 	}
-	return unitDataGetScaleVolts( ud );
 }
 
 
@@ -356,16 +356,23 @@ int st;
 	return 0;
 }
 
-double
-scope_get_full_scale_volts(ScopePvt *scp)
+int
+scope_get_full_scale_volts(ScopePvt *scp, unsigned channel, double *pVal)
 {
-	return scp->fullScaleVolts;
+	if ( channel >= scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	*pVal = scp->fullScaleVolts[channel];
+	return 0;
 }
 
 int
-scope_set_full_scale_volts(ScopePvt *scp, double fullScaleVolts)
+scope_set_full_scale_volts(ScopePvt *scp, unsigned channel, double fullScaleVolts)
 {
-	scp->fullScaleVolts = fullScaleVolts;
+	if ( channel >= scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	scp->fullScaleVolts[channel] = fullScaleVolts;
 	return 0;
 }
 
@@ -382,10 +389,12 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *pscl)
 		return -EINVAL;
 	}
 	if ( pscl ) {
-		double scl    = scope_get_full_scale_volts( scp );
+		double scl;
 		double totAtt = 0.0;
 		double att;
 		int    st;
+		// channel has already been checked; may ignore retval here
+		scope_get_full_scale_volts( scp, channel, &scl );
 		if ( 0.0 == scl ) {
 			/* don't bother */
 			return scl;
@@ -468,6 +477,12 @@ double    dfltScaleVolts = 1.0;
 		goto bail;
 	}
 
+	sc->fullScaleVolts = calloc( sizeof(*sc->fullScaleVolts), sc->numChannels );
+	if ( ! sc->fullScaleVolts ) {
+		perror("fw_open(): no memory");
+		goto bail;
+	}
+
 
 	sc->samplingFreq = 0.0/0.0;
 
@@ -530,10 +545,10 @@ double    dfltScaleVolts = 1.0;
 		default:
 		break;
 	}
-	sc->fullScaleVolts = dfltScaleVolts;
 	for ( i = 0; i < sc->numChannels; ++i ) {
 		sc->attOffset[i]      = 0.0;
 		sc->offsetVolts[i]    = 0.0;
+		sc->fullScaleVolts[i] = dfltScaleVolts;
 	}
 
 	st = unitDataFromFlash( &sc->unitData, fw );
@@ -542,7 +557,11 @@ double    dfltScaleVolts = 1.0;
 			UnitData *ud;
 			fprintf(stderr, "WARNING: No calibration data found in flash; using defaults\n");
 			ud = unitDataCreate( sc->numChannels );
-			unitDataSetScaleVolts( ud, sc->fullScaleVolts );
+			for ( i = 0; i < scope_get_num_channels( sc ); ++i ) {
+				if ( (st = unitDataSetScaleVolts( ud, i, sc->fullScaleVolts[i] )) < 0 ) {
+					goto bail;
+				}
+			}
 			sc->unitData = ud;
 		}
 		if ( ! sc->unitData ) {
@@ -555,7 +574,7 @@ double    dfltScaleVolts = 1.0;
 		}
 	}
 
-	sc->fullScaleVolts = computeAttOffset( sc->attOffset, sc->offsetVolts, sc->numChannels, sc->unitData );
+	computeAttOffset( sc->attOffset, sc->offsetVolts, sc->fullScaleVolts, sc->numChannels, sc->unitData );
 
 	return sc;
 bail:
