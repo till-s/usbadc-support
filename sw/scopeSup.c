@@ -59,6 +59,7 @@ typedef struct ScopePvt {
 	unsigned        numChannels;
 	int             sampleSize;
 	double         *attOffset;
+	double         *offsetVolts;
 	PGAOps         *pga;
 	FECOps         *fec;
 	const UnitData *unitData;
@@ -186,12 +187,13 @@ double            fVCO, outDiv;
 }
 
 static double
-computeAttOffset(double *attOffset, unsigned numChannels, const UnitData *ud)
+computeAttOffset(double *attOffset, double *offsetVolts, unsigned numChannels, const UnitData *ud)
 {
 int    i;
 
 	for ( i = 0; i < numChannels; ++i ) {
-		attOffset[i] = 20*log10( unitDataGetScaleRelat( ud, i ) );
+		attOffset[i]   = 20*log10( unitDataGetScaleRelat( ud, i ) );
+		offsetVolts[i] = unitDataGetOffsetVolts( ud, i ); 
 	}
 	return unitDataGetScaleVolts( ud );
 }
@@ -460,6 +462,13 @@ double    dfltScaleVolts = 1.0;
 		goto bail;
 	}
 
+	sc->offsetVolts    = calloc( sizeof(*sc->offsetVolts), sc->numChannels );
+	if ( ! sc->offsetVolts ) {
+		perror("fw_open(): no memory");
+		goto bail;
+	}
+
+
 	sc->samplingFreq = 0.0/0.0;
 
 	if ( (st = acq_set_params( sc, NULL, &sc->acqParams )) ) {
@@ -524,6 +533,7 @@ double    dfltScaleVolts = 1.0;
 	sc->fullScaleVolts = dfltScaleVolts;
 	for ( i = 0; i < sc->numChannels; ++i ) {
 		sc->attOffset[i]      = 0.0;
+		sc->offsetVolts[i]    = 0.0;
 	}
 
 	st = unitDataFromFlash( &sc->unitData, fw );
@@ -545,7 +555,7 @@ double    dfltScaleVolts = 1.0;
 		}
 	}
 
-	sc->fullScaleVolts = computeAttOffset( sc->attOffset, sc->numChannels, sc->unitData );
+	sc->fullScaleVolts = computeAttOffset( sc->attOffset, sc->offsetVolts, sc->numChannels, sc->unitData );
 
 	return sc;
 bail:
@@ -563,6 +573,7 @@ scope_close(ScopePvt *scp)
 		unitDataFree( scp->unitData );
 		fecClose( scp );
 		free( scp->attOffset );
+		free( scp->offsetVolts );
 		free( scp );
 	}
 }
