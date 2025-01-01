@@ -677,6 +677,28 @@ int       elsz  = ( (buf_get_flags( scp ) & FW_BUF_FLG_16B) ? 2 : 1 );
 	return rv;
 }
 
+int
+buf_read_int16(ScopePvt *scp, uint16_t *hdr, int16_t *buf, size_t nelms)
+{
+int       rv;
+ssize_t   i;
+int8_t   *i8_p  = (int8_t*)buf;
+int       elsz  = ( (buf_get_flags( scp ) & FW_BUF_FLG_16B) ? 2 : 1 );
+
+
+	rv = buf_read( scp, hdr, (uint8_t*)buf, nelms*elsz );
+	if ( rv > 0 ) {
+		if ( 2 == elsz ) {
+			/* nothing to do :-) */
+		} else {
+			for ( i = nelms - 1; i >= 0; i-- ) {
+				buf[i] = (((int16_t)(i8_p[i])) << 8);
+			}
+		}
+	}
+	return rv;
+}
+
 static void
 putBuf(uint8_t **bufp, uint32_t val, int len)
 {
