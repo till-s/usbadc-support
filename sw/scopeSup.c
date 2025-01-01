@@ -366,10 +366,20 @@ int st;
 double
 scope_get_full_scale_volts(ScopePvt *scp, unsigned channel)
 {
-	if ( channel >= scp->numChannels ) {
+	if ( channel >= scope_get_num_channels( scp ) ) {
 		return 0.0/0.0;
 	}
 	return scp->fullScaleVolts[channel];
+}
+
+int
+scope_set_full_scale_volts(ScopePvt *scp, unsigned channel, double fullScaleVolts)
+{
+	if ( channel >= scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	scp->fullScaleVolts[channel] = fullScaleVolts;
+	return 0;
 }
 
 unsigned

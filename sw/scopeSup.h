@@ -34,6 +34,9 @@ double
 scope_get_full_scale_volts(ScopePvt *scp, unsigned channel);
 
 int
+scope_set_full_scale_volts(ScopePvt *scp, unsigned channel, double fullScaleVolts);
+
+int
 scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
 
 /* Reference frequency of ADC PLL; NaN if there is no PLL */
