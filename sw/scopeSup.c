@@ -1221,17 +1221,19 @@ fecClose(ScopePvt *scp)
 	}
 }
 
-double
-dacGetVolts(ScopePvt *scp, unsigned channel)
+int
+dacGetVolts(ScopePvt *scp, unsigned channel, double *pvolts)
 {
 float val;
+int   st;
 	if ( channel >= scope_get_num_channels( scp ) ) {
-		return 0.0/0.0;
+		return -EINVAL;
 	}
-	if ( dac47cxGetVolt( scp->fw, channel, &val ) < 0 ) {
-		return 0.0/0.0;
+	if ( (st = dac47cxGetVolt( scp->fw, channel, &val )) < 0 ) {
+		return st;
 	}
-	return (double)val - scp->offsetVolts[channel];
+	*pvolts = (double)val - scp->offsetVolts[channel];
+	return 0;
 }
 
 int
@@ -1243,4 +1245,25 @@ float val;
 	}
 	val = (float)volts + scp->offsetVolts[channel];
 	return dac47cxSetVolt( scp->fw, channel, val );
+}
+
+int
+dacGetVoltsRange(ScopePvt *scp, double *pvoltsMin, double *pvoltsMax)
+{
+float  voltMin, voltMax;
+int    ch;
+double maxOff = 0.0;
+	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
+		if ( maxOff < scp->offsetVolts[ch] ) {
+			maxOff = scp->offsetVolts[ch];
+		}
+	}
+	dac47cxGetRange( scp->fw, NULL, NULL, &voltMin, &voltMax );
+	if ( pvoltsMin ) {
+		*pvoltsMin = (double)voltMin;
+	}
+	if ( pvoltsMax ) {
+		*pvoltsMax = (double)voltMax - maxOff;
+	}
+	return 0;
 }

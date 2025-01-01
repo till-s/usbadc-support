@@ -218,9 +218,9 @@ int    fecGetAtt(ScopePvt *, unsigned channel, double *att);
 int    fecSetAtt(ScopePvt *, unsigned channel, double att);
 void   fecClose(ScopePvt *);
 
-/* return NAN on error */
-double dacGetVolts(ScopePvt *, unsigned channel);
 /* return negative error code or 0 on success */
+int    dacGetVoltsRange(ScopePvt *, double *pVoltsMin, double *pVoltsMax);
+int    dacGetVolts(ScopePvt *, unsigned channel, double *pvolts);
 int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
 
 
