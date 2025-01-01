@@ -159,6 +159,7 @@ architecture rtl of MaxADC is
       state   : WrStateType;
       lstTrg  : std_logic;
       wasTrg  : boolean;
+      autTrg  : std_logic;
       nsmpls  : RamAddr;
       ovrA    : RamAddr;
       ovrB    : RamAddr;
@@ -174,6 +175,7 @@ architecture rtl of MaxADC is
       state   => INIT,
       lstTrg  => '0',
       wasTrg  => false,
+      autTrg  => '0',
       ovrA    => (others => '0'),
       ovrB    => (others => '0'),
       nsmpls  => (others => '0'),
@@ -233,6 +235,7 @@ architecture rtl of MaxADC is
    type   WrCCRegType is record
       ovrA    : std_logic;
       ovrB    : std_logic;
+      autTrg  : std_logic;
    end record WrCCRegType;
 
    signal rWrCC     : WrCCRegType;
@@ -371,6 +374,7 @@ begin
 
    rWrCC.ovrA    <= toSl(rWr.ovrA /= 0);
    rWrCC.ovrB    <= toSl(rWr.ovrB /= 0);
+   rWrCC.autTrg  <= rWr.autTrg;
 
    -- ise doesn't seem to properly handle nested records
    -- (getting warning about rRd.busOb missing from sensitivity list)
@@ -426,6 +430,7 @@ begin
                   v.busOb.dat    := (others => '0');
                   v.busOb.dat(0) := rWrCC.ovrA;
                   v.busOb.dat(1) := rWrCC.ovrB;
+                  v.busOb.dat(2) := rWrCC.autTrg;
                else
                   busOb.lst <= '1';
                   if ( rdEmp = '0' ) then  -- implies CMD_ACQ_FLUSH_C = subCommandAcqGet( busIb.dat )
@@ -678,6 +683,7 @@ begin
          when RUN        =>
             if ( not rWr.wasTrg and ( ( ( not rWr.lstTrg and rTrg.trg ) = '1' ) or msTimerExpired ) ) then
                v.wasTrg := true;
+               v.autTrg := toSl( msTimerExpired );
             end if;
             if ( v.wasTrg ) then
                -- lparms.nsamples is the actual number of samples - 1
@@ -715,6 +721,7 @@ begin
                v.nsmpls := to_unsigned( 0, v.nsmpls'length );
                v.state  := FILL;
                v.wasTrg := false;
+               v.autTrg := '0';
                v.ovrA   := to_unsigned( 0, v.ovrA'length );
                v.ovrB   := to_unsigned( 0, v.ovrB'length );
             end if;
