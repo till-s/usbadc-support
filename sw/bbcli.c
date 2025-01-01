@@ -685,14 +685,13 @@ ScopePvt          *scope     = 0;
 		printf("  Board HW: %8"  PRIu8  "\n", v_brd);
 	}
 
-	if ( (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
-		if ( ! (scope = scope_open( fw )) ) {
-			fprintf(stderr, "ERROR: scope_open failed\n");
-			goto bail;
-		}
-	}
-
 	if ( trgOp || feOp || dumpPrms || dumpAdc ) {
+		if ( (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
+			if ( ! (scope = scope_open( fw )) ) {
+				fprintf(stderr, "ERROR: scope_open failed\n");
+				goto bail;
+			}
+		}
 		if ( ! scope ) {
 			fprintf(stderr, "No scope support in firmware; requested operation not supported\n");
 			goto bail;
