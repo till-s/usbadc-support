@@ -6,12 +6,12 @@
 #include <math.h>
 #include <time.h>
 #include <getopt.h>
+#include <unistd.h>
 
 #include "fwComm.h"
 #include "scopeSup.h"
 #include "max195xxSup.h"
 #include "unitData.h"
-#include "unitDataFlash.h"
 
 static int
 pollRead(ScopePvt *scp, uint16_t *hdr, int16_t *buf, size_t nElms)
@@ -22,6 +22,16 @@ struct timespec wai;
 	wai.tv_nsec = 100UL*1000UL*1000UL;
 	while ( 0 == (st = buf_read_int16( scp, hdr, buf, nElms )) ) {
 		clock_nanosleep( CLOCK_REALTIME, 0, &wai, NULL );
+	}
+	return st;
+}
+
+static int
+writeNonvolatileChecked( ScopePvt *scp, UnitData *unitData)
+{
+int st = scope_write_unit_data_nonvolatile( scp, unitData );
+	if ( st < 0 ) {
+			fprintf( stderr, "Error; scope_write_unit_data_nonvolatile() failed: %s\n", strerror(-st));
 	}
 	return st;
 }
@@ -53,14 +63,17 @@ uint16_t bufHdr;
 		}
 	}
 
+	if ( ! buf ) {
+		return 0;
+	}
+
+	/* Let things settle */
+	sleep(1);
+
 	st = buf_flush( scp );
 	if ( st < 0 ) {
 		fprintf( stderr, "Error; buf_flush() failed: %s\n", strerror(-st));
 		goto bail;
-	}
-
-	if ( ! buf ) {
-		return 0;
 	}
 
 	st = pollRead( scp, &bufHdr, buf, nElms );
@@ -81,6 +94,19 @@ uint16_t bufHdr;
 bail:
 	return st;
 }
+
+static void
+printCal(ScopeCalData *calData, unsigned nChannels, double fullScaleVolts)
+{
+unsigned ch;
+	printf("Calibration Data:\n");
+	printf("  Full Scale Volts: %lg\n", fullScaleVolts);
+	printf("  Channel        | Relative Gain | Offset [V]\n");
+	for ( ch = 0; ch < nChannels; ++ch ) {
+		printf("  %-15u|%15.3lg|%15.3lg\n", ch, calData[ch].scaleRelat, calData[ch].offsetVolts);
+	}
+}
+
 
 static void
 usage(const char *name)
@@ -108,10 +134,12 @@ double                  dacCalVolts    = 0.3;
 double                  fullScaleVolts = 0.0/0.0;
 unsigned                nChannels      = 0;
 int                     doWrite        = 0;
+int                     doPrint        = 0;
+int                     doErase        = 0;
 double                  dval;
 double                  pgaMinAtt;
 double                  pgaMaxAtt;
-double                  minScale;
+double                  maxScale;
 int                     st;
 int                     ch;
 AcqParams               acqParams;
@@ -119,7 +147,7 @@ int                     opt;
 double                 *d_p;
 size_t                 *z_p;
 
-	while ( (opt = getopt( argc, argv, "a:A:d:D:F:hIn:w")) > 0 ) {
+	while ( (opt = getopt( argc, argv, "a:A:d:ED:F:hIn:pw")) > 0 ) {
 		d_p = 0;
 		z_p = 0;
 		switch ( opt ) {
@@ -127,10 +155,12 @@ size_t                 *z_p;
 			case 'A': d_p     = &pgaMaxAttDb;             break;
 			case 'd': devName = optarg;                   break;
 			case 'D': d_p     = &dacCalVolts;             break;
+			case 'E': doErase = 1;                        break;
 			case 'F': d_p     = &fullScaleVolts;          break;
 			case 'I': allowPreInited = 1;                 break;
 			case 'n': z_p     = &nSamples;                break;
 			case 'w': doWrite = 1;                        break;
+			case 'p': ++doPrint;                          break;
 			case 'h':
 				rv = 0;
 				/* fall thru */
@@ -155,6 +185,12 @@ size_t                 *z_p;
 	if ( ! (scp = scope_open( fw )) ) {
 		fprintf( stderr, "Error: unable to open Scope (wrong firmware?)\n");
 		goto bail;
+	}
+
+	if ( doErase ) {
+		printf("Erasing non-volatile data\n");
+		st = writeNonvolatileChecked( scp, NULL );
+		goto bail; /* OK exit if st == 0 */
 	}
 
 	st = dacGetVolts( scp, 0, &dval );
@@ -210,6 +246,25 @@ size_t                 *z_p;
 	st = scope_get_cal_data( scp, calData, nChannels );
 	if ( st < 0 ) {
 		fprintf( stderr, "Error; scope_get_cal_data failed: %s\n", strerror(-st));
+		goto bail;
+	}
+
+	if ( doPrint ) {
+		double scl,lscl = 0.0/0.0;
+		for ( ch = 0; ch < nChannels; ++ch ) {
+			st = scope_get_full_scale_volts( scp, ch, &scl );
+			if ( st < 0 ) {
+				fprintf( stderr, "Error; scope_get_full_scale_volts() failed: %s\n", strerror(-st));
+				goto bail;
+			}
+			if ( ch > 0 && scl != lscl ) {
+				fprintf(stderr, "Warning: have different fullScaleVolts on channel[%u]!\n", ch);
+			}
+			lscl = scl;
+		}
+		printf("Current calibration parameters:\n");
+	    printCal( calData, nChannels, scl );
+		st = 0;
 		goto bail;
 	}
 
@@ -280,28 +335,22 @@ size_t                 *z_p;
 		calData[ch].scaleRelat *= (double)(INT16_MAX);
 	}
 
-	minScale = calData[0].scaleRelat;
-	for ( ch = 1; ch < nChannels; ++ch ) {
-		if ( calData[ch].scaleRelat < minScale ) {
-			minScale = calData[ch].scaleRelat;
-		}
-	}
-
 	if ( isnan( fullScaleVolts ) ) {
-		fullScaleVolts = minScale;
+		maxScale = 0.0;
+		for ( ch = 0; ch < nChannels; ++ch ) {
+			if ( fabs( calData[ch].scaleRelat ) > fabs( maxScale ) ) {
+				maxScale = calData[ch].scaleRelat;
+			}
+		}
+
+		fullScaleVolts = maxScale;
 	}
-	minScale /= fullScaleVolts;
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		calData[ch].scaleRelat /= fullScaleVolts;
+		/* compute relative gain (of this channel) */
+		calData[ch].scaleRelat = fullScaleVolts / calData[ch].scaleRelat;
 	}
 
-	printf("Calibration Data:\n");
-	printf("  Full Scale Volts: %lg\n", fullScaleVolts);
-	printf("  Channel        | Relative Gain | Offset [V]\n");
-	for ( ch = 0; ch < nChannels; ++ch ) {
-		printf("  %-15u|%15.3lg|%15.3lg\n", ch, calData[ch].scaleRelat, calData[ch].offsetVolts);
-	}
-
+	printCal( calData, nChannels, fullScaleVolts );
 
 	if ( doWrite ) {
 		if ( ! (unitData = unitDataCreate( nChannels )) ) {
@@ -325,9 +374,7 @@ size_t                 *z_p;
 				goto bail;
 			}
 		}
-		st = scope_write_unit_data_nonvolatile( scp, unitData );
-		if ( st < 0 ) {
-			fprintf( stderr, "Error; scope_write_unit_data_nonvolatile() failed: %s\n", strerror(-st));
+		if ( (st = writeNonvolatileChecked( scp, unitData )) < 0 ) {
 			goto bail;
 		}
 	}
