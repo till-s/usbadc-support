@@ -62,11 +62,11 @@ int st;
 static int
 toFlashCB(AT25Flash *flash, const struct UnitData **udp, size_t flashAddr, uint8_t *buf, size_t bufsz)
 {
-int      st;
+int      st = 1; /* dummy size in case *udp is NULL */
 size_t   serializedSize;
 unsigned cmd;
 
-	if ( (st = unitDataSerialize( *udp, buf, bufsz )) < 0 ) {
+	if ( *udp && (st = unitDataSerialize( *udp, buf, bufsz )) < 0 ) {
 		return st;
 	}
 	serializedSize = st;
@@ -79,7 +79,7 @@ unsigned cmd;
 		goto bail;
 	}
 
-	if ( 0 != ( st & AT25_ST_WEL ) ) {
+	if ( 0 == ( st & AT25_ST_WEL ) ) {
 		fprintf(stderr, "Unable to erase flash; write-protection still engaged?!\n");
 		st = -EIO;
 		goto bail;
@@ -96,7 +96,10 @@ unsigned cmd;
 		goto bail;
 	}
 
-	cmd = AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY;
+	cmd = AT25_CHECK_ERASED;
+	if ( *udp ) {
+		cmd |=  AT25_EXEC_PROG | AT25_CHECK_VERIFY;
+	}
 	if ( (st = at25_prog( flash, flashAddr, buf, serializedSize, cmd )) < 0 ) {
 		fprintf(stderr, "at25_prog() failed\n");
 		goto bail;
