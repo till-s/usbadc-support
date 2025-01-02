@@ -1,6 +1,6 @@
 all: bbcli scopeCal
 
-CFLAGS=-O2 -Wall -g -fpic
+CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing
 
 LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
@@ -16,20 +16,14 @@ all: bbcli pyfwcomm.so libfwcomm.a
 libfwcomm.a: $(LOBJS)
 	$(AR) r $@ $^
 
-bbcli: bbcli.o $(LOBJS)
-	$(CC) $(CFLAGS) -o $@ $^ -lm
+bbcli scopeCal unitDataTst:%:%.o libfwcomm.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm
 
 pyfwcomm.o: $(PYFWCOMM_C)
 	$(CC) $(CFLAGS) -c -o $@ $^ -I $(PYINC)
 
 $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
 	cython3  $<
-
-unitDataTst: unitDataTst.o libfwcomm.a
-	$(CC) $(CFLAGS) -o $@ $< -L. -lfwcomm
-
-scopeCal: scopeCal.o libfwcomm.a
-	$(CC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
