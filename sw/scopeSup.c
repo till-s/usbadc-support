@@ -219,9 +219,16 @@ unsigned ch;
 	if ( nelms > scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	for ( ch = 0; ch < nelms; ++ch ) {
-		scp->offsetVolts[ch]    = calDataArray[ch].offsetVolts;
-		scp->attOffset[ch]      = 20.0*log10( calDataArray[ch].scaleRelat );
+	if ( ! calDataArray ) {
+		for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
+			scp->offsetVolts[ch]    = 0.0;
+			scp->attOffset[ch]      = 0.0;
+		}
+	} else {
+		for ( ch = 0; ch < nelms; ++ch ) {
+			scp->offsetVolts[ch]    = calDataArray[ch].offsetVolts;
+			scp->attOffset[ch]      = 20.0*log10( calDataArray[ch].scaleRelat );
+		}
 	}
 	return 0;
 }
