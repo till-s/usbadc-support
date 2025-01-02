@@ -208,7 +208,6 @@ unsigned ch;
 	for ( ch = 0; ch < nelms; ++ch ) {
 		calDataArray[ch].offsetVolts = scp->offsetVolts[ch];
 		calDataArray[ch].scaleRelat  = exp10( scp->attOffset[ch]/20.0 );
-		calDataArray[ch].scaleVolts  = scp->fullScaleVolts[ch];
 	}
 	return 0;
 }
@@ -223,7 +222,6 @@ unsigned ch;
 	for ( ch = 0; ch < nelms; ++ch ) {
 		scp->offsetVolts[ch]    = calDataArray[ch].offsetVolts;
 		scp->attOffset[ch]      = 20.0*log10( calDataArray[ch].scaleRelat );
-		scp->fullScaleVolts[ch] = calDataArray[ch].scaleVolts;
 	}
 	return 0;
 }

@@ -9,6 +9,7 @@ extern "C" {
 
 typedef struct ScopePvt ScopePvt;
 typedef struct FWInfo   FWInfo;
+typedef struct UnitData UnitData;
 
 ScopePvt *
 scope_open(FWInfo *fw);
@@ -46,11 +47,11 @@ scope_get_reference_freq(ScopePvt *scp);
 /* volts = counts/maxCounts * scaleVolts * scaleRelat - offsetVolts
  * relative gain differences (scaleRelat) may be compensated/calibrated
  * by tuning the PGA.
+ * 'scaleVolts' is controlled with scope_get/set_full_scale_volts.
  */
 typedef struct ScopeCalData {
 	double offsetVolts;
 	double scaleRelat;
-	double scaleVolts;
 } ScopeCalData;
 
 int
