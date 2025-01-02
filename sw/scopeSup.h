@@ -56,8 +56,19 @@ typedef struct ScopeCalData {
 int
 scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
 
+/* A NULL pointer may be passed for calDataArray which causes
+ * all calibration to be reset (offsetVolts => 0.0, scaleRelat => 1.0)
+ */
 int
 scope_set_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
+
+/*
+ * A NULL pointer may be passed for 'unitData' in which case
+ * the non-volatile storage is cleared/erased w/o writing any
+ * new data.
+ */
+int
+scope_write_unit_data_nonvolatile(ScopePvt *scp, UnitData *unitData);
 
 /*
  * ADC Buffer / acquisition readout
@@ -239,7 +250,6 @@ void   fecClose(ScopePvt *);
 int    dacGetVoltsRange(ScopePvt *, double *pVoltsMin, double *pVoltsMax);
 int    dacGetVolts(ScopePvt *, unsigned channel, double *pvolts);
 int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
-
 
 #ifdef __cplusplus
 }

@@ -228,6 +228,12 @@ unsigned ch;
 	return 0;
 }
 
+int
+scope_write_unit_data_nonvolatile(ScopePvt *scp, UnitData *unitData)
+{
+	return unitDataToFlash( unitData, scp->fw );
+}
+
 static int
 fecInit(ScopePvt *scp)
 {
