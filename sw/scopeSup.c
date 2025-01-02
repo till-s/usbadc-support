@@ -1291,7 +1291,7 @@ int   st;
 	if ( (st = dac47cxGetVolt( scp->fw, channel, &val )) < 0 ) {
 		return st;
 	}
-	*pvolts = (double)val - scp->offsetVolts[channel];
+	*pvolts = (double)val + scp->offsetVolts[channel];
 	return 0;
 }
 
@@ -1302,7 +1302,7 @@ float val;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	val = (float)volts + scp->offsetVolts[channel];
+	val = (float)volts - scp->offsetVolts[channel];
 	return dac47cxSetVolt( scp->fw, channel, val );
 }
 
@@ -1313,13 +1313,13 @@ float  voltMin, voltMax;
 int    ch;
 double maxOff = 0.0;
 	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
-		if ( maxOff < scp->offsetVolts[ch] ) {
-			maxOff = scp->offsetVolts[ch];
+		if ( maxOff < fabs( scp->offsetVolts[ch] ) ) {
+			maxOff = fabs( scp->offsetVolts[ch] );
 		}
 	}
 	dac47cxGetRange( scp->fw, NULL, NULL, &voltMin, &voltMax );
 	if ( pvoltsMin ) {
-		*pvoltsMin = (double)voltMin;
+		*pvoltsMin = (double)voltMin + maxOff;
 	}
 	if ( pvoltsMax ) {
 		*pvoltsMax = (double)voltMax - maxOff;
