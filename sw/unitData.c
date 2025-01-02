@@ -124,8 +124,7 @@ union {
 	}
 	tmp.u = 0;
 	for ( j = sizeof(float) - 1; j >= 0; --j ) {
-		tmp.u = (tmp.u << 8) | *srcp;
-		++srcp;
+		tmp.u = (tmp.u << 8) | srcp[j];
 	}
 	*dstp = tmp.f;
 	return 0;
