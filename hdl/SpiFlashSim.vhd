@@ -3,6 +3,11 @@ use     ieee.std_logic_1164.all;
 use     ieee.numeric_std.all;
 
 entity SpiFlashSim is
+   generic (
+      --     { description: "AT25SL641",  id: 0x1f43171f43ULL, blockSize: 4096, pageSize: 256, sizeBytes: 8*1024*1024 }
+
+      FLASH_ID_G     : std_logic_vector(39 downto 0) := x"deadbeef00"
+   );
    port (
       clk            : in  std_logic;
       sclk           : in  std_logic;
@@ -13,7 +18,7 @@ entity SpiFlashSim is
 end entity SpiFlashSim;
 
 architecture sim of SpiFlashSim is
-   type StateType is (IDLE, A2, A1, A0, SKIP, READ, PGWR, WR_STATUS, WAI);
+   type StateType is (IDLE, A2, A1, A0, SKIP, READ, PGWR, WR_STATUS, WAI, ID);
 
    constant MEM_SZ_C       : natural := 65536;
    constant PG_SZ_C        : natural := 256;
@@ -31,6 +36,8 @@ architecture sim of SpiFlashSim is
    constant OP_ERASE_4K_C  : std_logic_vector(7 downto 0) := x"20";
    constant OP_ERASE_32K_C : std_logic_vector(7 downto 0) := x"52";
    constant OP_ERASE_64K_C : std_logic_vector(7 downto 0) := x"D8";
+   constant OP_RESUME_C    : std_logic_vector(7 downto 0) := x"AB";
+   constant OP_ID_C        : std_logic_vector(7 downto 0) := x"9F";
 
    type RegType is record
       state        : StateType;
@@ -43,6 +50,7 @@ architecture sim of SpiFlashSim is
       addr         : unsigned(23 downto 0);
       pgbuf        : MemArray(0 to PG_SZ_C - 1);
       pgptr        : unsigned(7 downto 0);
+      count        : integer;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
@@ -55,7 +63,8 @@ architecture sim of SpiFlashSim is
       status       => x"00",
       addr         => (others => '0'),
       pgbuf        => (others => (others => '0')),
-      pgptr        => (others => '0')
+      pgptr        => (others => '0'),
+      count        => 0
    );
 
    signal r        : RegType := REG_INIT_C;
@@ -101,6 +110,14 @@ begin
                   v.state := A2;
                elsif ( dat_inp = OP_ERASE_64K_C ) then
                   v.state := A2;
+               elsif ( dat_inp = OP_RESUME_C    ) then
+                  -- no-op
+                  v.state := WAI;
+               elsif ( dat_inp = OP_ID_C    ) then
+                  -- no-op
+                  v.dat_out := FLASH_ID_G(4*8 + 7 downto 4*8);
+                  v.state := ID;
+                  v.count := 4-1; -- 0 based
                else
                   assert false report "Unsupported flash op " & integer'image( to_integer( unsigned( dat_inp ) ) ) severity failure;
                end if;
@@ -141,6 +158,16 @@ begin
               v.state   := READ;
               v.dat_out := mem( to_integer( r.addr ) );
               v.addr    := r.addr + 1;
+           end if;
+
+         when ID   =>
+           if ( rs = '1' ) then
+              v.dat_out := FLASH_ID_G(r.count*8 + 7 downto r.count*8);
+              if ( r.count = 0 ) then
+                 v.state := WAI;
+              else
+                 v.count := r.count - 1;
+              end if;
            end if;
 
          when READ =>
