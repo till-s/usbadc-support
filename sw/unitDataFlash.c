@@ -50,6 +50,13 @@ static int
 fromFlashCB(AT25Flash *flash, const struct UnitData **udp, size_t flashAddr, uint8_t *buf, size_t bufsz)
 {
 int st;
+	/* read one byte first (speeds up simulation mode!) */
+	if ( (st = at25_spi_read( flash, flashAddr, buf, 1)) < 0 ) {
+		return st;
+	}
+	if ( 0xff == buf[0] ) {
+		return -ENODATA;
+	}
 	if ( (st = at25_spi_read( flash, flashAddr, buf, bufsz )) < 0 ) {
 		return st;
 	}
