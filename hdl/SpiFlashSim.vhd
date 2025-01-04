@@ -4,8 +4,8 @@ use     ieee.numeric_std.all;
 
 entity SpiFlashSim is
    generic (
-      --     { description: "AT25SL641",  id: 0x1f43171f43ULL, blockSize: 4096, pageSize: 256, sizeBytes: 8*1024*1024 }
-
+      -- GHDL segfaulted with a 1M simulated MEM_SZ_C; use special ID...
+      --  { description: "AT25FF081A", id: 0x1f45080100ULL, blockSize: 4096, pageSize: 256, sizeBytes: 1*1024*1024 },
       FLASH_ID_G     : std_logic_vector(39 downto 0) := x"deadbeef00"
    );
    port (
@@ -20,7 +20,8 @@ end entity SpiFlashSim;
 architecture sim of SpiFlashSim is
    type StateType is (IDLE, A2, A1, A0, SKIP, READ, PGWR, WR_STATUS, WAI, ID);
 
-   constant MEM_SZ_C       : natural := 65536;
+   -- must fit simulated ID
+   constant MEM_SZ_C       : natural := 64*1024;
    constant PG_SZ_C        : natural := 256;
 
    type MemArray is array (natural range <>) of std_logic_vector(7 downto 0);
