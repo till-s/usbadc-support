@@ -1,4 +1,4 @@
-all: bbcli scopeCal
+all: $(PROGS)
 
 CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing
 
@@ -6,6 +6,8 @@ LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
 LOBJS+=tca6408FECSup.o at24EepromSup.o unitData.o unitDataFlash.o
 LOBJS+=scopeSup.o
+
+PROGS=bbcli scopeCal
 
 PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
@@ -41,6 +43,24 @@ clean:
 	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
 	$(RM) -rf __pycache__
 	$(RM) unitDataTst
+	$(RM) CMakeLists.txt
 
 pyfwcomm.so: pyfwcomm.o $(LOBJS)
 	$(CC) $^ -shared -o $@
+
+CMakeLists.txt: makefile
+	@$(RM) $@
+	@echo '# AUTOMATICALLY GENERATED (makefile); do not modify!' >> $@
+	@echo 'cmake_minimum_required(VERSION 3.5)'                  >> $@
+	@echo ''                                                     >> $@
+	@echo 'project(fwcomm LANGUAGES C)'                          >> $@
+	@echo ''                                                     >> $@
+	@echo 'set( SOURCES $(LOBJS:%.o=%.c) )'                      >> $@
+	@echo ''                                                     >> $@
+	@echo 'add_library(fwcomm $${SOURCES})'                      >> $@
+	@for p in $(PROGS) ; do \
+		echo "add_executable($$p $$p.c)"                         >> $@ ;\
+		echo "target_link_libraries($$p PRIVATE fwcomm m)"       >> $@ ;\
+	done
+     
+
