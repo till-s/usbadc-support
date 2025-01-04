@@ -44,7 +44,9 @@ static AT25FlashParam knownDevices[] = {
 	/* Adesto AT25FF081A */
 	{ description: "AT25FF081A", id: 0x1f45080100ULL, blockSize: 4096, pageSize: 256, sizeBytes: 1*1024*1024 },
 	/* Adesto AT25SL641 */
-	{ description: "AT25SL641",  id: 0x1f43171f43ULL, blockSize: 4096, pageSize: 256, sizeBytes: 8*1024*1024 }
+	{ description: "AT25SL641",  id: 0x1f43171f43ULL, blockSize: 4096, pageSize: 256, sizeBytes: 8*1024*1024 },
+	{ description: "SIMULATED",  id: 0xdeadbeef00ULL, blockSize: 4096, pageSize: 256, sizeBytes: 64*1024 },
+	/* SpiFlashSim */
 };
 
 struct AT25Flash {
