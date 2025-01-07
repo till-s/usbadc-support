@@ -1,4 +1,4 @@
-all: $(PROGS)
+all: $(PROGS) CMakeLists.txt pyfwcomm.so
 
 CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing
 
@@ -12,8 +12,6 @@ PROGS=bbcli scopeCal
 PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
 PYFWCOMM_C=pyfwcomm.c
-
-all: bbcli pyfwcomm.so libfwcomm.a
 
 libfwcomm.a: $(LOBJS)
 	$(AR) r $@ $^

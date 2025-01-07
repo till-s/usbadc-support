@@ -579,8 +579,10 @@ double    dfltScaleVolts = 1.0;
 			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/200.0)) / 100.0;
 			break;
 		case 2:
-			/* diff. load on this HW is 301 Ohm */
-			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0)) / 100.0;
+			/* diff. load on this HW is 301 Ohm and there is a divider
+			 * (for establishing the correct common-mode voltage).
+			 */
+			dfltScaleVolts = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0) * (226.0/301.0) ) / 100.0;
 			break;
 		default:
 		break;
