@@ -1,11 +1,24 @@
-all: $(PROGS) CMakeLists.txt pyfwcomm.so
 
-CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing
+HAVE_H5=YES
 
-LOBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
-LOBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
-LOBJS+=tca6408FECSup.o at24EepromSup.o unitData.o unitDataFlash.o
-LOBJS+=scopeSup.o
+HCC_YES=h5cc
+HCC_NO=$(CC)
+
+H5_DEFINES_YES=CONFIG_WITH_HDF5
+
+CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing $(addprefix -D,$(H5_DEFINES_$(HAVE_H5)))
+
+OBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
+OBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
+OBJS+=tca6408FECSup.o at24EepromSup.o unitData.o unitDataFlash.o
+OBJS+=scopeSup.o
+
+LOBJS=$(OBJS) $(H5_OBJS)
+
+H5_OBJS_YES=hdf5Sup.o
+
+H5_OBJS=$(H5_OBJS_$(HAVE_H5))
+HCC=$(HCC_$(HAVE_H5))
 
 PROGS=bbcli scopeCal
 
@@ -13,14 +26,19 @@ PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
 PYFWCOMM_C=pyfwcomm.c
 
+all: $(PROGS) pyfwcomm.so
+
 libfwcomm.a: $(LOBJS)
 	$(AR) r $@ $^
 
 bbcli scopeCal unitDataTst:%:%.o libfwcomm.a
-	$(CC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm
+	$(HCC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm
 
 pyfwcomm.o: $(PYFWCOMM_C)
 	$(CC) $(CFLAGS) -c -o $@ $^ -I $(PYINC)
+
+$(H5_OBJS_YES): %.o: %.c %.h
+	$(HCC) $(CFLAGS) -c -o $@ $<
 
 $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
 	cython3  $<
@@ -53,12 +71,20 @@ CMakeLists.txt: makefile
 	@echo ''                                                     >> $@
 	@echo 'project(fwcomm LANGUAGES C)'                          >> $@
 	@echo ''                                                     >> $@
-	@echo 'set( SOURCES $(LOBJS:%.o=%.c) )'                      >> $@
+	@echo 'set( SOURCES $(OBJS:%.o=%.c) )'                       >> $@
 	@echo ''                                                     >> $@
-	@echo 'add_library(fwcomm $${SOURCES})'                      >> $@
+	@echo 'find_package(HDF5 COMPONENTS C)'                      >> $@
+	@echo 'if( HDF5_FOUND )'                                     >> $@
+	@echo '  include_directories( $${HDF5_INCLUDE_DIR} )'        >> $@
+	@echo '  add_compile_definitions( CONFIG_WITH_HDF5 )'        >> $@
+	@echo '  list( APPEND SOURCES $(H5_OBJS:%.o=%.c) )'          >> $@
+	@echo 'endif()'                                              >> $@
+	@echo ''                                                     >> $@
+	@echo 'set( LIBS fwcomm $${HDF5_LIBRARIES} m )'              >> $@
+	@echo 'add_library( fwcomm $${SOURCES} )'                    >> $@
 	@for p in $(PROGS) ; do \
-		echo "add_executable($$p $$p.c)"                         >> $@ ;\
-		echo "target_link_libraries($$p PRIVATE fwcomm m)"       >> $@ ;\
+		echo "add_executable( $$p $$p.c )"                       >> $@ ;\
+		echo "target_link_libraries( $$p PRIVATE \$${LIBS} )"    >> $@ ;\
 	done
      
 

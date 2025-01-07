@@ -17,6 +17,10 @@
 #include "fegRegSup.h"
 #include "scopeSup.h"
 
+#ifdef CONFIG_WITH_HDF5
+#include "hdf5Sup.h"
+#endif
+
 /* covers image size of xc3s200a for multiboot */
 #ifndef  FLASHADDR_DFLT
 #define  FLASHADDR_DFLT 0x30000
@@ -37,6 +41,7 @@ static void usage(const char *nm)
 	printf("   -v                 : increase verbosity level.\n");
 	printf("   -V                 : dump firmware version.\n");
 	printf("   -B                 : dump ADC buffer (raw).\n");
+	printf("   -5 hdf5_filename   : dump ADC buffer (HDF5).\n");
     printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor', 'extTrgOE').\n");
     printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", ACQ_LD_SCALE_ONE);
     printf("                              and may be appended with ':hysteresis'\n");
@@ -617,12 +622,16 @@ const char        *regOp     = 0;
 const char        *feOp      = 0;
 AT25Flash         *flash     = 0;
 ScopePvt          *scope     = 0;
+const char        *h5nam     = NULL;
+#ifdef CONFIG_WITH_HDF5
+ScopeH5Data       *h5d       = NULL;
+#endif
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
 	}
 
-	while ( (opt = getopt(argc, argv, "Aa:BDd:Ff:GhIi:P:pR:S:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "Aa:B5:Dd:Ff:GhIi:P:pR:S:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -633,6 +642,7 @@ ScopePvt          *scope     = 0;
 			case 'A': dac  = 0; test_reg = TEST_ADC;                                  break;
 			case 'G': dac  = 0; test_reg = TEST_FEG;                                  break;
 			case 'B': dumpAdc = 1;                                                    break;
+			case '5': dumpAdc = 2; h5nam = optarg;                                     break;
 			case 'F': dumpAdc = -1;                                                   break;
 			case 'p': dumpPrms= 1;                                                    break;
             case 'R': regOp   = optarg;                                               break;
@@ -769,27 +779,45 @@ ScopePvt          *scope     = 0;
 		}
 		if ( i > 0 ) {
 			fprintf(stderr, "ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
-			if ( (fl & FW_BUF_FLG_16B) ) {
-				if ( ( i & 1 ) ) {
-					i -= 1;
+			if ( dumpAdc > 1 ) {
+#ifndef CONFIG_WITH_HDF5
+				fprintf(stderr, "Error: HDF5 Support not compiled in, sorry\n");
+#else
+				ScopeH5SampleType dtyp = (fl & FW_BUF_FLG_16B) ? INT16LE_T : INT8_T;
+				int               ssiz = (INT8_T == dtyp ? sizeof(int8_t) : sizeof(int16_t));
+				int               prec = buf_get_sample_size( scope );
+				size_t            dims[2];
+				if ( prec < 0 ) {
+					prec = ssiz*8;
 				}
-				for ( j = 0; j < i; j += 2 ) {
-					uint16_t w = ( (uint16_t) buf[j+1] << 8 ) | (uint16_t) buf[j];
-					printf("0x%04" PRIx16 " ", w);
-					if ( 0xe == ( j & 0xf ) ) {
-						printf("\n");
-					}
-				}
+				dims[1] = scope_get_num_channels( scope );
+				/* num-samples = nbytes */ 
+				dims[0] = i / dims[1] / ssiz;
+				h5d = scope_h5_create( h5nam, dtyp, 8*ssiz - prec, dims, sizeof(dims)/sizeof(dims[0]), buf );
+#endif
 			} else {
-				for ( j = 0; j < i; j++ ) {
-					printf("0x%02" PRIx8 " ", buf[j]);
-					if ( 0xf == ( j & 0xf) ) {
-						printf("\n");
+				if ( (fl & FW_BUF_FLG_16B) ) {
+					if ( ( i & 1 ) ) {
+						i -= 1;
+					}
+					for ( j = 0; j < i; j += 2 ) {
+						uint16_t w = ( (uint16_t) buf[j+1] << 8 ) | (uint16_t) buf[j];
+						printf("0x%04" PRIx16 " ", w);
+						if ( 0xe == ( j & 0xf ) ) {
+							printf("\n");
+						}
+					}
+				} else {
+					for ( j = 0; j < i; j++ ) {
+						printf("0x%02" PRIx8 " ", buf[j]);
+						if ( 0xf == ( j & 0xf) ) {
+							printf("\n");
+						}
 					}
 				}
-			}
-			if ( (j & 0xf) ) {
-				printf("\n");
+				if ( (j & 0xf) ) {
+					printf("\n");
+				}
 			}
 		} else if ( i < 0 ) {
 			if ( -ETIMEDOUT == i ) {
@@ -1100,6 +1128,11 @@ bail:
 	if ( flash ) {
 		at25_close( flash );
 	}
+#ifdef CONFIG_WITH_HDF5
+	if ( h5d ) {
+		scope_h5_close( h5d );
+	}
+#endif
 	if ( scope ) {
 		scope_close( scope );
 	}

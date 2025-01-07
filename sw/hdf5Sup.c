@@ -2,17 +2,233 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <getopt.h>
 
-#define NCOL 2
-#define NELM (16*1024*1024)
+#include "hdf5Sup.h"
+
+struct ScopeH5Data {
+	hid_t               type_id;
+	hid_t               file_id;
+	hid_t               dset_prop_id;
+	hid_t               dspace_id;
+	hid_t               dset_id;
+	hid_t               att1_id;
+	hid_t               scal_id;
+	ScopeH5SampleType   smpl_type;
+	hsize_t            *dims;
+	hsize_t             ndims;
+	unsigned            bitShift;
+};
+
+ScopeH5Data *
+scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, size_t *dims, size_t ndims, const void *data)
+{
+ScopeH5Data *h5d = NULL;
+herr_t       hstat;
+size_t       i;
+int          compression = 4; /* compression level; 0..9; set to < to disable */
+hid_t        baseType;
+unsigned     baseTypePrec;
+
+	if ( ! (h5d = calloc( sizeof(*h5d), 1 )) ) {
+		fprintf(stderr, "scope_h5_create: No memory\n");
+		return h5d;
+	}
+	h5d->type_id      = H5I_INVALID_HID;
+	h5d->file_id      = H5I_INVALID_HID;
+	h5d->dset_prop_id = H5I_INVALID_HID;
+	h5d->dspace_id    = H5I_INVALID_HID;
+	h5d->dset_id      = H5I_INVALID_HID;
+	h5d->att1_id      = H5I_INVALID_HID;
+	h5d->scal_id      = H5I_INVALID_HID;
+
+	if ( ! (h5d->dims = calloc( sizeof(*h5d->dims), ndims )) ) {
+		fprintf(stderr, "scope_h5_create: No memory\n");
+		goto cleanup;
+	}
+	h5d->ndims = ndims;
+	for ( i = 0; i < ndims; ++i ) {
+		h5d->dims[i] = dims[i];
+	}
+
+	switch ( dtype ) {
+		case INT8_T    :   baseType = H5T_NATIVE_INT8;    baseTypePrec = sizeof(int8_t)*8;     break;
+		case INT16_T   :   baseType = H5T_NATIVE_INT16;   baseTypePrec = sizeof(int16_t)*8;    break;
+		case INT16LE_T :   baseType = H5T_STD_I16LE;      baseTypePrec = sizeof(int16_t)*8;    break;
+		case INT16BE_T :   baseType = H5T_STD_I16BE;      baseTypePrec = sizeof(int16_t)*8;    break;
+		case FLOAT_T   :   baseType = H5T_NATIVE_FLOAT;   baseTypePrec = sizeof(float)*8;      break;
+		case DOUBLE_T  :   baseType = H5T_NATIVE_DOUBLE;  baseTypePrec = sizeof(double)*8;     break;
+		default:
+			fprintf(stderr, "scope_h5_create INTERNAL ERROR -- unsupported datatype\n");
+			abort();
+	}
+
+	h5d->type_id = H5Tcopy( baseType );
+	if ( H5I_INVALID_HID == h5d->type_id ) {
+		fprintf(stderr, "H5Tcopy failed\n");
+		goto cleanup;
+	}
+	if ( bitShift ) {
+		if ( bitShift >= baseTypePrec ) {
+			fprintf(stderr, "Invalid bitShift\n");
+			goto cleanup;
+		}
+		if ( (hstat = H5Tset_precision( h5d->type_id, baseTypePrec - bitShift )) < 0 ) {
+			fprintf(stderr, "H5Tset_precision failed\n");
+			goto cleanup;
+		}
+		if ( (hstat = H5Tset_offset( h5d->type_id,  bitShift )) < 0 ) {
+			fprintf(stderr, "H5Tset_offset failed\n");
+			goto cleanup;
+		}
+	}
+
+	h5d->file_id = H5Fcreate( fnam, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT );
+
+	if ( H5I_INVALID_HID == h5d->file_id ) {
+		fprintf(stderr, "H5Fcreate failed\n");
+		goto cleanup;
+	}
+
+	/* NOTE: deflate or any other filter requires chunked layout */
+	h5d->dset_prop_id = H5Pcreate( H5P_DATASET_CREATE );
+	if ( H5I_INVALID_HID == h5d->dset_prop_id ) {
+		fprintf(stderr, "H5Pcreate failed\n");
+		goto cleanup;
+	}
+
+	if ( (hstat = H5Pset_chunk( h5d->dset_prop_id, h5d->ndims, h5d->dims )) < 0 ) {
+		fprintf(stderr, "H5Pset_chunk failed\n");
+		goto cleanup;
+	}
+
+	if ( bitShift ) {
+		if ( (hstat = H5Pset_nbit( h5d->dset_prop_id )) < 0 ) {
+			fprintf(stderr, "H5Pset_nbit failed\n");
+			goto cleanup;
+		}
+	}
+
+	/* order of filter installment matters! */
+	if ( compression >= 0 ) {
+		if ( (hstat = H5Pset_shuffle( h5d->dset_prop_id )) < 0 ) {
+			fprintf(stderr, "H5Pset_shuffle failed\n");
+			goto cleanup;
+		}
+		if ( (hstat = H5Pset_deflate( h5d->dset_prop_id, compression )) < 0 ) {
+			fprintf(stderr, "H5Pset_deflate failed\n");
+			goto cleanup;
+		}
+	}
+
+	h5d->dspace_id = H5Screate_simple( h5d->ndims, h5d->dims, h5d->dims );
+	if ( H5I_INVALID_HID == h5d->dspace_id ) {
+		fprintf(stderr, "H5Screate_simple failed\n");
+		goto cleanup;
+	}
+
+	h5d->dset_id = H5Dcreate( h5d->file_id, "/scopeData", h5d->type_id, h5d->dspace_id, H5P_DEFAULT, h5d->dset_prop_id, H5P_DEFAULT );
+	if ( H5I_INVALID_HID == h5d->dset_id ) {
+		fprintf(stderr, "H5Dcreate failed\n");
+		goto cleanup;
+	}
+
+	/* create a scalar dataspace for multiple reuse */
+	h5d->scal_id = H5Screate( H5S_SCALAR );
+	if ( H5I_INVALID_HID == h5d->scal_id ) {
+		fprintf(stderr, "H5Screate failed\n");
+		goto cleanup;
+	}
+
+	if ( (hstat = H5Dwrite( h5d->dset_id, h5d->type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data ) ) < 0 ) {
+		fprintf(stderr, "H5Dwrite failed\n");
+		goto cleanup;
+	}
+
+	return h5d;
+
+cleanup:
+	scope_h5_close( h5d );
+	return NULL;
+}
+
+void
+scope_h5_close(ScopeH5Data *h5d)
+{
+herr_t hstat;
+
+	if ( ! h5d ) {
+		return;
+	}
+
+	if ( H5I_INVALID_HID != h5d->scal_id ) {
+		if ( (hstat = H5Sclose( h5d->scal_id )) ) {
+			fprintf(stderr, "H5Sclose failed\n");
+		}
+	}
+
+	if ( H5I_INVALID_HID != h5d->att1_id ) {
+		if ( (hstat = H5Aclose( h5d->att1_id )) ) {
+			fprintf(stderr, "H5Aclose failed\n");
+		}
+	}
+
+	if ( H5I_INVALID_HID != h5d->dset_id ) {
+		if ( (hstat = H5Dclose( h5d->dset_id )) ) {
+			fprintf(stderr, "H5Dclose failed\n");
+		}
+	}
+	if ( H5I_INVALID_HID != h5d->dspace_id ) {
+		if ( (hstat = H5Sclose( h5d->dspace_id )) ) {
+			fprintf(stderr, "H5Sclose failed\n");
+		}
+	}
+	if ( H5I_INVALID_HID != h5d->dset_prop_id && H5P_DEFAULT != h5d->dset_prop_id ) {
+		if ( (hstat = H5Pclose( h5d->dset_prop_id ) ) < 0 ) {
+			fprintf(stderr, "H5Pclose failed\n");
+		}
+	}
+
+	if ( H5I_INVALID_HID != h5d->file_id ) {
+		hstat = H5Fclose( h5d->file_id );
+		if ( hstat < 0 ) {
+			fprintf(stderr, "H5Fclose failed\n");
+		}
+	}
+
+	if ( H5I_INVALID_HID != h5d->type_id ) {
+		hstat = H5Tclose( h5d->type_id );
+		if ( hstat < 0 ) {
+			fprintf(stderr, "H5Tclose failed\n");
+		}
+	}
+	
+	free( h5d->dims );
+
+	free( h5d );
+}
 
 static herr_t
-addAttr(hid_t dset_id, const char *name, hid_t spc_id, hid_t typ_id, const void *val)
+scope_h5_add_attrs(ScopeH5Data *h5d, const char *name, hid_t typ_id, const void *val, unsigned nval)
 {
-	herr_t hstat;
-	hid_t  att_id = H5Acreate2( dset_id, name, typ_id, spc_id, H5P_DEFAULT, H5P_DEFAULT );
+	herr_t hstat  = -1;
+	hid_t  spc_id = H5I_INVALID_HID;
+	hid_t  att_id = -1;
+
+	if ( nval > 1 ) {
+		hsize_t dim = nval;
+		spc_id = H5Screate_simple( 1, &dim, &dim );
+		if ( H5I_INVALID_HID == spc_id ) {
+			fprintf(stderr, "H5Screate_simple failed\n");
+		}
+	} else if ( 1 == nval ) {
+		spc_id = h5d->scal_id;
+	}
+	if ( H5I_INVALID_HID == spc_id ) {
+		/* reject nval == 0 */
+		goto cleanup;
+	}
+	att_id = H5Acreate2( h5d->dset_id, name, typ_id, spc_id, H5P_DEFAULT, H5P_DEFAULT );
 	if ( H5I_INVALID_HID == att_id ) {
 		fprintf(stderr, "H5Acreate2 failed\n");
 		return att_id;
@@ -20,33 +236,38 @@ addAttr(hid_t dset_id, const char *name, hid_t spc_id, hid_t typ_id, const void 
 
 	if ( (hstat = H5Awrite( att_id, typ_id, val )) < 0 ) {
 		fprintf(stderr, "H5Awrite(%s) failed\n", name);
+		goto cleanup;
 	}
 
-	if ( (hstat = H5Aclose( att_id )) < 0 ) {
-		fprintf(stderr, "H5Aclose(%s) failed\n", name);
+cleanup:
+	if ( H5Aclose( att_id ) < 0 ) {
+		fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Aclose(%s) failed\n", name);
 	}
-
+	if ( H5I_INVALID_HID != spc_id && h5d->scal_id != spc_id ) {
+		if ( H5Sclose( spc_id ) < 0 ) {
+			fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Sclose failed\n");
+		}
+	}
 	return hstat;
 }
 
-static herr_t
-addUintAttr(hid_t dset_id, const char *name, hid_t spc_id, unsigned *val) {
-	return addAttr(dset_id, name, spc_id, H5T_NATIVE_UINT, val);
+long
+scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, unsigned *val, size_t nval ) {
+	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_UINT, val, nval );
 }
 
-static herr_t
-addIntAttr(hid_t dset_id, const char *name, hid_t spc_id, int *val) {
-	return addAttr(dset_id, name, spc_id, H5T_NATIVE_INT, val);
+long
+scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, int *val, size_t nval ) {
+	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_INT, val, nval );
 }
 
-static herr_t
-addDoubleAttr(hid_t dset_id, const char *name, hid_t spc_id, double *val) {
-	return addAttr(dset_id, name, spc_id, H5T_NATIVE_DOUBLE, val);
+long
+scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, double *val, size_t nval ) {
+	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_DOUBLE, val, nval );
 }
 
-static herr_t
-addStringAttr(hid_t dset_id, const char *name, const char *val) {
-	hid_t spc_id = H5I_INVALID_HID;
+long
+scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val) {
 	hid_t typ_id = H5I_INVALID_HID;
 	herr_t hstat = -1;
 	hsize_t len  = val ? strlen(val) : 0;
@@ -67,11 +288,6 @@ addStringAttr(hid_t dset_id, const char *name, const char *val) {
 	*/
 	strp = &val;
 #endif
-	spc_id = H5Screate( H5S_SCALAR );
-	if ( H5I_INVALID_HID == spc_id ) {
-		fprintf(stderr, "addStringAttr: H5Screate failed\n");
-		goto cleanup;
-	}
 	typ_id = H5Tcopy( H5T_C_S1 );
 	if ( H5I_INVALID_HID == typ_id ) {
 		fprintf(stderr, "addStringAttr: H5Tcopy failed\n");
@@ -82,243 +298,10 @@ addStringAttr(hid_t dset_id, const char *name, const char *val) {
 		fprintf(stderr, "addStringAttr: H5Tset_size failed\n");
 		goto cleanup;
 	}
-	hstat = addAttr(dset_id, name, spc_id, typ_id, strp);
+	hstat = scope_h5_add_attrs( h5d, name, typ_id, strp, 1 );
 cleanup:
 	if ( H5I_INVALID_HID != typ_id && H5Tclose( typ_id ) < 0 ) {
 		fprintf(stderr, "addStringAttr: H5Tclose failed (ignored)\n");
 	}
-	if ( H5I_INVALID_HID != spc_id && H5Sclose( spc_id ) < 0 ) {
-		fprintf(stderr, "addStringAttr: H5Sclose failed (ignored)\n");
-	}
 	return hstat;
-}
-
-/*
-#define H_PREC 10
-*/
-#define H_DEFL
-
-int
-main(int argc, char **argv)
-{
-	int           rv           = 1;
-	hid_t         type_id      = H5I_INVALID_HID;
-	hid_t         file_id      = H5I_INVALID_HID;
-	hid_t         dset_prop_id = H5I_INVALID_HID;
-	hid_t         dspace_id    = H5I_INVALID_HID;
-	hid_t         dset_id      = H5I_INVALID_HID;
-	hid_t         att1_id      = H5I_INVALID_HID;
-	hid_t         scal_id      = H5I_INVALID_HID;
-	herr_t        hstat;
-	hsize_t       dims[2]      = {NCOL, NELM};
-	int16_t       *data        = NULL;
-	int i,j;
-	uint32_t      att1Val      = 0xdeadbeef;
-	double        dblVal       = 1.23456789E78;
-	char          strval[100];
-	unsigned      prec         = 0;
-	unsigned      cmpr         = 0;
-	int           shfl         = 0;
-	unsigned      mask         = 0xffc0;
-	const char   *fnam         = "test.h5";
-	int           opt;
-	unsigned     *u_p;
-
-	while ( (opt = getopt(argc, argv, "C:Sp:m:f:")) > 0 ) {
-		u_p = 0;
-		switch ( opt ) {
-			case 'C' : u_p  = &cmpr;  break;
-			case 'S' : shfl = 1;      break;
-			case 'p':  u_p  = &prec;  break;
-			case 'm':  u_p  = &mask;  break;
-			case 'f':  fnam = optarg; break;
-			default:
-			break;
-		}
-		if ( u_p && 1 != sscanf(optarg, "%i", u_p)) {
-			fprintf(stderr, "Unable to scan option arg to -%c\n", opt);
-			return 1;
-		}
-	}
-	if ( prec > 16 ) {
-		fprintf(stderr, "Invalid precision (must be <= 16)\n");
-		return 1;
-	}
-	if ( cmpr > 9 ) {
-		fprintf(stderr, "Invalid compression parameter (1..9)\n");
-		return 1;
-	}
-
-	if ( ! (data = malloc(sizeof(int16_t)*NCOL*NELM)) ) {
-		fprintf(stderr, "No memory\n");
-		goto cleanup;
-	}
-	for ( j = 0; j < NCOL; ++j ) {
-		for ( i = 0; i < NELM; ++i ) {
-			/*data[j*NELM+i] = (j*100+i);*/
-			data[j*NELM+i] = random() & mask;
-		}
-	}
-
-	type_id = H5Tcopy( H5T_NATIVE_SHORT );
-	if ( H5I_INVALID_HID == type_id ) {
-		fprintf(stderr, "H5Tcopy failed\n");
-		goto cleanup;
-	}
-	if ( prec ) {
-		if ( (hstat = H5Tset_precision( type_id, prec )) < 0 ) {
-			fprintf(stderr, "H5Tset_precision failed\n");
-			goto cleanup;
-		}
-		if ( (hstat = H5Tset_offset( type_id,  16 - prec )) < 0 ) {
-			fprintf(stderr, "H5Tset_offset failed\n");
-			goto cleanup;
-		}
-	}
-
-	file_id = H5Fcreate( fnam, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT );
-
-	if ( H5I_INVALID_HID == file_id ) {
-		fprintf(stderr, "H5Fcreate failed\n");
-		goto cleanup;
-	}
-
-#if 1
-	/* NOTE: deflate or any other filter requires chunked layout */
-	dset_prop_id = H5Pcreate( H5P_DATASET_CREATE );
-	if ( H5I_INVALID_HID == dset_prop_id ) {
-		fprintf(stderr, "H5Pcreate failed\n");
-		goto cleanup;
-	}
-
-	if ( (hstat = H5Pset_chunk( dset_prop_id, sizeof(dims)/sizeof(dims[0]), dims )) < 0 ) {
-		fprintf(stderr, "H5Pset_chunk failed\n");
-		goto cleanup;
-	}
-
-	if ( prec ) {
-		if ( (hstat = H5Pset_nbit( dset_prop_id )) < 0 ) {
-			fprintf(stderr, "H5Pset_nbit failed\n");
-			goto cleanup;
-		}
-	}
-
-	if ( cmpr ) {
-		/* order of filter installment matters! */
-		if ( shfl ) {
-			if ( (hstat = H5Pset_shuffle( dset_prop_id )) < 0 ) {
-				fprintf(stderr, "H5Pset_shuffle failed\n");
-				goto cleanup;
-			}
-		}
-		if ( (hstat = H5Pset_deflate( dset_prop_id, cmpr )) < 0 ) {
-			fprintf(stderr, "H5Pset_deflate failed\n");
-			goto cleanup;
-		}
-	}
-#else
-	dset_prop_id = H5P_DEFAULT;
-#endif
-
-	dspace_id = H5Screate_simple( sizeof(dims)/sizeof(dims[0]), dims, dims );
-	if ( H5I_INVALID_HID == dspace_id ) {
-		fprintf(stderr, "H5Screate_simple failed\n");
-		goto cleanup;
-	}
-
-	dset_id = H5Dcreate( file_id, "/mydata", type_id, dspace_id, H5P_DEFAULT, dset_prop_id, H5P_DEFAULT );
-	if ( H5I_INVALID_HID == dset_id ) {
-		fprintf(stderr, "H5Dcreate failed\n");
-		goto cleanup;
-	}
-
-	scal_id = H5Screate( H5S_SCALAR );
-	if ( H5I_INVALID_HID == scal_id ) {
-		fprintf(stderr, "H5Screate failed\n");
-		goto cleanup;
-	}
-
-	if ( (hstat = addUintAttr( dset_id, "my_uint_attr", scal_id, &att1Val )) < 0 ) {
-		fprintf(stderr, "adding my_uint_attr failed\n");
-		goto cleanup;
-	}
-
-	if ( (hstat = addDoubleAttr( dset_id, "my_double_attr", scal_id, &dblVal )) < 0 ) {
-		fprintf(stderr, "adding my_double_attr failed\n");
-		goto cleanup;
-	}
-
-	snprintf(strval, sizeof(strval), "%s", "bar");
-	if ( (hstat = addStringAttr( dset_id, "foo", strval )) < 0 ) {
-		fprintf(stderr, "adding foo failed\n");
-		goto cleanup;
-	}
-	{ struct timespec now;
-	clock_gettime( CLOCK_REALTIME, &now );
-	tzset();
-	struct tm tm;
-	localtime_r( &now.tv_sec, &tm );
-	strftime( strval, sizeof(strval), "%c %Z", &tm );
-/*	ctime_r( &now.tv_sec, strval );
-	strcat( strval, tzname[1] ); */
-	printf(">>%s<<\n", strval);
-	}
-	if ( (hstat = addStringAttr( dset_id, "date", strval )) < 0 ) {
-		fprintf(stderr, "adding foo failed\n");
-		goto cleanup;
-	}
-
-
-	if ( (hstat = H5Dwrite( dset_id, type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data ) ) < 0 ) {
-		fprintf(stderr, "H5Dwrite failed\n");
-		goto cleanup;
-	}
-
-	rv = 0;
-cleanup:
-	if ( H5I_INVALID_HID != scal_id ) {
-		if ( (hstat = H5Sclose( scal_id )) ) {
-			fprintf(stderr, "H5Sclose failed\n");
-		}
-	}
-
-	if ( H5I_INVALID_HID != att1_id ) {
-		if ( (hstat = H5Aclose( att1_id )) ) {
-			fprintf(stderr, "H5Aclose failed\n");
-		}
-	}
-
-	if ( H5I_INVALID_HID != dset_id ) {
-		if ( (hstat = H5Dclose( dset_id )) ) {
-			fprintf(stderr, "H5Dclose failed\n");
-		}
-	}
-	if ( H5I_INVALID_HID != dspace_id ) {
-		if ( (hstat = H5Sclose( dspace_id )) ) {
-			fprintf(stderr, "H5Sclose failed\n");
-		}
-	}
-	if ( H5I_INVALID_HID != dset_prop_id && H5P_DEFAULT != dset_prop_id ) {
-		if ( (hstat = H5Pclose( dset_prop_id ) ) < 0 ) {
-			fprintf(stderr, "H5Pclose failed\n");
-		}
-	}
-
-	if ( H5I_INVALID_HID != file_id ) {
-		hstat = H5Fclose( file_id );
-		if ( hstat < 0 ) {
-			fprintf(stderr, "H5Fclose failed\n");
-		}
-	}
-
-	if ( H5I_INVALID_HID != type_id ) {
-		hstat = H5Tclose( type_id );
-		if ( hstat < 0 ) {
-			fprintf(stderr, "H5Tclose failed\n");
-		}
-	}
-
-	free(data);
-
-	return rv;
 }
