@@ -72,16 +72,20 @@ CMakeLists.txt: makefile
 	@echo 'project(fwcomm LANGUAGES C)'                          >> $@
 	@echo ''                                                     >> $@
 	@echo 'set( SOURCES $(OBJS:%.o=%.c) )'                       >> $@
+	@echo 'set( LIBS    fwcomm          )'                       >> $@
 	@echo ''                                                     >> $@
 	@echo 'find_package(HDF5 COMPONENTS C)'                      >> $@
 	@echo 'if( HDF5_FOUND )'                                     >> $@
 	@echo '  include_directories( $${HDF5_INCLUDE_DIR} )'        >> $@
 	@echo '  add_compile_definitions( CONFIG_WITH_HDF5 )'        >> $@
 	@echo '  list( APPEND SOURCES $(H5_OBJS:%.o=%.c) )'          >> $@
+	@echo '  list( APPEND LIBS    $${HDF5_LIBRARIES} )'          >> $@
 	@echo 'endif()'                                              >> $@
 	@echo ''                                                     >> $@
-	@echo 'set( LIBS fwcomm $${HDF5_LIBRARIES} m )'              >> $@
+	@echo 'list( APPEND LIBS m )'                                >> $@
+	@echo ''                                                     >> $@
 	@echo 'add_library( fwcomm $${SOURCES} )'                    >> $@
+	@echo ''                                                     >> $@
 	@for p in $(PROGS) ; do \
 		echo "add_executable( $$p $$p.c )"                       >> $@ ;\
 		echo "target_link_libraries( $$p PRIVATE \$${LIBS} )"    >> $@ ;\
