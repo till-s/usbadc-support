@@ -67,10 +67,63 @@ cleanup:
 	}
 	return hstat;
 }
+
+static hid_t
+map_type(ScopeH5SampleType typ, unsigned bitShift, unsigned precision)
+{
+herr_t       hstat;
+hid_t        baseType;
+unsigned     baseTypePrec;
+hid_t        type_id = H5I_INVALID_HID;
+
+	switch ( typ ) {
+		case INT8_T    :   baseType = H5T_NATIVE_INT8;    baseTypePrec = sizeof(int8_t)*8;     break;
+		case INT16_T   :   baseType = H5T_NATIVE_INT16;   baseTypePrec = sizeof(int16_t)*8;    break;
+		case INT16LE_T :   baseType = H5T_STD_I16LE;      baseTypePrec = sizeof(int16_t)*8;    break;
+		case INT16BE_T :   baseType = H5T_STD_I16BE;      baseTypePrec = sizeof(int16_t)*8;    break;
+		case FLOAT_T   :   baseType = H5T_NATIVE_FLOAT;   baseTypePrec = sizeof(float)*8;      break;
+		case DOUBLE_T  :   baseType = H5T_NATIVE_DOUBLE;  baseTypePrec = sizeof(double)*8;     break;
+		default:
+			fprintf(stderr, "scope_h5_create INTERNAL ERROR -- unsupported datatype\n");
+			abort();
+	}
+
+	type_id = H5Tcopy( baseType );
+	if ( H5I_INVALID_HID == type_id ) {
+		fprintf(stderr, "H5Tcopy failed\n");
+		goto cleanup;
+	}
+
+	if ( (bitShift || precision) && (FLOAT_T != typ) && (DOUBLE_T != typ) ) {
+		if ( 0 == precision ) {
+			precision = baseTypePrec - bitShift;
+		}
+		if ( bitShift + precision > baseTypePrec ) {
+			fprintf(stderr, "Invalid bitShift or precision\n");
+			goto cleanup;
+		}
+		if ( (hstat = H5Tset_precision( type_id, precision)) < 0 ) {
+			fprintf(stderr, "H5Tset_precision failed\n");
+			goto cleanup;
+		}
+		if ( (hstat = H5Tset_offset( type_id,  bitShift )) < 0 ) {
+			fprintf(stderr, "H5Tset_offset failed\n");
+			goto cleanup;
+		}
+	}
+
+	return type_id;
+
+cleanup:
+	if ( H5I_INVALID_HID != type_id ) {
+		H5Tclose( type_id );
+	}
+	return H5I_INVALID_HID;
+}
 #endif
 
 static ScopeH5Data *
-scope_h5_do_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const size_t *dims, const ScopeDataDimension *hdims, size_t ndims, const void *data)
+scope_h5_do_create(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, ScopeH5SampleType mem_type, const size_t *dims, const ScopeDataDimension *hdims, size_t ndims, const void *data)
 {
 #ifndef CONFIG_WITH_HDF5
 	fprintf(stderr, "scope_h5_open -- HDF5 support not compiled in, sorry\n");
@@ -83,13 +136,6 @@ size_t       i;
 int          compression = 4; /* compression level; 0..9; set to < to disable */
 hid_t        mem_type_id = H5I_INVALID_HID;
 hid_t        set_type_id = H5I_INVALID_HID;
-int          dblAsFlt    = (DOUBLE_T == dtype && 32 == bitShift);
-hid_t        baseType;
-unsigned     baseTypePrec;
-
-	if ( dblAsFlt ) {
-		bitShift = 0;
-	}
 
 	if ( ! (h5d = calloc( sizeof(*h5d), 1 )) ) {
 		fprintf(stderr, "scope_h5_create: No memory\n");
@@ -134,63 +180,14 @@ unsigned     baseTypePrec;
 		goto cleanup;
 	}
 
-	switch ( dtype ) {
-		case INT8_T    :   baseType = H5T_NATIVE_INT8;    baseTypePrec = sizeof(int8_t)*8;     break;
-		case INT16_T   :   baseType = H5T_NATIVE_INT16;   baseTypePrec = sizeof(int16_t)*8;    break;
-		case INT16LE_T :   baseType = H5T_STD_I16LE;      baseTypePrec = sizeof(int16_t)*8;    break;
-		case INT16BE_T :   baseType = H5T_STD_I16BE;      baseTypePrec = sizeof(int16_t)*8;    break;
-		case FLOAT_T   :   baseType = H5T_NATIVE_FLOAT;   baseTypePrec = sizeof(float)*8;      break;
-		case DOUBLE_T  :   baseType = H5T_NATIVE_DOUBLE;  baseTypePrec = sizeof(double)*8;     break;
-		default:
-			fprintf(stderr, "scope_h5_create INTERNAL ERROR -- unsupported datatype\n");
-			abort();
-	}
-
-	mem_type_id = H5Tcopy( baseType );
+	mem_type_id = map_type( mem_type, bitShift, precision );
 	if ( H5I_INVALID_HID == mem_type_id ) {
-		fprintf(stderr, "H5Tcopy failed\n");
 		goto cleanup;
 	}
-	if ( bitShift ) {
-		if ( bitShift >= baseTypePrec || FLOAT_T == dtype || DOUBLE_T == dtype ) {
-			fprintf(stderr, "Invalid bitShift\n");
-			goto cleanup;
-		}
-		if ( (hstat = H5Tset_precision( mem_type_id, baseTypePrec - bitShift )) < 0 ) {
-			fprintf(stderr, "H5Tset_precision failed\n");
-			goto cleanup;
-		}
-		if ( (hstat = H5Tset_offset( mem_type_id,  bitShift )) < 0 ) {
-			fprintf(stderr, "H5Tset_offset failed\n");
-			goto cleanup;
-		}
-	}
 
-	if ( DOUBLE_T == dtype || FLOAT_T == dtype ) {
-		if ( dblAsFlt ) {
-			/* store as float only */
-			set_type_id = H5Tcopy( H5T_NATIVE_FLOAT );
-			if ( H5I_INVALID_HID == set_type_id ) {
-				fprintf(stderr, "H5Tcopy failed\n");
-				goto cleanup;
-			}
-		}
-	} else {
-		/* Store in native order (on the assumption that the file may be reopened multiple times */
-		if ( H5Tget_order( mem_type_id ) != h5d->native_order ) {
-			set_type_id = H5Tcopy( mem_type_id );
-			if ( H5I_INVALID_HID == set_type_id ) {
-				fprintf(stderr, "H5Tcopy failed\n");
-				goto cleanup;
-			}
-			if ( H5Tset_order( set_type_id, h5d->native_order ) ) {
-				fprintf(stderr, "H5Tset_order failed\n");
-				goto cleanup;
-			}
-		}
-	}
+	set_type_id = map_type( dset_type, bitShift, precision );
 	if ( H5I_INVALID_HID == set_type_id ) {
-		set_type_id = mem_type_id;
+		goto cleanup;
 	}
 
 	h5d->file_id = H5Fcreate( fnam, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT );
@@ -284,13 +281,25 @@ cleanup:
 ScopeH5Data *
 scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const size_t *dims, size_t ndims, const void *data)
 {
-	return scope_h5_do_create( fnam, dtype, bitShift, dims, NULL, ndims, data );
+ScopeH5SampleType dsetType = dtype;
+
+	if ( DOUBLE_T == dtype || FLOAT_T == dtype ) {
+		if ( 32 == bitShift ) {
+			dsetType = FLOAT_T;
+			bitShift = 0;
+		}
+	} else {
+		if ( INT16LE_T == dtype || INT16BE_T == dtype ) {
+			dsetType = INT16_T;
+		}
+	}
+	return scope_h5_do_create( fnam, dsetType, 0, bitShift, dtype, dims, NULL, ndims, data );
 }
 
 ScopeH5Data *
-scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const ScopeDataDimension *hdims, size_t ndims, const void *data)
+scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, ScopeH5SampleType mem_type, const ScopeDataDimension *hdims, size_t ndims, const void *data)
 {
-	return scope_h5_do_create( fnam, dtype, bitShift, NULL, hdims, ndims, data );
+	return scope_h5_do_create( fnam, dset_type, precision, bitShift, mem_type, NULL, hdims, ndims, data );
 }
 
 void

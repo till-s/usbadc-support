@@ -37,7 +37,7 @@ scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, co
  * the 'off' and 'count' arrays must have the same size as 'dims'
  */
 ScopeH5Data *
-scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const ScopeDataDimension *dims, size_t ndims, const void *data);
+scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, ScopeH5SampleType mem_type, const ScopeDataDimension *dims, size_t ndims, const void *data);
 
 long
 scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval );
