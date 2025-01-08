@@ -9,7 +9,7 @@ GHDLFLAGS=-P -fsynopsys -Wl,-no-pie -g
 GHDLFLAGS=-P/usr/lib/ghdl
 
 # BRAM or SDRAM
-SAMPLEBUFFER_TYPE=SDRAM
+SAMPLEBUFFER_TYPE=BRAM
 
 # where to find RamEmul.vhd (if SAMPLEBUFFER_TYPE == SDRAM)
 VPATH=../../SDRAM-Controller
@@ -44,6 +44,7 @@ OBJS+=GenericFifoAsync.o
 OBJS+=SimpleBusAsync.o
 #OBJS+=SinCosGen.o
 OBJS+=SimpleBusPipeStage.o
+OBJS+=SpiShadowReg.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
 # Elaboration target
