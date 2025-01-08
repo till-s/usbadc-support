@@ -46,7 +46,7 @@ OBJS+=SimpleBusPipeStage.o
 OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
 # Elaboration target
-CommandWrapperTb: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o CommandWrapperTb.o $(OBJS)
+CommandWrapperTb: CommandWrapperTb.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS) -o $@ $@
 
 %Tb: %Tb.o $(OBJS)
@@ -62,25 +62,6 @@ SampleBufferTb: SampleBufferTb.o SampleBuffer$(SAMPLEBUFFER_TYPE).o Synchronizer
 run: CommandWrapperTb
 	$(GHDL) -r $^ $(GHDLRUNFLAGS)
 
-# Targets to analyze files
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/v93/std_logic_1164.vhdl
-	@echo "This file was not locally built ($<)"
-	exit 1
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/v93/std_logic_1164-body.vhdl
-	@echo "This file was not locally built ($<)"
-	exit 1
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/v93/numeric_std.vhdl
-	@echo "This file was not locally built ($<)"
-	exit 1
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/v93/numeric_std-body.vhdl
-	@echo "This file was not locally built ($<)"
-	exit 1
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/math_real.vhdl
-	@echo "This file was not locally built ($<)"
-	exit 1
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o: /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/../../src/ieee/math_real-body.vhdl
-	@echo "This file was not locally built ($<)"
-	exit 1
 CommandMuxPkg.o: CommandMuxPkg.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
 ByteStuffer.o: ByteStuffer.vhd
@@ -125,23 +106,17 @@ SimPtyIO.o: SimPtyIO.cc
 	g++ -Wall -c -O2 -o $@ $<
 
 # Files dependences
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o: 
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o: 
-/opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o
-CommandMuxPkg.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real-body.o BasicPkg.o
-ByteStuffer.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
-SFifo.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o
-ByteDeStuffer.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
-CommandMux.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o
-SynchronizerBit.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o
-BitBangIF.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o SynchronizerBit.o BasicPkg.o
-CommandBitBang.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/math_real.o CommandMuxPkg.o BitBangIF.o
-MaxAdc.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ILAWrapper.o AcqCtlPkg.o BasicPkg.o CicFilter.o PipelinedRShifter.o MulShifter.o
-CommandWrapper.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o CommandAcqParm.o CommandSpi.o CommandReg.o SimpleBusPipeStage.o
-CommandWrapperTb.o:  /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/std_logic_1164-body.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std.o /opt/ghdl/v1.0.0-gcc/lib/ghdl/ieee/v93/numeric_std-body.o CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
+CommandMuxPkg.o:  BasicPkg.o
+ByteStuffer.o:
+SFifo.o:
+ByteDeStuffer.o:
+CommandMux.o:    CommandMuxPkg.o
+SynchronizerBit.o:
+BitBangIF.o:     SynchronizerBit.o BasicPkg.o
+CommandBitBang.o:     CommandMuxPkg.o BitBangIF.o
+MaxAdc.o:    CommandMuxPkg.o ILAWrapper.o AcqCtlPkg.o BasicPkg.o CicFilter.o PipelinedRShifter.o MulShifter.o
+CommandWrapper.o:    CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o CommandAcqParm.o CommandSpi.o CommandReg.o SimpleBusPipeStage.o
+CommandWrapperTb.o:      CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
 PipelinedRShifterTb.o: PipelinedRShifter.o
 CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
@@ -177,6 +152,6 @@ BRDVERSION:=01
 .PHONY: .FORCE all clean test
 
 clean:
-	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o 
+	$(RM) $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o
 	$(RM) dump.ghw work-obj*.cf e~*.o
 	$(RM) $(TESTS:%=%.o) $(TESTS)
