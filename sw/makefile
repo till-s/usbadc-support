@@ -15,9 +15,8 @@ OBJS+=scopeSup.o
 
 LOBJS=$(OBJS) $(H5_OBJS)
 
-H5_OBJS_YES=hdf5Sup.o
+H5_OBJS=hdf5Sup.o
 
-H5_OBJS=$(H5_OBJS_$(HAVE_H5))
 HCC=$(HCC_$(HAVE_H5))
 
 PROGS=bbcli scopeCal
@@ -37,7 +36,7 @@ bbcli scopeCal unitDataTst:%:%.o libfwcomm.a
 pyfwcomm.o: $(PYFWCOMM_C)
 	$(CC) $(CFLAGS) -c -o $@ $^ -I $(PYINC)
 
-$(H5_OBJS_YES): %.o: %.c %.h
+$(H5_OBJS): %.o: %.c %.h
 	$(HCC) $(CFLAGS) -c -o $@ $<
 
 $(PYFWCOMM_C): pyfwcomm.pyx fwComm.h pyfwcomm.pxd 
@@ -71,14 +70,13 @@ CMakeLists.txt: makefile
 	@echo ''                                                     >> $@
 	@echo 'project( fwcomm LANGUAGES C )'                        >> $@
 	@echo ''                                                     >> $@
-	@echo 'set( SOURCES $(OBJS:%.o=%.c) )'                       >> $@
+	@echo 'set( SOURCES $(LOBJS:%.o=%.c) )'                      >> $@
 	@echo 'set( LIBS    fwcomm          )'                       >> $@
 	@echo ''                                                     >> $@
 	@echo 'find_package(HDF5 COMPONENTS C)'                      >> $@
 	@echo 'if( HDF5_FOUND )'                                     >> $@
 	@echo '  include_directories( $${HDF5_INCLUDE_DIR} )'        >> $@
 	@echo '  add_compile_definitions( CONFIG_WITH_HDF5 )'        >> $@
-	@echo '  list( APPEND SOURCES $(H5_OBJS:%.o=%.c) )'          >> $@
 	@echo '  list( APPEND LIBS    $${HDF5_LIBRARIES} )'          >> $@
 	@echo 'endif()'                                              >> $@
 	@echo ''                                                     >> $@

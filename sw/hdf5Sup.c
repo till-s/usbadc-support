@@ -1,10 +1,14 @@
-#include <hdf5.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
+#include <errno.h>
+#include <stdio.h>
 
 #include "hdf5Sup.h"
+
+#ifdef CONFIG_WITH_HDF5
+#include <hdf5.h>
 
 struct ScopeH5Data {
 	hid_t               type_id;
@@ -20,9 +24,57 @@ struct ScopeH5Data {
 	unsigned            bitShift;
 };
 
+static herr_t
+scope_h5_add_attrs(ScopeH5Data *h5d, const char *name, hid_t typ_id, const void *val, unsigned nval)
+{
+	herr_t hstat  = -1;
+	hid_t  spc_id = H5I_INVALID_HID;
+	hid_t  att_id = -1;
+
+	if ( nval > 1 ) {
+		hsize_t dim = nval;
+		spc_id = H5Screate_simple( 1, &dim, &dim );
+		if ( H5I_INVALID_HID == spc_id ) {
+			fprintf(stderr, "H5Screate_simple failed\n");
+		}
+	} else if ( 1 == nval ) {
+		spc_id = h5d->scal_id;
+	}
+	if ( H5I_INVALID_HID == spc_id ) {
+		/* reject nval == 0 */
+		goto cleanup;
+	}
+	att_id = H5Acreate2( h5d->dset_id, name, typ_id, spc_id, H5P_DEFAULT, H5P_DEFAULT );
+	if ( H5I_INVALID_HID == att_id ) {
+		fprintf(stderr, "H5Acreate2 failed\n");
+		return att_id;
+	}
+
+	if ( (hstat = H5Awrite( att_id, typ_id, val )) < 0 ) {
+		fprintf(stderr, "H5Awrite(%s) failed\n", name);
+		goto cleanup;
+	}
+
+cleanup:
+	if ( H5Aclose( att_id ) < 0 ) {
+		fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Aclose(%s) failed\n", name);
+	}
+	if ( H5I_INVALID_HID != spc_id && h5d->scal_id != spc_id ) {
+		if ( H5Sclose( spc_id ) < 0 ) {
+			fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Sclose failed\n");
+		}
+	}
+	return hstat;
+}
+#endif
+
 ScopeH5Data *
 scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, size_t *dims, size_t ndims, const void *data)
 {
+#ifndef CONFIG_WITH_HDF5
+	fprintf(stderr, "scope_h5_open -- HDF5 support not compiled in, sorry\n");
+	return NULL;
+#else
 ScopeH5Data *h5d = NULL;
 herr_t       hstat;
 size_t       i;
@@ -150,11 +202,13 @@ unsigned     baseTypePrec;
 cleanup:
 	scope_h5_close( h5d );
 	return NULL;
+#endif
 }
 
 void
 scope_h5_close(ScopeH5Data *h5d)
 {
+#ifdef CONFIG_WITH_HDF5
 herr_t hstat;
 
 	if ( ! h5d ) {
@@ -202,76 +256,53 @@ herr_t hstat;
 			fprintf(stderr, "H5Tclose failed\n");
 		}
 	}
-	
+
 	free( h5d->dims );
 
 	free( h5d );
+#endif
 }
 
-static herr_t
-scope_h5_add_attrs(ScopeH5Data *h5d, const char *name, hid_t typ_id, const void *val, unsigned nval)
+long
+scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, unsigned *val, size_t nval )
 {
-	herr_t hstat  = -1;
-	hid_t  spc_id = H5I_INVALID_HID;
-	hid_t  att_id = -1;
-
-	if ( nval > 1 ) {
-		hsize_t dim = nval;
-		spc_id = H5Screate_simple( 1, &dim, &dim );
-		if ( H5I_INVALID_HID == spc_id ) {
-			fprintf(stderr, "H5Screate_simple failed\n");
-		}
-	} else if ( 1 == nval ) {
-		spc_id = h5d->scal_id;
-	}
-	if ( H5I_INVALID_HID == spc_id ) {
-		/* reject nval == 0 */
-		goto cleanup;
-	}
-	att_id = H5Acreate2( h5d->dset_id, name, typ_id, spc_id, H5P_DEFAULT, H5P_DEFAULT );
-	if ( H5I_INVALID_HID == att_id ) {
-		fprintf(stderr, "H5Acreate2 failed\n");
-		return att_id;
-	}
-
-	if ( (hstat = H5Awrite( att_id, typ_id, val )) < 0 ) {
-		fprintf(stderr, "H5Awrite(%s) failed\n", name);
-		goto cleanup;
-	}
-
-cleanup:
-	if ( H5Aclose( att_id ) < 0 ) {
-		fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Aclose(%s) failed\n", name);
-	}
-	if ( H5I_INVALID_HID != spc_id && h5d->scal_id != spc_id ) {
-		if ( H5Sclose( spc_id ) < 0 ) {
-			fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Sclose failed\n");
-		}
-	}
-	return hstat;
-}
-
-long
-scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, unsigned *val, size_t nval ) {
+#ifndef CONFIG_WITH_HDF5
+	return -ENOTSUP;
+#else
 	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_UINT, val, nval );
+#endif
 }
 
 long
-scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, int *val, size_t nval ) {
+scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, int *val, size_t nval )
+{
+#ifndef CONFIG_WITH_HDF5
+	return -ENOTSUP;
+#else
 	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_INT, val, nval );
+#endif
 }
 
 long
-scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, double *val, size_t nval ) {
+scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, double *val, size_t nval )
+{
+#ifndef CONFIG_WITH_HDF5
+	return -ENOTSUP;
+#else
 	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_DOUBLE, val, nval );
+#endif
 }
 
 long
-scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val) {
-	hid_t typ_id = H5I_INVALID_HID;
-	herr_t hstat = -1;
-	hsize_t len  = val ? strlen(val) : 0;
-    const void *strp = val;
+scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val)
+{
+#ifndef CONFIG_WITH_HDF5
+	return -ENOTSUP;
+#else
+	hid_t typ_id     = H5I_INVALID_HID;
+	herr_t hstat     = -1;
+	hsize_t len      = val ? strlen(val) : 0;
+	const void *strp = val;
 
 /* variable length string could also occupy a 1-dimensional array
  * of 1 element of char *
@@ -304,4 +335,5 @@ cleanup:
 		fprintf(stderr, "addStringAttr: H5Tclose failed (ignored)\n");
 	}
 	return hstat;
+#endif
 }

@@ -16,10 +16,7 @@
 #include "max195xxSup.h"
 #include "fegRegSup.h"
 #include "scopeSup.h"
-
-#ifdef CONFIG_WITH_HDF5
 #include "hdf5Sup.h"
-#endif
 
 /* covers image size of xc3s200a for multiboot */
 #ifndef  FLASHADDR_DFLT
@@ -623,9 +620,7 @@ const char        *feOp      = 0;
 AT25Flash         *flash     = 0;
 ScopePvt          *scope     = 0;
 const char        *h5nam     = NULL;
-#ifdef CONFIG_WITH_HDF5
 ScopeH5Data       *h5d       = NULL;
-#endif
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
@@ -780,9 +775,6 @@ ScopeH5Data       *h5d       = NULL;
 		if ( i > 0 ) {
 			fprintf(stderr, "ADC Data (got %d, header: 0x%04" PRIx16 ")\n", i, hdr);
 			if ( dumpAdc > 1 ) {
-#ifndef CONFIG_WITH_HDF5
-				fprintf(stderr, "Error: HDF5 Support not compiled in, sorry\n");
-#else
 				ScopeH5SampleType dtyp = (fl & FW_BUF_FLG_16B) ? INT16LE_T : INT8_T;
 				int               ssiz = (INT8_T == dtyp ? sizeof(int8_t) : sizeof(int16_t));
 				int               prec = buf_get_sample_size( scope );
@@ -794,7 +786,6 @@ ScopeH5Data       *h5d       = NULL;
 				/* num-samples = nbytes */ 
 				dims[0] = i / dims[1] / ssiz;
 				h5d = scope_h5_create( h5nam, dtyp, 8*ssiz - prec, dims, sizeof(dims)/sizeof(dims[0]), buf );
-#endif
 			} else {
 				if ( (fl & FW_BUF_FLG_16B) ) {
 					if ( ( i & 1 ) ) {
@@ -825,6 +816,10 @@ ScopeH5Data       *h5d       = NULL;
 				fprintf(stderr, "Error: buffer-read timeout\n");
 			}
 			goto bail;
+		} else {
+			if ( dumpAdc > 0 ) {
+				fprintf(stderr, "Info: currently no data on device\n");
+			}
 		}
 	}
 
@@ -1128,11 +1123,9 @@ bail:
 	if ( flash ) {
 		at25_close( flash );
 	}
-#ifdef CONFIG_WITH_HDF5
 	if ( h5d ) {
 		scope_h5_close( h5d );
 	}
-#endif
 	if ( scope ) {
 		scope_close( scope );
 	}
