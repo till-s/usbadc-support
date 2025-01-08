@@ -19,6 +19,8 @@ struct ScopeH5Data {
 	hid_t               scal_id;
 	ScopeH5SampleType   smpl_type;
 	hsize_t            *dims;
+	hsize_t            *offs;
+	hsize_t            *cnts;
 	hsize_t             ndims;
 	H5T_order_t         native_order;
 };
@@ -67,8 +69,8 @@ cleanup:
 }
 #endif
 
-ScopeH5Data *
-scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, size_t *dims, size_t ndims, const void *data)
+static ScopeH5Data *
+scope_h5_do_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const size_t *dims, const ScopeDataDimension *hdims, size_t ndims, const void *data)
 {
 #ifndef CONFIG_WITH_HDF5
 	fprintf(stderr, "scope_h5_open -- HDF5 support not compiled in, sorry\n");
@@ -104,9 +106,27 @@ unsigned     baseTypePrec;
 		fprintf(stderr, "scope_h5_create: No memory\n");
 		goto cleanup;
 	}
+	if ( ! (h5d->offs = calloc( sizeof(*h5d->offs), ndims )) ) {
+		fprintf(stderr, "scope_h5_create: No memory\n");
+		goto cleanup;
+	}
+	if ( ! (h5d->cnts = calloc( sizeof(*h5d->cnts), ndims )) ) {
+		fprintf(stderr, "scope_h5_create: No memory\n");
+		goto cleanup;
+	}
 	h5d->ndims = ndims;
-	for ( i = 0; i < ndims; ++i ) {
-		h5d->dims[i] = dims[i];
+	if ( dims ) {
+		for ( i = 0; i < ndims; ++i ) {
+			h5d->dims[i] = h5d->cnts[i] = dims[i];
+		}
+	} else {
+		for ( i = 0; i < ndims; ++i ) {
+			h5d->dims[i] = hdims[i].maxlen;
+			h5d->offs[i] = hdims[i].offset;
+			if ( 0 == (h5d->cnts[i] = hdims[i].actlen) ) {
+				h5d->cnts[i] = h5d->dims[i];
+			}
+		}
 	}
 
 	if ( H5T_ORDER_ERROR == (h5d->native_order = H5Tget_order( H5T_NATIVE_INT )) ) {
@@ -217,6 +237,11 @@ unsigned     baseTypePrec;
 		goto cleanup;
 	}
 
+	if ( H5Sselect_hyperslab( h5d->dspace_id, H5S_SELECT_SET, h5d->offs, NULL, h5d->cnts, NULL ) < 0 ) {
+		fprintf(stderr, "H5Sselect_hyperslab failed\n");
+		goto cleanup;
+	}
+
 	h5d->dset_id = H5Dcreate( h5d->file_id, "/scopeData", set_type_id, h5d->dspace_id, H5P_DEFAULT, h5d->dset_prop_id, H5P_DEFAULT );
 	if ( H5I_INVALID_HID == h5d->dset_id ) {
 		fprintf(stderr, "H5Dcreate failed\n");
@@ -254,6 +279,18 @@ cleanup:
 	}
 	return ret;
 #endif
+}
+
+ScopeH5Data *
+scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const size_t *dims, size_t ndims, const void *data)
+{
+	return scope_h5_do_create( fnam, dtype, bitShift, dims, NULL, ndims, data );
+}
+
+ScopeH5Data *
+scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const ScopeDataDimension *hdims, size_t ndims, const void *data)
+{
+	return scope_h5_do_create( fnam, dtype, bitShift, NULL, hdims, ndims, data );
 }
 
 void
@@ -302,13 +339,15 @@ herr_t hstat;
 	}
 
 	free( h5d->dims );
+	free( h5d->offs );
+	free( h5d->cnts );
 
 	free( h5d );
 #endif
 }
 
 long
-scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, unsigned *val, size_t nval )
+scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval )
 {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
@@ -318,7 +357,7 @@ scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, unsigned *val, size
 }
 
 long
-scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, int *val, size_t nval )
+scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, const int *val, size_t nval )
 {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
@@ -328,7 +367,7 @@ scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, int *val, size_t nva
 }
 
 long
-scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, double *val, size_t nval )
+scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, const double *val, size_t nval )
 {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
