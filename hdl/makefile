@@ -4,25 +4,27 @@
 # ghdl --gen-makefile CommandWrapperTb
 
 GHDL=ghdl
-#GHDLFLAGS=-P/opt/ghdl/v1.0.0-gcc/ise-14.7/
-GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
+#GHDLFLAGS=-P
+GHDLFLAGS=-P -fsynopsys -Wl,-no-pie -g
+GHDLFLAGS=-P/usr/lib/ghdl
 
 # BRAM or SDRAM
-SAMPLEBUFFER_TYPE=BRAM
+SAMPLEBUFFER_TYPE=SDRAM
 
 # where to find RamEmul.vhd (if SAMPLEBUFFER_TYPE == SDRAM)
-VPATH=../../SDRAMCtrl
+VPATH=../../SDRAM-Controller
 
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
 TESTS= CommandWrapperTb CommandWrapperSim CicFilterTb PipelinedRShifterTb
-TESTS+=SpiRegTb SpiShadowRegTb SampleBufferTb SimpleBusAsyncTb SimpleBusPipeStageTb
+TESTS+=SpiRegTb SpiShadowRegTb SampleBufferTb
+TESTS+=SimpleBusAsyncTb SimpleBusPipeStageTb
 
 all: $(TESTS)
 
 test: $(filter-out CommandWrapperSim,$(TESTS))
-	for i in $^; do if ! ./$$i; then exit 1; fi done
+	for i in $^; do echo "Running $$i"; if ! ./$$i; then exit 1; fi done
 
 RAM_EMUL_SDRAM=RamEmul
 
@@ -36,8 +38,7 @@ OBJS+=CommandSpi.o SpiBitShifter.o
 OBJS+=SpiFlashSim.o SpiChecker.o
 OBJS+=Flicker.o
 OBJS+=CommandReg.o
-OBJS+=SampleBufferBRAM.o
-OBJS+=SampleBufferSDRAM.o
+OBJS+=SampleBuffer$(SAMPLEBUFFER_TYPE).o
 OBJS+=SDRAMPkg.o
 OBJS+=GenericFifoAsync.o
 OBJS+=SimpleBusAsync.o
@@ -82,7 +83,7 @@ CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 SimPty.o: SimPty.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
-MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMPkg.o
+MaxAdc.o: MaxAdc.vhd SampleBuffer$(SAMPLEBUFFER_TYPE).o SDRAMPkg.o
 	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o CommandVersion.o
 	$(GHDL) -a $(GHDLFLAGS) $<
