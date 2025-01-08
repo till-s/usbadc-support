@@ -11,7 +11,6 @@
 #include <hdf5.h>
 
 struct ScopeH5Data {
-	hid_t               type_id;
 	hid_t               file_id;
 	hid_t               dset_prop_id;
 	hid_t               dspace_id;
@@ -21,7 +20,7 @@ struct ScopeH5Data {
 	ScopeH5SampleType   smpl_type;
 	hsize_t            *dims;
 	hsize_t             ndims;
-	unsigned            bitShift;
+	H5T_order_t         native_order;
 };
 
 static herr_t
@@ -76,17 +75,24 @@ scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, si
 	return NULL;
 #else
 ScopeH5Data *h5d = NULL;
+ScopeH5Data *ret = NULL;
 herr_t       hstat;
 size_t       i;
 int          compression = 4; /* compression level; 0..9; set to < to disable */
+hid_t        mem_type_id = H5I_INVALID_HID;
+hid_t        set_type_id = H5I_INVALID_HID;
+int          dblAsFlt    = (DOUBLE_T == dtype && 32 == bitShift);
 hid_t        baseType;
 unsigned     baseTypePrec;
+
+	if ( dblAsFlt ) {
+		bitShift = 0;
+	}
 
 	if ( ! (h5d = calloc( sizeof(*h5d), 1 )) ) {
 		fprintf(stderr, "scope_h5_create: No memory\n");
 		return h5d;
 	}
-	h5d->type_id      = H5I_INVALID_HID;
 	h5d->file_id      = H5I_INVALID_HID;
 	h5d->dset_prop_id = H5I_INVALID_HID;
 	h5d->dspace_id    = H5I_INVALID_HID;
@@ -103,6 +109,11 @@ unsigned     baseTypePrec;
 		h5d->dims[i] = dims[i];
 	}
 
+	if ( H5T_ORDER_ERROR == (h5d->native_order = H5Tget_order( H5T_NATIVE_INT )) ) {
+		fprintf(stderr, "H5Tget_order(H5T_NATIVE_INT) failed\n");
+		goto cleanup;
+	}
+
 	switch ( dtype ) {
 		case INT8_T    :   baseType = H5T_NATIVE_INT8;    baseTypePrec = sizeof(int8_t)*8;     break;
 		case INT16_T   :   baseType = H5T_NATIVE_INT16;   baseTypePrec = sizeof(int16_t)*8;    break;
@@ -115,24 +126,51 @@ unsigned     baseTypePrec;
 			abort();
 	}
 
-	h5d->type_id = H5Tcopy( baseType );
-	if ( H5I_INVALID_HID == h5d->type_id ) {
+	mem_type_id = H5Tcopy( baseType );
+	if ( H5I_INVALID_HID == mem_type_id ) {
 		fprintf(stderr, "H5Tcopy failed\n");
 		goto cleanup;
 	}
 	if ( bitShift ) {
-		if ( bitShift >= baseTypePrec ) {
+		if ( bitShift >= baseTypePrec || FLOAT_T == dtype || DOUBLE_T == dtype ) {
 			fprintf(stderr, "Invalid bitShift\n");
 			goto cleanup;
 		}
-		if ( (hstat = H5Tset_precision( h5d->type_id, baseTypePrec - bitShift )) < 0 ) {
+		if ( (hstat = H5Tset_precision( mem_type_id, baseTypePrec - bitShift )) < 0 ) {
 			fprintf(stderr, "H5Tset_precision failed\n");
 			goto cleanup;
 		}
-		if ( (hstat = H5Tset_offset( h5d->type_id,  bitShift )) < 0 ) {
+		if ( (hstat = H5Tset_offset( mem_type_id,  bitShift )) < 0 ) {
 			fprintf(stderr, "H5Tset_offset failed\n");
 			goto cleanup;
 		}
+	}
+
+	if ( DOUBLE_T == dtype || FLOAT_T == dtype ) {
+		if ( dblAsFlt ) {
+			/* store as float only */
+			set_type_id = H5Tcopy( H5T_NATIVE_FLOAT );
+			if ( H5I_INVALID_HID == set_type_id ) {
+				fprintf(stderr, "H5Tcopy failed\n");
+				goto cleanup;
+			}
+		}
+	} else {
+		/* Store in native order (on the assumption that the file may be reopened multiple times */
+		if ( H5Tget_order( mem_type_id ) != h5d->native_order ) {
+			set_type_id = H5Tcopy( mem_type_id );
+			if ( H5I_INVALID_HID == set_type_id ) {
+				fprintf(stderr, "H5Tcopy failed\n");
+				goto cleanup;
+			}
+			if ( H5Tset_order( set_type_id, h5d->native_order ) ) {
+				fprintf(stderr, "H5Tset_order failed\n");
+				goto cleanup;
+			}
+		}
+	}
+	if ( H5I_INVALID_HID == set_type_id ) {
+		set_type_id = mem_type_id;
 	}
 
 	h5d->file_id = H5Fcreate( fnam, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT );
@@ -179,7 +217,7 @@ unsigned     baseTypePrec;
 		goto cleanup;
 	}
 
-	h5d->dset_id = H5Dcreate( h5d->file_id, "/scopeData", h5d->type_id, h5d->dspace_id, H5P_DEFAULT, h5d->dset_prop_id, H5P_DEFAULT );
+	h5d->dset_id = H5Dcreate( h5d->file_id, "/scopeData", set_type_id, h5d->dspace_id, H5P_DEFAULT, h5d->dset_prop_id, H5P_DEFAULT );
 	if ( H5I_INVALID_HID == h5d->dset_id ) {
 		fprintf(stderr, "H5Dcreate failed\n");
 		goto cleanup;
@@ -192,16 +230,29 @@ unsigned     baseTypePrec;
 		goto cleanup;
 	}
 
-	if ( (hstat = H5Dwrite( h5d->dset_id, h5d->type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data ) ) < 0 ) {
+	if ( (hstat = H5Dwrite( h5d->dset_id, mem_type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, data ) ) < 0 ) {
 		fprintf(stderr, "H5Dwrite failed\n");
 		goto cleanup;
 	}
 
-	return h5d;
+	ret = h5d;
+	h5d = NULL;
 
 cleanup:
-	scope_h5_close( h5d );
-	return NULL;
+	if ( H5I_INVALID_HID != set_type_id && set_type_id != mem_type_id ) {
+		if ( H5Tclose( set_type_id ) ) {
+			fprintf(stderr, "WARNING: H5Tclose failed\n");
+		}
+	}
+	if ( H5I_INVALID_HID != mem_type_id ) {
+		if ( H5Tclose( mem_type_id ) ) {
+			fprintf(stderr, "WARNING: H5Tclose failed\n");
+		}
+	}
+	if ( h5d ) {
+		scope_h5_close( h5d );
+	}
+	return ret;
 #endif
 }
 
@@ -247,13 +298,6 @@ herr_t hstat;
 		hstat = H5Fclose( h5d->file_id );
 		if ( hstat < 0 ) {
 			fprintf(stderr, "H5Fclose failed\n");
-		}
-	}
-
-	if ( H5I_INVALID_HID != h5d->type_id ) {
-		hstat = H5Tclose( h5d->type_id );
-		if ( hstat < 0 ) {
-			fprintf(stderr, "H5Tclose failed\n");
 		}
 	}
 

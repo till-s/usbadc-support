@@ -13,6 +13,14 @@ typedef enum ScopeH5SampleType { INT8_T, INT16_T, INT16LE_T, INT16BE_T, FLOAT_T,
 void
 scope_h5_close(ScopeH5Data *h5d);
 
+/*
+ * Store sample data in a HDF5 file.
+ *  'bitShift' indicates by how many bits integer samples can be right-shifted (w/o losing
+ *  important information) in order to reduce file size.
+ *
+ * If dtype == DOUBLE_T then bitShift may be set to 32 to indicate that samples should be
+ * stored as floats.
+ */
 ScopeH5Data *
 scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, size_t *dims, size_t ndims, const void *data);
 
