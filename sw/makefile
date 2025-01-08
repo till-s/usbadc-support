@@ -69,7 +69,7 @@ CMakeLists.txt: makefile
 	@echo '# AUTOMATICALLY GENERATED (makefile); do not modify!' >> $@
 	@echo 'cmake_minimum_required(VERSION 3.5)'                  >> $@
 	@echo ''                                                     >> $@
-	@echo 'project(fwcomm LANGUAGES C)'                          >> $@
+	@echo 'project( fwcomm LANGUAGES C )'                        >> $@
 	@echo ''                                                     >> $@
 	@echo 'set( SOURCES $(OBJS:%.o=%.c) )'                       >> $@
 	@echo 'set( LIBS    fwcomm          )'                       >> $@
