@@ -8,7 +8,7 @@ GHDL=ghdl
 GHDLFLAGS=-P/opt/ghdl/v2.0.0-gcc/vivado-2021.2/ -fsynopsys -Wl,-no-pie -g
 
 # BRAM or SDRAM
-SAMPLEBUFFER_TYPE=SDRAM
+SAMPLEBUFFER_TYPE=BRAM
 
 # where to find RamEmul.vhd (if SAMPLEBUFFER_TYPE == SDRAM)
 VPATH=../../SDRAMCtrl
