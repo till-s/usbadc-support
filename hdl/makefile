@@ -5,7 +5,7 @@
 
 GHDL=ghdl
 #GHDLFLAGS=-P
-GHDLFLAGS=-P -fsynopsys -Wl,-no-pie -g
+#GHDLFLAGS=-P -fsynopsys -Wl,-no-pie -g
 GHDLFLAGS=-P/usr/lib/ghdl
 
 # BRAM or SDRAM
