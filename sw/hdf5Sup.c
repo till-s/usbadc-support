@@ -26,7 +26,7 @@ struct ScopeH5Data {
 };
 
 static herr_t
-scope_h5_add_attrs(ScopeH5Data *h5d, const char *name, hid_t typ_id, const void *val, unsigned nval)
+scope_h5_add_attr(ScopeH5Data *h5d, const char *name, hid_t typ_id, const void *val, unsigned nval)
 {
 	herr_t hstat  = -1;
 	hid_t  spc_id = H5I_INVALID_HID;
@@ -58,11 +58,11 @@ scope_h5_add_attrs(ScopeH5Data *h5d, const char *name, hid_t typ_id, const void 
 
 cleanup:
 	if ( H5Aclose( att_id ) < 0 ) {
-		fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Aclose(%s) failed\n", name);
+		fprintf(stderr, "WARNING - scope_h5_add_attr: H5Aclose(%s) failed\n", name);
 	}
 	if ( H5I_INVALID_HID != spc_id && h5d->scal_id != spc_id ) {
 		if ( H5Sclose( spc_id ) < 0 ) {
-			fprintf(stderr, "WARNING - scope_h5_add_attrs: H5Sclose failed\n");
+			fprintf(stderr, "WARNING - scope_h5_add_attr: H5Sclose failed\n");
 		}
 	}
 	return hstat;
@@ -356,32 +356,32 @@ herr_t hstat;
 }
 
 long
-scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval )
+scope_h5_add_uint_attr( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval )
 {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
 #else
-	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_UINT, val, nval );
+	return scope_h5_add_attr( h5d, name, H5T_NATIVE_UINT, val, nval );
 #endif
 }
 
 long
-scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, const int *val, size_t nval )
+scope_h5_add_int_attr( ScopeH5Data *h5d, const char *name, const int *val, size_t nval )
 {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
 #else
-	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_INT, val, nval );
+	return scope_h5_add_attr( h5d, name, H5T_NATIVE_INT, val, nval );
 #endif
 }
 
 long
-scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, const double *val, size_t nval )
+scope_h5_add_double_attr( ScopeH5Data *h5d, const char *name, const double *val, size_t nval )
 {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
 #else
-	return scope_h5_add_attrs( h5d, name, H5T_NATIVE_DOUBLE, val, nval );
+	return scope_h5_add_attr( h5d, name, H5T_NATIVE_DOUBLE, val, nval );
 #endif
 }
 
@@ -421,7 +421,7 @@ scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val)
 		fprintf(stderr, "addStringAttr: H5Tset_size failed\n");
 		goto cleanup;
 	}
-	hstat = scope_h5_add_attrs( h5d, name, typ_id, strp, 1 );
+	hstat = scope_h5_add_attr( h5d, name, typ_id, strp, 1 );
 cleanup:
 	if ( H5I_INVALID_HID != typ_id && H5Tclose( typ_id ) < 0 ) {
 		fprintf(stderr, "addStringAttr: H5Tclose failed (ignored)\n");

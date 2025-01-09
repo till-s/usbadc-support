@@ -40,13 +40,13 @@ ScopeH5Data *
 scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, ScopeH5SampleType mem_type, const ScopeDataDimension *dims, size_t ndims, const void *data);
 
 long
-scope_h5_add_uint_attrs( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval );
+scope_h5_add_uint_attr( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval );
 
 long
-scope_h5_add_int_attrs( ScopeH5Data *h5d, const char *name, const int *val, size_t nval );
+scope_h5_add_int_attr( ScopeH5Data *h5d, const char *name, const int *val, size_t nval );
 
 long
-scope_h5_add_double_attrs( ScopeH5Data *h5d, const char *name, const double *val, size_t nval );
+scope_h5_add_double_attr( ScopeH5Data *h5d, const char *name, const double *val, size_t nval );
 
 long
 scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val);
