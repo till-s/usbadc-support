@@ -183,7 +183,6 @@ double            fVCO, outDiv;
 	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, CASC_FOD )) < 0 ) {
 		return st;
 	}
-printf("board clock initialized; fAdc %g, fRef %g\n", fADC, fRef);
 	return 0;
 }
 
