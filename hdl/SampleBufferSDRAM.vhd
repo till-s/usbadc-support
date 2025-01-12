@@ -18,7 +18,7 @@ use     work.SDRAMPkg.all;
 --
 --   (T_RCD_T * CLK_FREQ_G + 1)/(2**C_WIDTH_G)
 
-entity SampleBuffer is
+entity SampleBufferSDRAM is
    generic (
       -- SDRAM address width
       A_WIDTH_G     : natural := 12;
@@ -45,9 +45,9 @@ entity SampleBuffer is
       rdEmp         : out std_logic;
       rdFlush       : in  std_logic
    );
-end entity SampleBuffer;
+end entity SampleBufferSDRAM;
 
-architecture SDRAM of SampleBuffer is
+architecture SDRAM of SampleBufferSDRAM is
 
    -- TODO fix fifo depths
 

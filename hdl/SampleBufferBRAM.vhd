@@ -5,7 +5,7 @@ use     ieee.numeric_std.all;
 use     work.BasicPkg.all;
 use     work.SDRAMPkg.all;
 
-entity SampleBuffer is
+entity SampleBufferBRAM is
    generic (
       -- SDRAM address width
       A_WIDTH_G     : natural := 0;
@@ -33,9 +33,9 @@ entity SampleBuffer is
       rdEmp         : out std_logic;
       rdFlush       : in  std_logic
    );
-end entity SampleBuffer;
+end entity SampleBufferBRAM;
 
-architecture BRAM of SampleBuffer is
+architecture BRAM of SampleBufferBRAM is
 
    attribute ASYNC_REG      : string;
    attribute KEEP           : string;

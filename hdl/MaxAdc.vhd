@@ -1311,7 +1311,9 @@ begin
          datOut     => status
       );
 
-   U_DRAMBUF     : entity work.SampleBuffer
+   G_DRAMBUF : if ( USE_SDRAM_BUF_G ) generate
+
+      U_DRAMBUF    : entity work.SampleBufferSDRAM
          generic map (
             A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
             MEM_DEPTH_G => MEM_DEPTH_G,
@@ -1333,6 +1335,34 @@ begin
             rdEmp       => rdEmp,
             rdFlush     => rRd.flush
          );
+   end generate G_DRAMBUF;
+
+
+   G_BRAMBUF : if ( not USE_SDRAM_BUF_G ) generate
+
+      U_BRAMBUF    : entity work.SampleBufferBRAM
+         generic map (
+            A_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
+            MEM_DEPTH_G => MEM_DEPTH_G,
+            D_WIDTH_G   => (2*RAM_BITS_G)
+         )
+         port map (
+            wrClk       => memClk,
+            wrEna       => wrEna,
+            wrDat       => wrDat,
+            wrFul       => wrFul,
+
+            sdramClk    => sdramClk,
+            sdramReq    => sdramReq,
+            sdramRep    => sdramRep,
+
+            rdClk       => busClk,
+            rdEna       => rdEna,
+            rdDat       => rdDat,
+            rdEmp       => rdEmp,
+            rdFlush     => rRd.flush
+         );
+   end generate G_BRAMBUF;
 
    err(1) <= rWr.fifoFul;
    err(0) <= rRd.fifoEmp;
