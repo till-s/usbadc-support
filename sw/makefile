@@ -60,8 +60,8 @@ clean:
 	$(RM) unitDataTst
 	$(RM) CMakeLists.txt
 
-pyfwcomm.so: pyfwcomm.o $(LOBJS)
-	$(CC) $^ -shared -o $@
+pyfwcomm.so: pyfwcomm.o libfwcomm.a
+	$(CC) $< -shared -o $@ -L. -lfwcomm
 
 CMakeLists.txt: makefile
 	@$(RM) $@
