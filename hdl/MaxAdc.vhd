@@ -21,7 +21,7 @@ entity MaxADC is
       USE_SDRAM_BUF_G      : boolean               := false;
       -- set to opposite of initial value of 'parmsTgl'
       -- this will start an initial acquistion
-      INIT_ACQ_POL_G       : std_logic             := '1'
+      INIT_ACQ_POL_G       : std_logic             := '0'
    );
    port (
       adcClk      : in  std_logic;
@@ -47,8 +47,6 @@ entity MaxADC is
       -- toggling 'parmsTgl' initiates a new acquisition (aborting a pending one)
       parmsTgl    : in  std_logic;
       parmsAck    : out std_logic;
-      -- rdy is asserted as soon as this entity is ready to receive parameters
-      parmsRdy    : out std_logic;
 
       busIb       : in  SimpleBusMstType;
       rdyIb       : out std_logic;
@@ -228,11 +226,28 @@ architecture rtl of MaxADC is
       fifoEmp => '0'
    );
 
-   signal rRd       : RdRegType    := RD_REG_INIT_C;
-   signal rinRd     : RdRegType;
+   type     ParmHskStateType is (LOCAL, RUN);
 
-   signal rWr       : WrRegType    := WR_REG_INIT_C;
-   signal rinWr     : WrRegType;
+   type     ParmHskRegType  is record
+      state  : ParmHskStateType;
+      tgl    : std_logic;
+      pol    : std_logic;
+   end record ParmHskRegType;
+
+   constant PARM_HSK_REG_INIT_C : ParmHskRegType := (
+      state  => LOCAL,
+      tgl    => '0',
+      pol    => '0'
+   );
+
+   signal rRd           : RdRegType      := RD_REG_INIT_C;
+   signal rinRd         : RdRegType;
+
+   signal rWr           : WrRegType      := WR_REG_INIT_C;
+   signal rinWr         : WrRegType;
+
+   signal rParmsHsk     : ParmHskRegType := PARM_HSK_REG_INIT_C;
+   signal rinParmsHsk   : ParmHskRegType;
 
    type   WrCCRegType is record
       ovrA    : std_logic;
@@ -333,6 +348,9 @@ architecture rtl of MaxADC is
 
    signal sampleBufferReady : std_logic;
    signal readyForParams    : std_logic := '0';
+   signal parmsAckLoc       : std_logic;
+   signal parmsTglLoc       : std_logic;
+   signal parmsRdyLoc       : std_logic;
 
 begin
 
@@ -741,7 +759,7 @@ begin
       port map (
          clk       => memClk,
          rst       => adcRst,
-         datInp(0) => parmsTgl,
+         datInp(0) => parmsTglLoc,
          datOut(0) => acqTglIb
       );
 
@@ -753,7 +771,7 @@ begin
          clk       => busClk,
          rst       => '0',
          datInp(0) => acqTglOb,
-         datOut(0) => parmsAck
+         datOut(0) => parmsAckLoc
       );
 
    U_RD_SYNC_RDY : entity work.SynchronizerBit
@@ -763,17 +781,53 @@ begin
       port map (
          clk       => busClk,
          rst       => '0',
-         datOut(0) => parmsRdy,
+         datOut(0) => parmsRdyLoc,
          clkInp    => memClk,
          datInp(0) => readyForParams
       );
 
    readyForParams <= sampleBufferReady and not adcRst;
 
+   P_PARMS_HSK_COMB : process ( rParmsHsk, parmsRdyLoc, parmsTgl, parmsAckLoc ) is
+      variable v : ParmHskRegType;
+   begin
+      v        := rParmsHsk;
+
+      v.tgl    := parmsTgl;
+
+      case ( rParmsHsk.state ) is
+         when LOCAL =>
+            -- local ACK; when recorder is not ready
+            parmsTglLoc <= INIT_ACQ_POL_G;
+            parmsAck    <= rParmsHsk.tgl;
+            if ( (parmsRdyLoc = '1') and (parmsTgl = rParmsHsk.tgl)  ) then
+               -- recorder ready, no 'local' transaction ongoing
+               v.state     := RUN;
+               -- remember current toggle state
+               v.pol       := rParmsHsk.tgl;
+            end if;
+
+         when RUN   =>
+            parmsTglLoc <= parmsTgl    xor rParmsHsk.pol xor INIT_ACQ_POL_G;
+            parmsAck    <= parmsAckLoc xor rParmsHsk.pol xor INIT_ACQ_POL_G;
+      
+      end case;
+
+      rinParmsHsk <= v;
+   end process P_PARMS_HSK_COMB;
+
+   P_PARMS_HSK_SEQ : process ( busClk ) is
+   begin
+      if ( rising_edge( busClk ) ) then
+         rParmsHsk <= rinParmsHsk;
+      end if;
+   end process P_PARMS_HSK_SEQ;
+
+
    P_WR_SEQ : process ( memClk ) is
    begin
       if ( rising_edge( memClk ) ) then
-         if ( ( acqTglOb /= acqTglIb ) and ( rWr.state /= STOP1 ) and ( rWr.state /= STOP2 ) and ( sampleBufferReady = '1' ) ) then
+         if ( ( acqTglOb /= acqTglIb ) and ( rWr.state /= STOP1 ) and ( rWr.state /= STOP2 ) ) then
             -- sit out STOP states; let proceed into HOLD (
             -- assume validity of parameters has been checked
             -- by the provider!
@@ -802,6 +856,7 @@ begin
          if ( adcRst = '1' ) then
             rWr         <= WR_REG_INIT_C;
             rTrg        <= TRG_REG_INIT_C;
+            acqTglOb    <= INIT_ACQ_POL_G;
          end if;
       end if;
    end process P_WR_SEQ;

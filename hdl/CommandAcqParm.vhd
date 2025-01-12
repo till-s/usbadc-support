@@ -23,8 +23,7 @@ entity CommandAcqParm is
 
       parmsOb      : out AcqCtlParmType;
       trgOb        : out std_logic;
-      ackIb        : in  std_logic;
-      parmsRdyIb   : in  std_logic := '1'
+      ackIb        : in  std_logic
    );
 end entity CommandAcqParm;
 
@@ -45,7 +44,7 @@ architecture rtl of CommandAcqParm is
 
    constant CMD_LEN_C       : natural := acqCtlParmSizeBytes;
 
-   type StateType is (ECHO, MASK, PROC, VALID, TRIG, DROP);
+   type StateType is (ECHO, MASK, PROC, VALID, TRIG);
 
    function ACQ_CTL_PARM_INIT_F
       return AcqCtlParmType
@@ -95,23 +94,9 @@ begin
       case ( r.state ) is
          when ECHO =>
             if ( (rOb and mIb.vld) = '1' ) then
-               if ( parmsRdyIb = '0' ) then
-                  mOb.lst <= '1';
-                  if ( mIb.lst = '0' ) then
-                     v.state := DROP;
-                  end if;
-               else
-                  v.subCmd := subCommandAcqParmGet( mIb.dat );
-                  v.state  := MASK;
-                  v.count  := 0;
-               end if;
-            end if;
-
-         when DROP  =>
-            mOb.vld <= '0';
-            rIb     <= '1';
-            if ( (mIb.lst and mIb.vld) = '1' ) then
-               v.state := ECHO;
+               v.subCmd := subCommandAcqParmGet( mIb.dat );
+               v.state  := MASK;
+               v.count  := 0;
             end if;
 
          when MASK  =>
