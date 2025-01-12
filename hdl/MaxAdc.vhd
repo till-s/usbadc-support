@@ -47,6 +47,8 @@ entity MaxADC is
       -- toggling 'parmsTgl' initiates a new acquisition (aborting a pending one)
       parmsTgl    : in  std_logic;
       parmsAck    : out std_logic;
+      -- rdy is asserted as soon as this entity is ready to receive parameters
+      parmsRdy    : out std_logic;
 
       busIb       : in  SimpleBusMstType;
       rdyIb       : out std_logic;
@@ -329,6 +331,9 @@ architecture rtl of MaxADC is
 
    signal statusLoc         : std_logic_vector(status'range) := (others => '0');
 
+   signal sampleBufferReady : std_logic;
+   signal readyForParams    : std_logic := '0';
+
 begin
 
    assert MEM_DEPTH_G mod 1024 = 0 and MEM_DEPTH_G >= 1024 report "Cannot report accurate memory size" severity warning;
@@ -341,12 +346,12 @@ begin
    filClk  <= memClk;
 
    memFull <= '1' when (rWr.state = HOLD) else '0';
-   wrEna   <= not memFull and wrDecm;
+   wrEna   <= not memFull and wrDecm and sampleBufferReady;
 
    U_RD_SYNC : entity work.SynchronizerBit
       port map (
          clk       => memClk,
-         rst       => '0',
+         rst       => adcRst,
          datInp(0) => rRd.tgl,
          datOut(0) => rdTgl
       );
@@ -362,7 +367,7 @@ begin
    U_EXT_TRG_SYNC : entity work.SynchronizerBit
       port map (
          clk       => filClk,
-         rst       => '0',
+         rst       => adcRst,
          datInp(0) => extTrg,
          datOut(0) => extTrgSyn
       );
@@ -735,7 +740,7 @@ begin
       )
       port map (
          clk       => memClk,
-         rst       => '0',
+         rst       => adcRst,
          datInp(0) => parmsTgl,
          datOut(0) => acqTglIb
       );
@@ -751,10 +756,24 @@ begin
          datOut(0) => parmsAck
       );
 
+   U_RD_SYNC_RDY : entity work.SynchronizerBit
+      generic map (
+         RSTPOL_G  => '0'
+      )
+      port map (
+         clk       => busClk,
+         rst       => '0',
+         datOut(0) => parmsRdy,
+         clkInp    => memClk,
+         datInp(0) => readyForParams
+      );
+
+   readyForParams <= sampleBufferReady and not adcRst;
+
    P_WR_SEQ : process ( memClk ) is
    begin
       if ( rising_edge( memClk ) ) then
-         if ( ( acqTglOb /= acqTglIb ) and ( rWr.state /= STOP1 ) and ( rWr.state /= STOP2 ) ) then
+         if ( ( acqTglOb /= acqTglIb ) and ( rWr.state /= STOP1 ) and ( rWr.state /= STOP2 ) and ( sampleBufferReady = '1' ) ) then
             -- sit out STOP states; let proceed into HOLD (
             -- assume validity of parameters has been checked
             -- by the provider!
@@ -779,6 +798,10 @@ begin
             rTrg.armed  <= false;
             rTrg.trg    <= '0';
             rTrg.extTrg <= '0';
+         end if;
+         if ( adcRst = '1' ) then
+            rWr         <= WR_REG_INIT_C;
+            rTrg        <= TRG_REG_INIT_C;
          end if;
       end if;
    end process P_WR_SEQ;
@@ -1324,6 +1347,7 @@ begin
             wrEna       => wrEna,
             wrDat       => wrDat,
             wrFul       => wrFul,
+            wrRdy       => sampleBufferReady,
 
             sdramClk    => sdramClk,
             sdramReq    => sdramReq,
@@ -1351,6 +1375,7 @@ begin
             wrEna       => wrEna,
             wrDat       => wrDat,
             wrFul       => wrFul,
+            wrRdy       => sampleBufferReady,
 
             sdramClk    => sdramClk,
             sdramReq    => sdramReq,

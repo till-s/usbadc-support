@@ -140,6 +140,7 @@ architecture rtl of CommandWrapper is
    signal   acqParms          : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
    signal   acqParmsTgl       : std_logic      := '0';
    signal   acqParmsAck       : std_logic;
+   signal   acqParmsRdy       : std_logic;
 
    signal   stuffRst          : std_logic;
 
@@ -307,6 +308,7 @@ begin
             parms        => acqParms,
             parmsTgl     => acqParmsTgl,
             parmsAck     => acqParmsAck,
+            parmsRdy     => acqParmsRdy,
 
             busIb        => bussesIb(CMD_ADC_MEM_IDX_C),
             rdyIb        => readysIb(CMD_ADC_MEM_IDX_C),
@@ -339,7 +341,8 @@ begin
 
             parmsOb      => acqParms,
             trgOb        => acqParmsTgl,
-            ackIb        => acqParmsAck
+            ackIb        => acqParmsAck,
+            parmsRdyIb   => acqParmsRdy
          );
    end generate G_PARM;
 

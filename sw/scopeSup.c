@@ -183,6 +183,7 @@ double            fVCO, outDiv;
 	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, CASC_FOD )) < 0 ) {
 		return st;
 	}
+printf("board clock initialized; fAdc %g, fRef %g\n", fADC, fRef);
 	return 0;
 }
 
@@ -388,7 +389,7 @@ int st;
 		return st;
 	}
 	if ( (st = dacInit( scp )) ) {
-		return st;
+		return -ENODEV == st ? 0 : st;
 	}
 	if ( (st = adcInit( scp )) ) {
 		return st;
@@ -523,12 +524,7 @@ double    dfltScaleVolts = 1.0;
 		goto bail;
 	}
 
-
 	sc->samplingFreq = 0.0/0.0;
-
-	if ( (st = acq_set_params( sc, NULL, &sc->acqParams )) ) {
-		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
-	}
 
 	sc->sampleSize = (sc->memFlags & FW_BUF_FLG_16B) ? 10 : 8;
 
@@ -545,6 +541,16 @@ double    dfltScaleVolts = 1.0;
 		} else if ( 1 == fw_get_board_version( fw ) ) {
 			sc->samplingFreq = 120.0E6;
 		}
+	}
+
+	if ( (st = scope_init( sc, 0 )) ) {
+		fprintf(stderr, "Error %d: scope_init() failed; ADC clock not configured\n", st);
+		goto bail;
+	}
+
+
+	if ( (st = acq_set_params( sc, NULL, &sc->acqParams )) ) {
+		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
 	}
 
 	switch ( boardVersion ) {
