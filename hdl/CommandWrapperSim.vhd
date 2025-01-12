@@ -199,6 +199,7 @@ begin
          ADC_BITS_G          => ADC_W_C,
          RAM_BITS_G          => RAM_BITS_C,
          MEM_DEPTH_G         => MEM_DEPTH_C,
+         USE_SDRAM_BUF_G     => false,
          SDRAM_ADDR_WIDTH_G  => RAM_A_WIDTH_C,
          HAVE_SPI_CMD_G      => true,
          GIT_VERSION_G       => x"deadbeef",

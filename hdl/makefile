@@ -18,7 +18,7 @@ HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
 TESTS= CommandWrapperTb CommandWrapperSim CicFilterTb PipelinedRShifterTb
-TESTS+=SpiRegTb SpiShadowRegTb SampleBufferTb
+TESTS+=SpiRegTb SpiShadowRegTb SampleBufferBRAMTb $(RAM_TEST_$(SAMPLEBUFFER_TYPE))
 TESTS+=SimpleBusAsyncTb SimpleBusPipeStageTb
 
 all: $(TESTS)
@@ -27,6 +27,7 @@ test: $(filter-out CommandWrapperSim,$(TESTS))
 	for i in $^; do echo "Running $$i"; if ! ./$$i; then exit 1; fi done
 
 RAM_EMUL_SDRAM=RamEmul
+RAM_TEST_SDRAM=SampleBufferSDRAMTb
 
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
@@ -38,7 +39,9 @@ OBJS+=CommandSpi.o SpiBitShifter.o
 OBJS+=SpiFlashSim.o SpiChecker.o
 OBJS+=Flicker.o
 OBJS+=CommandReg.o
-OBJS+=SampleBuffer$(SAMPLEBUFFER_TYPE).o
+OBJS+=SampleBufferBRAM.o
+OBJS+=SampleBufferSDRAM.o
+OBJS+=SampleBufferTbNotbound.o
 OBJS+=SDRAMPkg.o
 OBJS+=GenericFifoAsync.o
 OBJS+=SimpleBusAsync.o
@@ -57,7 +60,10 @@ CommandWrapperTb: CommandWrapperTb.o $(OBJS)
 CommandWrapperSim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o -o $@  $@
 
-SampleBufferTb: SampleBufferTb.o SampleBuffer$(SAMPLEBUFFER_TYPE).o SynchronizerBit.o $(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
+SampleBufferBRAMTb: SampleBufferBRAMTb.o
+	$(GHDL) -e $(GHDLFLAGS) -o $@  $@
+
+SampleBufferSDRAMTb: SampleBufferSDRAMTb.o
 	$(GHDL) -e $(GHDLFLAGS) -o $@  $@
 
 # Run target
@@ -65,41 +71,23 @@ run: CommandWrapperTb
 	$(GHDL) -r $^ $(GHDLRUNFLAGS)
 
 CommandMuxPkg.o: CommandMuxPkg.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
 ByteStuffer.o: ByteStuffer.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
 SFifo.o: SFifo.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
 ByteDeStuffer.o: ByteDeStuffer.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
 CommandMux.o: CommandMux.vhd ILAWrapperPkg.o
-	$(GHDL) -a $(GHDLFLAGS) $<
 CommandVersion.o: CommandVersion.vhd CommandMuxPkg.o BasicPkg.o
-	$(GHDL) -a $(GHDLFLAGS) $<
 SynchronizerBit.o: SynchronizerBit.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
 BitBangIF.o: BitBangIF.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
 CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
-	$(GHDL) -a $(GHDLFLAGS) $<
 SimPty.o: SimPty.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
-MaxAdc.o: MaxAdc.vhd SampleBuffer$(SAMPLEBUFFER_TYPE).o SDRAMPkg.o
-	$(GHDL) -a $(GHDLFLAGS) $<
+MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMPkg.o
 CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o CommandVersion.o
-	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
-	$(GHDL) -a $(GHDLFLAGS) $<
 CommandWrapperSim.o: CommandWrapperSim.vhd $(OBJS) SimPty.o SimPtyIO.o
-	$(GHDL) -a $(GHDLFLAGS) $<
 SDRAMPkg.o: SDRAMPkg.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
-
+SampleBufferBRAMTb.o: SampleBufferTbNotbound.o SampleBufferBRAM.o
+SampleBufferSDRAMTb.o: SampleBufferTbNotbound.o SampleBufferSDRAM.o RamEmul.o
 RamEmul.o: RamEmul.vhd
-	$(GHDL) -a $(GHDLFLAGS) $<
-
-SDRAMCtrl/RamEmul.vhd:
-	$(error $@ missing)
 
 %.o: %.vhd
 	$(GHDL) -a $(GHDLFLAGS) $<
@@ -130,17 +118,17 @@ SimpleBusPipeStage.o: CommandMuxPkg.o BasicPkg.o
 
 SimpleBusPipeStageTb.o: SimpleBusPipeStage.o CommandMuxPkg.o BasicPkg.o
 
-SimpleBusAsync.o: SynchronizerBit.o
+SimpleBusAsync.o: SynchronizerBit.o CommandMuxPkg.o
 
 SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
-SampleBufferBRAM.o: SynchronizerBit.o SDRAMPkg.o
+SampleBufferBRAM.o: SynchronizerBit.o SDRAMPkg.o BasicPkg.o
 
 SampleBufferSDRAM.o: SynchronizerBit.o SDRAMPkg.o GenericFifoAsync.o
 
 CommandReg.o: CommandMuxPkg.o
 
-SampleBufferTb.o: SampleBuffer$(SAMPLEBUFFER_TYPE).o
+SampleBufferTbNotbound.o: SDRAMPkg.o 
 
 MulShifter.o PipelinedRShifter.o SpiBitShifter.o CommandBitBang.o SpiShadowReg.o: BasicPkg.o
 

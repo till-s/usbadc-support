@@ -77,10 +77,10 @@ use     ieee.numeric_std.all;
 
 use     work.SDRAMPkg.all;
 
-entity SampleBufferTb is
-end entity SampleBufferTb;
+entity SampleBufferTbNotbound is
+end entity SampleBufferTbNotbound;
 
-architecture sim of SampleBufferTb is
+architecture sim of SampleBufferTbNotbound is
    constant AW_C : natural := 4;
 
    signal   ramClk   : std_logic := '0';
@@ -174,6 +174,37 @@ architecture sim of SampleBufferTb is
       );
    end component RamEmul;
 
+   component SampleBuffer is
+      generic (
+         -- SDRAM address width (ignored for BRAM)
+         A_WIDTH_G     : natural := 12;
+         MEM_DEPTH_G   : natural := 0;
+         -- data width (SRAM only supports 20 ATM)
+         D_WIDTH_G     : natural := 20
+      );
+      port (
+         -- write side
+         wrClk         : in  std_logic;
+         wrEna         : in  std_logic;
+   
+         -- msb is 'command' flag
+         wrDat         : in  std_logic_vector(D_WIDTH_G     downto 0);
+         wrFul         : out std_logic := '0'; -- diagnostic signal (unused)
+   
+         -- UNUSED - for compatibility with SDRAM architecture only
+         sdramClk      : in  std_logic    := '0';
+         sdramReq      : out SDRAMReqType := SDRAM_REQ_INIT_C;
+         sdramRep      : in  SDRAMRepType := SDRAM_REP_INIT_C;
+   
+         -- read side
+         rdClk         : in  std_logic;
+         rdEna         : in  std_logic;
+         rdDat         : out std_logic_vector(D_WIDTH_G     downto 0);
+         rdEmp         : out std_logic;
+         rdFlush       : in  std_logic
+      );
+   end component SampleBuffer;
+
 begin
 
    process is
@@ -252,7 +283,7 @@ begin
          rdat      => ramRep.rdat
       );
 
-   U_DUT : entity work.SampleBuffer
+   U_DUT : component SampleBuffer
       generic map (
          A_WIDTH_G => AW_C
       )
