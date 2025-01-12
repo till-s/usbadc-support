@@ -32,6 +32,8 @@ entity SampleBufferSDRAM is
       -- msb is 'command' flag
       wrDat         : in  std_logic_vector(D_WIDTH_G     downto 0);
       wrFul         : out std_logic; -- diagnostic signal
+      -- buffer ready / init done
+      wrRdy         : out std_logic;
 
       -- sdram interface
       sdramClk      : in  std_logic;
@@ -137,6 +139,18 @@ architecture SDRAM of SampleBufferSDRAM is
    signal sdramFlush     :  std_logic;
 
 begin
+
+   U_SYNC_RAM2WR : entity work.SynchronizerBit
+      generic map (
+         WIDTH_G    => 1,
+         RSTPOL_G   => '0'
+      )
+      port map (
+         clk        => wrClk,
+         rst        => '0',
+         datInp(0)  => sdramRep.rdy,
+         datOut(0)  => wrRdy
+      );
 
    U_WR_FIFO : entity work.GenericFifoAsync
       generic map (

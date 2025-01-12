@@ -20,6 +20,7 @@ entity SampleBufferBRAM is
       -- msb is 'command' flag
       wrDat         : in  std_logic_vector(D_WIDTH_G     downto 0);
       wrFul         : out std_logic := '0'; -- diagnostic signal (unused)
+      wrRdy         : out std_logic := '1';
 
       -- UNUSED - for compatibility with SDRAM architecture only
       sdramClk      : in  std_logic    := '0';
