@@ -4,3 +4,4 @@ pyfwcomm.c
 *.so
 *.a
 bbcli
+scopeCal

@@ -55,10 +55,10 @@ versaClkSup.o: fwComm.h versaClkSup.h
 .PHONY: clean
 
 clean:
-	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
+	$(RM) $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
+	$(RM) $(PROGS) $(PROGS:%=%.o)
 	$(RM) -rf __pycache__
 	$(RM) unitDataTst
-	$(RM) CMakeLists.txt
 
 pyfwcomm.so: pyfwcomm.o libfwcomm.a
 	$(CC) $< -shared -o $@ -L. -lfwcomm
@@ -88,5 +88,3 @@ CMakeLists.txt: makefile
 		echo "add_executable( $$p $$p.c )"                       >> $@ ;\
 		echo "target_link_libraries( $$p PRIVATE \$${LIBS} )"    >> $@ ;\
 	done
-     
-
