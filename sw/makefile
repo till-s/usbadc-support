@@ -6,7 +6,7 @@ HCC_NO=$(CC)
 
 H5_DEFINES_YES=CONFIG_WITH_HDF5
 
-CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing $(addprefix -D,$(H5_DEFINES_$(HAVE_H5)))
+CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing $(addprefix -D,$(H5_DEFINES_$(HAVE_H5))) -I.
 
 OBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 OBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
@@ -72,6 +72,8 @@ CMakeLists.txt: makefile
 	@echo ''                                                     >> $@
 	@echo 'set( SOURCES $(LOBJS:%.o=%.c) )'                      >> $@
 	@echo 'set( LIBS    fwcomm          )'                       >> $@
+	@echo ''                                                     >> $@
+	@echo 'include_directories( ./ )'                            >> $@
 	@echo ''                                                     >> $@
 	@echo 'find_package(HDF5 COMPONENTS C)'                      >> $@
 	@echo 'if( HDF5_FOUND )'                                     >> $@
