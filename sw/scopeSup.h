@@ -275,7 +275,7 @@ scope_h5_write_parameters(ScopePvt *scp, ScopeH5Data *h5d);
 int
 scope_h5_write_date(ScopePvt *scp, ScopeH5Data *h5d, time_t when);
 int
-scope_h5_write_bufhdr(ScopePvt *scp, ScopeH5Data *h5d, unsigned bufHdr);
+scope_h5_write_bufhdr(ScopeH5Data *h5d, unsigned bufHdr, unsigned numChannels);
 
 #ifdef __cplusplus
 }

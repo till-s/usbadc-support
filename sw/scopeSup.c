@@ -1333,22 +1333,25 @@ double maxOff = 0.0;
 }
 
 int
-scope_h5_write_bufhdr(ScopePvt *scp, ScopeH5Data *h5d, unsigned bufHdr)
+scope_h5_write_bufhdr(ScopeH5Data *h5d, unsigned bufHdr, unsigned numChannels)
 {
 int      chnl;
-unsigned u[scope_get_num_channels( scp )];
 int      st;
+	if ( numChannels >= 8 ) {
+		return -EINVAL;
+	} else {
+		unsigned u[numChannels];
+		for ( chnl = 0; chnl < numChannels; ++chnl ) {
+			u[chnl] = !! (FW_BUF_HDR_FLG_OVR( chnl ) & bufHdr);
+		}
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_OVERRANGE, u, chnl )) < 0 ) {
+			return st;
+		}
 
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		u[chnl] = !! (FW_BUF_HDR_FLG_OVR( chnl ) & bufHdr);
-	}
-	if ( (st = scope_h5_add_uint_attr( h5d, H5K_OVERRANGE, u, chnl )) < 0 ) {
-		return st;
-	}
-
-	u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
-	if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
-		return st;
+		u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
+			return st;
+		}
 	}
 	return 0;
 }
