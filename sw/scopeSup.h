@@ -265,6 +265,7 @@ int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
 #define H5K_PGA_ATT_DB "pgaAttenuationDB"
 #define H5K_OVERRANGE  "overRange"
 #define H5K_TRG_AUTO   "autoTriggered"
+#define H5K_DATE       "date"
 
 #include <hdf5Sup.h>
 

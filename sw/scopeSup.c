@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
@@ -1343,6 +1344,9 @@ double      d[scope_get_num_channels( scp )];
 double      scaleVolts[scope_get_num_channels( scp )];
 const char *s;
 int         chnl;
+time_t      now = time( NULL );
+char        nows[128];
+size_t      nowl;
 
 	if ( (st = acq_set_params( scp, NULL, &acqParams )) < 0 ) {
 		return st;
@@ -1473,6 +1477,16 @@ int         chnl;
 
 	u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
 	if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
+		return st;
+	}
+
+	ctime_r( &now, nows );
+	/* strip trailing '\n' */
+	nowl = strlen( nows );
+	if ( nowl >= 1 ) {
+		nows[nowl-1] = 0;
+	}
+	if ( (st = scope_h5_add_string_attr( h5d, H5K_DATE, nows )) < 0 ) {
 		return st;
 	}
 
