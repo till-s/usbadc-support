@@ -1332,21 +1332,57 @@ double maxOff = 0.0;
 	return 0;
 }
 
-
-#define H5K_SCALE_VOLT "scaleVolt"
 int
-scope_h5_write_parameters(ScopePvt *scp, ScopeH5Data *h5d, unsigned bufHdr)
+scope_h5_write_bufhdr(ScopePvt *scp, ScopeH5Data *h5d, unsigned bufHdr)
+{
+int      chnl;
+unsigned u[scope_get_num_channels( scp )];
+int      st;
+
+	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
+		u[chnl] = !! (FW_BUF_HDR_FLG_OVR( chnl ) & bufHdr);
+	}
+	if ( (st = scope_h5_add_uint_attr( h5d, H5K_OVERRANGE, u, chnl )) < 0 ) {
+		return st;
+	}
+
+	u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
+	if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
+		return st;
+	}
+	return 0;
+}
+
+int
+scope_h5_write_date(ScopePvt *scp, ScopeH5Data *h5d, time_t when)
+{
+char        whenstr[128];
+size_t      whenl;
+int         st;
+
+	ctime_r( &when, whenstr );
+	/* strip trailing '\n' */
+	whenl = strlen( whenstr );
+	if ( whenl >= 1 ) {
+		whenstr[whenl-1] = 0;
+	}
+	if ( (st = scope_h5_add_string_attr( h5d, H5K_DATE, whenstr )) < 0 ) {
+		return st;
+	}
+	return 0;
+}
+
+int
+scope_h5_write_parameters(ScopePvt *scp, ScopeH5Data *h5d)
 {
 AcqParams   acqParams;
-int         st;
 unsigned    u[scope_get_num_channels( scp )];
 double      d[scope_get_num_channels( scp )];
 double      scaleVolts[scope_get_num_channels( scp )];
 const char *s;
 int         chnl;
 time_t      now = time( NULL );
-char        nows[128];
-size_t      nowl;
+int         st;
 
 	if ( (st = acq_set_params( scp, NULL, &acqParams )) < 0 ) {
 		return st;
@@ -1468,25 +1504,7 @@ size_t      nowl;
 		}
 	}
 
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		u[chnl] = !! (FW_BUF_HDR_FLG_OVR( chnl ) & bufHdr);
-	}
-	if ( (st = scope_h5_add_uint_attr( h5d, H5K_OVERRANGE, u, chnl )) < 0 ) {
-		return st;
-	}
-
-	u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
-	if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
-		return st;
-	}
-
-	ctime_r( &now, nows );
-	/* strip trailing '\n' */
-	nowl = strlen( nows );
-	if ( nowl >= 1 ) {
-		nows[nowl-1] = 0;
-	}
-	if ( (st = scope_h5_add_string_attr( h5d, H5K_DATE, nows )) < 0 ) {
+	if ( (st = scope_h5_write_date( scp, h5d, now )) < 0 ) {
 		return st;
 	}
 

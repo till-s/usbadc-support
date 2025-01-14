@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -269,7 +270,12 @@ int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
 
 #include <hdf5Sup.h>
 
-int    scope_h5_write_parameters(ScopePvt *, ScopeH5Data*, unsigned bufHdr);
+int
+scope_h5_write_parameters(ScopePvt *scp, ScopeH5Data *h5d);
+int
+scope_h5_write_date(ScopePvt *scp, ScopeH5Data *h5d, time_t when);
+int
+scope_h5_write_bufhdr(ScopePvt *scp, ScopeH5Data *h5d, unsigned bufHdr);
 
 #ifdef __cplusplus
 }
