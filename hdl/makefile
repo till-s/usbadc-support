@@ -56,7 +56,7 @@ OBJS+=CommandReg.o
 OBJS+=SampleBufferBRAM.o
 OBJS+=SampleBufferSDRAM.o
 OBJS+=SampleBufferTbNotbound.o
-OBJS+=SDRAMPkg.o
+OBJS+=SDRAMBufPkg.o
 OBJS+=GenericFifoAsync.o
 OBJS+=SimpleBusAsync.o
 #OBJS+=SinCosGen.o
@@ -93,11 +93,11 @@ SynchronizerBit.o: SynchronizerBit.vhd
 BitBangIF.o: BitBangIF.vhd
 CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
 SimPty.o: SimPty.vhd
-MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMPkg.o
-CommandWrapper.o: CommandWrapper.vhd SDRAMPkg.o CommandVersion.o
+MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMBufPkg.o
+CommandWrapper.o: CommandWrapper.vhd SDRAMBufPkg.o CommandVersion.o
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 CommandWrapperSim.o: CommandWrapperSim.vhd $(OBJS) SimPty.o SimPtyIO.o
-SDRAMPkg.o: SDRAMPkg.vhd
+SDRAMBufPkg.o: SDRAMBufPkg.vhd
 SampleBufferBRAMTb.o: SampleBufferTbNotbound.o SampleBufferBRAM.o
 SampleBufferSDRAMTb.o: SampleBufferTbNotbound.o SampleBufferSDRAM.o RamEmul.o
 RamEmul.o: RamEmul.vhd
@@ -135,13 +135,13 @@ SimpleBusAsync.o: SynchronizerBit.o CommandMuxPkg.o
 
 SpiShadowRegTb.o: SpiShadowReg.o SpiReg.o SpiChecker.o
 
-SampleBufferBRAM.o: SynchronizerBit.o SDRAMPkg.o BasicPkg.o
+SampleBufferBRAM.o: SynchronizerBit.o SDRAMBufPkg.o BasicPkg.o
 
-SampleBufferSDRAM.o: SynchronizerBit.o SDRAMPkg.o GenericFifoAsync.o
+SampleBufferSDRAM.o: SynchronizerBit.o SDRAMBufPkg.o GenericFifoAsync.o
 
 CommandReg.o: CommandMuxPkg.o
 
-SampleBufferTbNotbound.o: SDRAMPkg.o 
+SampleBufferTbNotbound.o: SDRAMBufPkg.o 
 
 MulShifter.o PipelinedRShifter.o SpiBitShifter.o CommandBitBang.o SpiShadowReg.o: BasicPkg.o
 

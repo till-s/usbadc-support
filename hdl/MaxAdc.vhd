@@ -7,7 +7,7 @@ use     work.BasicPkg.all;
 use     work.CommandMuxPkg.all;
 use     work.ILAWrapperPkg.all;
 use     work.AcqCtlPkg.all;
-use     work.SDRAMPkg.all;
+use     work.SDRAMBufPkg.all;
 
 entity MaxADC is
    generic (

@@ -3,7 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 
-package SDRAMPkg is
+package SDRAMBufPkg is
 
    constant SDRAM_D_WIDTH_C : natural := 16;
    -- not all of these bits are used; depends
@@ -41,4 +41,4 @@ package SDRAMPkg is
       rdy                => '0'
    );
   
-end package SDRAMPkg;
+end package SDRAMBufPkg;

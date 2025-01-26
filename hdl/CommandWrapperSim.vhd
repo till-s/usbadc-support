@@ -5,7 +5,7 @@ use ieee.math_real.all;
 
 use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
-use work.SDRAMPkg.all;
+use work.SDRAMBufPkg.all;
 
 entity CommandWrapperSim is
 end entity CommandWrapperSim;

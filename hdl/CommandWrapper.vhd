@@ -5,7 +5,7 @@ use ieee.numeric_std.all;
 use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.AcqCtlPkg.all;
-use work.SDRAMPkg.all;
+use work.SDRAMBufPkg.all;
 
 entity CommandWrapper is
    generic (
