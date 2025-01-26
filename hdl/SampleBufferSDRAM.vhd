@@ -16,14 +16,17 @@ use     work.SDRAMPkg.all;
 -- if addresses are issued *sequentially*):
 --   (T_RCD + 1 cycle) / (N_columns)
 --
---   (T_RCD_T * CLK_FREQ_G + 1)/(2**C_WIDTH_G)
+-- SDRAMCtrl needs at least 3 cycles to switch banks (different rows):
+--   WRITE => IDLE => ACTIVATE => ACTIVE => WRITE
+--
+--   (min(ceil(T_RCD_T * CLK_FREQ_G),2) + 1)/(2**C_WIDTH_G)
 
 entity SampleBufferSDRAM is
    generic (
       -- SDRAM address width
       A_WIDTH_G     : natural := 12;
       MEM_DEPTH_G   : natural := 0; -- unused; compatibility with BRAM version
-      D_WIDTH_G     : natural := 20 -- currently only 20 bits supported
+      D_WIDTH_G     : natural := 20 -- currently only 16 or 20 bits supported
    );
    port (
       -- write side
@@ -118,11 +121,11 @@ architecture SDRAM of SampleBufferSDRAM is
       -- we compute 20*nsamples / 16 = (16 * nsamples + 4*nsamples ) / 16
       --                             = nsamples + nsamples/4
       -- keeping track of the fractional part in the 'offset'.
-      if ( D_WIDTH_G = 20 ) then
+if ( D_WIDTH_G = 20 ) then
         v    := (au & aoff) - shift_left( resize( n, L_C ), 2 ) - resize( n, L_C );
-      elsif ( D_WIDTH_G = 16 ) then
+elsif ( D_WIDTH_G = 16 ) then
         v    := (au & aoff) - shift_left( resize( n, L_C ), 2 );
-      end if;
+end if;
       roff := v( roff'range );
       rv   := v( v'left downto roff'length );
    end procedure ptrDiff;
