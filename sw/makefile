@@ -6,7 +6,7 @@ HCC_NO=$(CC)
 
 H5_DEFINES_YES=CONFIG_WITH_HDF5
 
-CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing $(addprefix -D,$(H5_DEFINES_$(HAVE_H5)))
+CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing $(addprefix -D,$(H5_DEFINES_$(HAVE_H5))) -I.
 
 OBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 OBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
@@ -55,10 +55,10 @@ versaClkSup.o: fwComm.h versaClkSup.h
 .PHONY: clean
 
 clean:
-	$(RM) bbcli.o bbcli $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
+	$(RM) $(LOBJS) $(PYFWCOMM_C) pyfwcomm.so pyfwcomm.o libfwcomm.a
+	$(RM) $(PROGS) $(PROGS:%=%.o)
 	$(RM) -rf __pycache__
 	$(RM) unitDataTst
-	$(RM) CMakeLists.txt
 
 pyfwcomm.so: pyfwcomm.o libfwcomm.a
 	$(CC) $< -shared -o $@ -L. -lfwcomm
@@ -72,6 +72,8 @@ CMakeLists.txt: makefile
 	@echo ''                                                     >> $@
 	@echo 'set( SOURCES $(LOBJS:%.o=%.c) )'                      >> $@
 	@echo 'set( LIBS    fwcomm          )'                       >> $@
+	@echo ''                                                     >> $@
+	@echo 'include_directories( ./ )'                            >> $@
 	@echo ''                                                     >> $@
 	@echo 'find_package(HDF5 COMPONENTS C)'                      >> $@
 	@echo 'if( HDF5_FOUND )'                                     >> $@
@@ -88,5 +90,3 @@ CMakeLists.txt: makefile
 		echo "add_executable( $$p $$p.c )"                       >> $@ ;\
 		echo "target_link_libraries( $$p PRIVATE \$${LIBS} )"    >> $@ ;\
 	done
-     
-

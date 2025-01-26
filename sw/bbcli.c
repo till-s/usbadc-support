@@ -8,6 +8,7 @@
 #include <math.h>
 #include <regex.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include "fwComm.h"
 #include "fwUtil.h"
@@ -621,6 +622,7 @@ AT25Flash         *flash     = 0;
 ScopePvt          *scope     = 0;
 const char        *h5nam     = NULL;
 ScopeH5Data       *h5d       = NULL;
+int                h5st      = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
@@ -786,6 +788,17 @@ ScopeH5Data       *h5d       = NULL;
 				/* num-samples = nbytes */ 
 				dims[0] = i / dims[1] / ssiz;
 				h5d = scope_h5_create( h5nam, dtyp, 8*ssiz - prec, dims, sizeof(dims)/sizeof(dims[0]), buf );
+				if ( ! h5d ) {
+					goto bail;
+				}
+				h5st = scope_h5_write_bufhdr( h5d, hdr, scope_get_num_channels( scope ) );
+				if ( h5st ) {
+					goto bail;
+				}
+				h5st = scope_h5_write_parameters( scope, h5d );
+				if ( h5st ) {
+					goto bail;
+				}
 			} else {
 				if ( (fl & FW_BUF_FLG_16B) ) {
 					if ( ( i & 1 ) ) {
@@ -1125,6 +1138,9 @@ bail:
 	}
 	if ( h5d ) {
 		scope_h5_close( h5d );
+		if ( h5st ) {
+			unlink( h5nam );
+		}
 	}
 	if ( scope ) {
 		scope_close( scope );

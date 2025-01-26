@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
@@ -542,7 +543,7 @@ double    dfltScaleVolts = 1.0;
 		}
 	}
 
-	if ( (st = scope_init( sc, 0 )) ) {
+	if ( (st = scope_init( sc, !!getenv("BBCLI_FORCE_INIT") )) ) {
 		fprintf(stderr, "Error %d: scope_init() failed; ADC clock not configured\n", st);
 		goto bail;
 	}
@@ -839,7 +840,6 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 	}
 
     if ( EXT == scp->acqParams.src && !! scp->acqParams.trigOutEn ) {
-printf("Forcing ext trigger output OFF\n");
 		scp->acqParams.trigOutEn = set->trigOutEn = 0;
 		smask |= ACQ_PARAM_MSK_TGO;
 	}
@@ -850,10 +850,8 @@ printf("Forcing ext trigger output OFF\n");
 
 	if ( ( smask & ACQ_PARAM_MSK_DCM ) ) {
         if ( 1 >= set->cic0Decimation ) {
-printf("Forcing cic1 decimation to 1\n");
 			set->cic1Decimation = 1;
         }
-printf("Setting dcim %d x %d\n", set->cic0Decimation, set->cic1Decimation);
 		/* If they change the decimation but not explicitly the scale
 		 * then adjust the scale automatically
 		 */
@@ -1333,3 +1331,187 @@ double maxOff = 0.0;
 	}
 	return 0;
 }
+
+int
+scope_h5_write_bufhdr(ScopeH5Data *h5d, unsigned bufHdr, unsigned numChannels)
+{
+int      chnl;
+int      st;
+	if ( numChannels >= 8 ) {
+		return -EINVAL;
+	} else {
+		unsigned u[numChannels];
+		for ( chnl = 0; chnl < numChannels; ++chnl ) {
+			u[chnl] = !! (FW_BUF_HDR_FLG_OVR( chnl ) & bufHdr);
+		}
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_OVERRANGE, u, chnl )) < 0 ) {
+			return st;
+		}
+
+		u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
+			return st;
+		}
+	}
+	return 0;
+}
+
+int
+scope_h5_write_date(ScopePvt *scp, ScopeH5Data *h5d, time_t when)
+{
+char        whenstr[128];
+size_t      whenl;
+int         st;
+
+	ctime_r( &when, whenstr );
+	/* strip trailing '\n' */
+	whenl = strlen( whenstr );
+	if ( whenl >= 1 ) {
+		whenstr[whenl-1] = 0;
+	}
+	if ( (st = scope_h5_add_string_attr( h5d, H5K_DATE, whenstr )) < 0 ) {
+		return st;
+	}
+	return 0;
+}
+
+int
+scope_h5_write_parameters(ScopePvt *scp, ScopeH5Data *h5d)
+{
+AcqParams   acqParams;
+unsigned    u[scope_get_num_channels( scp )];
+double      d[scope_get_num_channels( scp )];
+double      scaleVolts[scope_get_num_channels( scp )];
+const char *s;
+int         chnl;
+time_t      now = time( NULL );
+int         st;
+
+	if ( (st = acq_set_params( scp, NULL, &acqParams )) < 0 ) {
+		return st;
+	}
+
+	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
+		if ( (st = scope_get_current_scale( scp, chnl, scaleVolts + chnl )) < 0 ) {
+			return st;
+		}
+	}
+	if ( (st = scope_h5_add_double_attr( h5d, H5K_SCALE_VOLT, scaleVolts, chnl )) < 0 ) {
+		return st;
+	}
+
+	u[0] = acqParams.cic0Decimation * acqParams.cic1Decimation;
+	if ( (st = scope_h5_add_uint_attr( h5d, H5K_DECIMATION, u, 1 )) < 0 ) {
+		return st;
+	}
+
+	d[0] = buf_get_sampling_freq( scp );
+	if ( (st = scope_h5_add_double_attr( h5d, H5K_CLOCK_F_HZ, d, 1 )) < 0 ) {
+		return st;
+	}
+
+	u[0] = acqParams.npts;
+	if ( (st = scope_h5_add_uint_attr( h5d, H5K_NPTS, u, 1 )) < 0 ) {
+		return st;
+	}
+
+	switch ( acqParams.src ) {
+		case CHA : s = "CHA"; break;
+		case CHB : s = "CHB"; break;
+		default  : s = "EXT"; break;
+	}
+
+	if ( (st = scope_h5_add_string_attr( h5d, H5K_TRG_SRC, s )) < 0 ) {
+		return st;
+	}
+
+	s = acqParams.rising ? "rising" : "falling";
+	if ( (st = scope_h5_add_string_attr( h5d, H5K_TRG_EDGE, s )) < 0 ) {
+		return st;
+	}
+
+	d[0] = 0.0/0.0;
+	switch ( acqParams.src ) {
+		case CHA : d[0] = scaleVolts[0]; break;
+		case CHB : d[0] = scaleVolts[1]; break;
+		default  :                       break;
+	}
+
+	if ( ! isnan( d[0] ) ) {
+		d[0] *= acqParams.level/32767.0 * (double)(1 << (buf_get_sample_size( scp ) - 1));
+	}
+	if ( (st = scope_h5_add_double_attr( h5d, H5K_TRG_L_VOLT, d, 1 )) < 0 ) {
+		return st;
+	}
+
+	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
+		st = pgaGetAtt( scp, chnl, d + chnl );
+		if ( st < 0 ) {
+			if ( -ENOTSUP != st ) {
+				return st;
+			}
+			break;
+		}
+	}
+	if ( 0 == st ) {
+		if ( (st = scope_h5_add_double_attr( h5d, H5K_PGA_ATT_DB, d, chnl )) < 0 ) {
+			return st;
+		}
+	}
+
+
+	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
+		st = fecGetAtt( scp, chnl, d + chnl );
+		if ( st < 0 ) {
+			if ( -ENOTSUP != st ) {
+				return st;
+			}
+			break;
+		}
+	}
+	if ( 0 == st ) {
+		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_ATT_DB, d, chnl )) < 0 ) {
+			return st;
+		}
+	}
+
+	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
+		st = fecGetTermination( scp, chnl );
+		if ( st < 0 ) {
+			if ( -ENOTSUP != st ) {
+				return st;
+			}
+			break;
+		}
+		d[chnl] = st ? 50.0 : 1.0E6;
+	}
+	if ( 0 <= st ) {
+		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_TERM, d, chnl )) < 0 ) {
+			return st;
+		}
+	}
+
+	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
+		st = fecGetACMode( scp, chnl );
+		if ( st < 0 ) {
+			if ( -ENOTSUP != st ) {
+				return st;
+			}
+			break;
+		}
+		u[chnl] = !!st;
+	}
+	if ( 0 <= st ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_FEC_CPLING, u, chnl )) < 0 ) {
+			return st;
+		}
+	}
+
+	if ( (st = scope_h5_write_date( scp, h5d, now )) < 0 ) {
+		return st;
+	}
+
+	return 0;
+}
+
+
