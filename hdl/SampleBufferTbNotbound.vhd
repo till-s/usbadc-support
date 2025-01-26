@@ -78,10 +78,14 @@ use     ieee.numeric_std.all;
 use     work.SDRAMPkg.all;
 
 entity SampleBufferTbNotbound is
+   generic  (
+      SAMPLE_WIDTH_G : natural := 20
+   );
 end entity SampleBufferTbNotbound;
 
 architecture sim of SampleBufferTbNotbound is
    constant AW_C : natural := 4;
+   constant DW_C : natural := SAMPLE_WIDTH_G;
 
    signal   ramClk   : std_logic := '0';
    signal   ramReq   : SDRAMReqType := SDRAM_REQ_INIT_C;
@@ -89,12 +93,12 @@ architecture sim of SampleBufferTbNotbound is
 
    signal   wrClk    : std_logic := '0';
    signal   wrEna    : std_logic := '0';
-   signal   wrDat    : std_logic_vector(20 downto 0);
+   signal   wrDat    : std_logic_vector(DW_C downto 0);
    signal   wrFul    : std_logic;
 
    signal   rdClk    : std_logic := '0';
    signal   rdEna    : std_logic := '0';
-   signal   rdDat    : std_logic_vector(20 downto 0);
+   signal   rdDat    : std_logic_vector(DW_C downto 0);
    signal   rdEmp    : std_logic;
 
    signal   run      : boolean   := true;
@@ -113,21 +117,24 @@ architecture sim of SampleBufferTbNotbound is
    end procedure rtick;
 
    procedure snd(
-      signal   d   : out std_logic_vector(20 downto 0);
+      signal   d   : out std_logic_vector(DW_C downto 0);
       signal   e   : out std_logic;
       constant pre : in  natural;
       constant fil : in  natural;
       constant nrd : in  natural 
    ) is
+      variable nlo, nhi : natural;
    begin
+      nlo := nrd mod 2**16;
+      nhi := nrd / 2**16;
       e <= '1';
       for i in 1 to fil loop
          d <= '0' & std_logic_vector( to_unsigned( pre + i, d'length - 1 ) );
          wtick;
       end loop;
-      d <= '1' & x"0" & std_logic_vector( to_unsigned( nrd, 16 ) );
+      d <= '1' & std_logic_vector( resize( to_unsigned( nlo, 16 ), d'length - 1 ) );
       wtick;
-      d <= '1' & x"0" & x"0000";
+      d <= '1' & std_logic_vector( resize( to_unsigned( nhi, 16 ), d'length - 1 ) );
       wtick;
       e <= '0';
       wtick;
@@ -147,7 +154,7 @@ architecture sim of SampleBufferTbNotbound is
            rtick;
            e <= '1';
          end loop;
-         assert to_integer( unsigned( rdDat(19 downto 0) ) )  = pre + i report "readback mismatch" severity failure;
+         assert to_integer( unsigned( rdDat(rdDat'left - 1 downto 0) ) )  = pre + i report "readback mismatch" severity failure;
          -- xor tests last flag in all cases
          assert ( i < fil ) xor ( rdDat(rdDat'left) = '1' ) report "LAST flag missing" severity failure;
          rtick;
@@ -180,12 +187,13 @@ architecture sim of SampleBufferTbNotbound is
          A_WIDTH_G     : natural := 12;
          MEM_DEPTH_G   : natural := 0;
          -- data width (SRAM only supports 20 ATM)
-         D_WIDTH_G     : natural := 20
+         D_WIDTH_G     : natural := DW_C
       );
       port (
          -- write side
          wrClk         : in  std_logic;
          wrEna         : in  std_logic;
+         wrRdy         : out std_logic;
    
          -- msb is 'command' flag
          wrDat         : in  std_logic_vector(D_WIDTH_G     downto 0);
@@ -285,13 +293,15 @@ begin
 
    U_DUT : component SampleBuffer
       generic map (
-         A_WIDTH_G => AW_C
+         A_WIDTH_G     => AW_C,
+         D_WIDTH_G     => DW_C
       )
       port map (
          wrClk         => wrClk,
          wrEna         => wrEna,
          wrDat         => wrDat,
          wrFul         => wrFul,
+         wrRdy         => open,
 
          -- sdram interface
          sdramClk      => ramClk,

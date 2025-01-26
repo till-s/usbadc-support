@@ -7,27 +7,41 @@ GHDL=ghdl
 #GHDLFLAGS=-P
 #GHDLFLAGS=-P -fsynopsys -Wl,-no-pie -g
 GHDLFLAGS=-P/usr/lib/ghdl
-
-# BRAM or SDRAM
-SAMPLEBUFFER_TYPE=BRAM
-
-# where to find RamEmul.vhd (if SAMPLEBUFFER_TYPE == SDRAM)
-VPATH=../../SDRAM-Controller
+SDRAM_CTRL_PATH=../../SDRAMCtrl
 
 HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 
 # Default target
 TESTS= CommandWrapperTb CommandWrapperSim CicFilterTb PipelinedRShifterTb
-TESTS+=SpiRegTb SpiShadowRegTb SampleBufferBRAMTb $(RAM_TEST_$(SAMPLEBUFFER_TYPE))
+TESTS+=SpiRegTb SpiShadowRegTb SampleBufferBRAMTb
 TESTS+=SimpleBusAsyncTb SimpleBusPipeStageTb
+
+# can we find RamEmul.vhd?
+ifneq ($(wildcard $(SDRAM_CTRL_PATH)/RamEmul.vhd)x,x)
+VPATH=$(SDRAM_CTRL_PATH)
+TESTS+=SampleBufferSDRAMTb
+OBJS+=RamEmul.o
+endif
+
+
+SampleBufferSDRAMTb_WITH_ARGS=-gSAMPLE_WIDTH_G=16
 
 all: $(TESTS)
 
-test: $(filter-out CommandWrapperSim,$(TESTS))
-	for i in $^; do echo "Running $$i"; if ! ./$$i; then exit 1; fi done
+RUNNABLE_TESTS=$(filter-out CommandWrapperSim,$(TESTS))
+RUN_TARGETS=$(addprefix run-,$(RUNNABLE_TESTS))
 
-RAM_EMUL_SDRAM=RamEmul
-RAM_TEST_SDRAM=SampleBufferSDRAMTb
+tests: $(RUN_TARGETS)
+
+$(RUN_TARGETS):run-%Tb:%Tb
+	@for arg in '' $($<_WITH_ARGS); do \
+	  echo "Running $< $$arg"; \
+	  if ! ./$< $$arg; then \
+	    exit 1; \
+	  fi; \
+	done
+
+.PHONY: all tests clean $(RUN_TARGETS)
 
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
@@ -48,7 +62,6 @@ OBJS+=SimpleBusAsync.o
 #OBJS+=SinCosGen.o
 OBJS+=SimpleBusPipeStage.o
 OBJS+=SpiShadowReg.o
-OBJS+=$(addsuffix .o,$(RAM_EMUL_$(SAMPLEBUFFER_TYPE)))
 
 # Elaboration target
 CommandWrapperTb: CommandWrapperTb.o $(OBJS)

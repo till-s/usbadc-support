@@ -51,8 +51,6 @@ end entity SampleBufferSDRAM;
 
 architecture SDRAM of SampleBufferSDRAM is
 
-   -- TODO fix fifo depths
-
    -- The write fifo must be deep enough to buffer incoming data during SDRAM page switches
    -- and refresh cycles (the worst case has these back-to-back).
    constant  LD_WR_FIFO_DEPTH_C : natural := 5;
@@ -120,7 +118,11 @@ architecture SDRAM of SampleBufferSDRAM is
       -- we compute 20*nsamples / 16 = (16 * nsamples + 4*nsamples ) / 16
       --                             = nsamples + nsamples/4
       -- keeping track of the fractional part in the 'offset'.
-      v    := (au & aoff) - shift_left( resize( n, L_C ), 2 ) - resize( n, L_C );
+      if ( D_WIDTH_G = 20 ) then
+        v    := (au & aoff) - shift_left( resize( n, L_C ), 2 ) - resize( n, L_C );
+      elsif ( D_WIDTH_G = 16 ) then
+        v    := (au & aoff) - shift_left( resize( n, L_C ), 2 );
+      end if;
       roff := v( roff'range );
       rv   := v( v'left downto roff'length );
    end procedure ptrDiff;
@@ -139,6 +141,8 @@ architecture SDRAM of SampleBufferSDRAM is
    signal sdramFlush     :  std_logic;
 
 begin
+
+   assert D_WIDTH_G = 20 or D_WIDTH_G = 16 report "SDRAM buffer only supports 20- or 16-bit data" severity failure;
 
    U_SYNC_RAM2WR : entity work.SynchronizerBit
       generic map (
@@ -210,7 +214,11 @@ begin
 
       wrFifoREn  <= '0';
       rdFifoWEn  <= '0';
+if    ( D_WIDTH_G = 20 ) then
       rdFifoIDat <= '0' & sdramRep.rdat & r.rdReg(3 downto 0);
+elsif ( D_WIDTH_G = 16 ) then
+      rdFifoIDat <= '0' & sdramRep.rdat(15 downto  0);
+end if;
 
       if ( ( r.sdramReq and sdramRep.ack ) = '1' ) then
          v.sdramReq := '0';
@@ -239,6 +247,7 @@ begin
                   v.state    := SET_RDPTR_LO;
                else
                   v.sdramReq := '1';
+if ( D_WIDTH_G = 20 ) then
                   v.wrOff    := r.wrOff + 1;
                   if    ( r.wrOff = 0 ) then
                      v.sdramWDat           := wrFifoODat(15 downto  0); 
@@ -254,6 +263,9 @@ begin
                      v.wrReg(15 downto  0) := wrFifoODat(19 downto  4);
                      v.state               := MOP;
                   end if;
+elsif ( D_WIDTH_G = 16 ) then
+                  v.sdramWDat  := wrFifoODat(15 downto  0); 
+end if;
                end if;
             end if;
 
@@ -298,13 +310,18 @@ begin
             -- wrCnt now holds end-address - 1; now subtract the start address
             v.wrCnt            := '0' & signed( RamPtrType(r.wrCnt(RamPtrType'range)) - r.ramPtr );
             v.state            := READ;
+if    ( D_WIDTH_G = 20 ) then
             v.preload          := true;
+elsif ( D_WIDTH_G = 16 ) then
+            v.preload          := false;
+end if;
             v.rdPipeCnt        := (others => '1');
 
          when READ  =>
             v.nxtState         := READ;
             v.sdramRdnwr       := '1';
-            -- issue next read
+            -- issue next read (rdPipeCnt counts the number of non-acked reads that
+            -- are out there in the pipeline).
             if ( not rdDon and ( (not r.sdramReq and rdEnable) = '1' ) ) then
                v.sdramReq  := '1';
                v.rdPipeCnt := r.rdPipeCnt + 1;
@@ -314,6 +331,7 @@ begin
             -- next word out of ram
             if ( sdramRep.vld = '1' ) then
 
+if    ( D_WIDTH_G = 20 ) then
                if    ( r.rdOff = 0 ) then
                   v.rdReg(15 downto 0)  := sdramRep.rdat;
                elsif ( r.rdOff = 1 ) then
@@ -323,11 +341,13 @@ begin
                elsif ( r.rdOff = 3 ) then
                   v.rdReg( 3 downto 0)  := sdramRep.rdat(15 downto 12);
                end if;
-
                v.preload   := false;
                v.rdOff     := r.rdOff + 1;
+end if;
+
                v.rdPipeCnt := v.rdPipeCnt - 1; -- use v on RHS; might have been incremented above
 
+if    ( D_WIDTH_G = 20 ) then
                if ( not r.preload ) then
                   rdFifoWEn <= '1';
                   if    ( r.rdOff = 1 ) then
@@ -342,20 +362,32 @@ begin
                      v.preload             := true;
                      v.rdOff               := r.rdOff;
                      -- if rdDon is true then the rdPipeCnt cannot have been incremented
-                     -- it is thus enough to to check r.rdPipeCnt = 0
-                     if ( rdDon and (r.rdPipeCnt = 0 ) ) then
+                     -- it is thus enough to to check r.rdPipeCnt = 0, i.e., using 'r' is
+                     -- sufficient.
+                     if ( rdDon and ( r.rdPipeCnt = 0 ) ) then
                         rdFifoIDat( rdFifoIDat'left ) <= '1'; -- 'last' flag
                      end if;
                   end if;
                end if;
+elsif ( D_WIDTH_G = 16 ) then
+               rdFifoWEn <= '1';
+               -- rdFifoIDat assigned as default at the beginning of this process
+               if ( rdDon and ( r.rdPipeCnt = 0 ) ) then
+                  rdFifoIDat( rdFifoIDat'left ) <= '1'; -- 'last' flag
+               end if;
+end if;
             end if;
 
             if ( rdDon and ( r.rdPipeCnt < 0 ) ) then
+if    ( D_WIDTH_G = 20 ) then
                if ( r.preload ) then
                   v.state := WRITE;
                else
                   v.state := LST;
                end if;
+elsif ( D_WIDTH_G = 16 ) then
+               v.state := WRITE;
+end if;
             end if;
 
             if ( sdramFlush = '1' ) then
