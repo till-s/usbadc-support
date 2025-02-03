@@ -1,7 +1,17 @@
-
-HAVE_H5=YES
-
 HCC_YES=h5cc
+
+# If user does not set HAVE_H5 we use a crude test to
+# check if h5cc is in our PATH:
+ifndef HAVE_H5
+$(shell $(HCC_YES) -showconfig > /dev/null)
+ifeq ($(.SHELLSTATUS),0)
+# h5cc -showconfig successfully executed (note -help always has exit status 1)
+HAVE_H5=YES
+else
+HAVE_H5=NO
+endif
+endif
+
 HCC_NO=$(CC)
 
 H5_DEFINES_YES=CONFIG_WITH_HDF5
