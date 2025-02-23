@@ -253,30 +253,6 @@ int    dacGetVoltsRange(ScopePvt *, double *pVoltsMin, double *pVoltsMax);
 int    dacGetVolts(ScopePvt *, unsigned channel, double *pvolts);
 int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
 
-#define H5K_SCALE_VOLT "scaleVolt"
-#define H5K_DECIMATION "decimation"
-#define H5K_CLOCK_F_HZ "clockFrequencyHz"
-#define H5K_NPTS       "numPreTriggerSamples"
-#define H5K_TRG_L_VOLT "trigLevelVolt"
-#define H5K_TRG_SRC    "trigSource"
-#define H5K_TRG_EDGE   "trigEdge"
-#define H5K_FEC_CPLING "fecCouplingAC"
-#define H5K_FEC_TERM   "fecTerminationOhm"
-#define H5K_FEC_ATT_DB "fecAttenuationDB"
-#define H5K_PGA_ATT_DB "pgaAttenuationDB"
-#define H5K_OVERRANGE  "overRange"
-#define H5K_TRG_AUTO   "autoTriggered"
-#define H5K_DATE       "date"
-
-#include <hdf5Sup.h>
-
-int
-scope_h5_write_parameters(ScopePvt *scp, ScopeH5Data *h5d);
-int
-scope_h5_write_date(ScopePvt *scp, ScopeH5Data *h5d, time_t when);
-int
-scope_h5_write_bufhdr(ScopeH5Data *h5d, unsigned bufHdr, unsigned numChannels);
-
 #ifdef __cplusplus
 }
 #endif

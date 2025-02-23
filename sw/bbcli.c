@@ -791,11 +791,11 @@ int                h5st      = 0;
 				if ( ! h5d ) {
 					goto bail;
 				}
-				h5st = scope_h5_write_bufhdr( h5d, hdr, scope_get_num_channels( scope ) );
+				h5st = scope_h5_add_bufhdr( h5d, hdr, scope_get_num_channels( scope ) );
 				if ( h5st ) {
 					goto bail;
 				}
-				h5st = scope_h5_write_parameters( scope, h5d );
+				h5st = scope_h5_add_acq_parameters( scope, h5d );
 				if ( h5st ) {
 					goto bail;
 				}
