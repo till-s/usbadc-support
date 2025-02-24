@@ -108,6 +108,9 @@ static int dacMax(FWInfo *fw)
 	if ( 0 == _dacMax ) {
 		/* horrible hack for now... */
 		switch ( fw_get_board_version( fw ) ) {
+			case 255:
+				/* simulator */
+				_dacMax = 0;     break;
 			case 0:
 				_dacMax = 0xff;  break;
 			case 1:
@@ -150,6 +153,11 @@ static double tick2Volt(FWInfo *fw, int tick, int maxDac)
 {
 	double volt = (VOLT_MIN + VOLT_REF * ((double)(tick)) / (double)(maxDac + 1));
 	switch ( fw_get_board_version( fw ) ) {
+		case 255:
+			/* simulator */
+			volt = 0.0;
+		break;
+
 		case 0:
 		break;
 

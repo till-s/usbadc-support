@@ -203,6 +203,7 @@ begin
          SDRAM_ADDR_WIDTH_G  => RAM_A_WIDTH_C,
          HAVE_SPI_CMD_G      => true,
          GIT_VERSION_G       => x"deadbeef",
+         BOARD_VERSION_G     => x"ff",
          REG_ASYNC_G         => true
       )
       port map (

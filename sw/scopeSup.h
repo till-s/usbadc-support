@@ -93,6 +93,12 @@ buf_get_sample_size(ScopePvt *);
 double
 buf_get_sampling_freq(ScopePvt *);
 
+/* Full-scale ADC counts (may be different from buf_get_sample_size
+ * if the samples are left-adjusted in a longer word).
+ */
+int
+buf_get_full_scale_ticks(ScopePvt *);
+
 int
 buf_flush(ScopePvt *);
 

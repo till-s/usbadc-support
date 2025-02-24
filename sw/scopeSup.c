@@ -379,6 +379,14 @@ int
 scope_init(ScopePvt *scp, int force)
 {
 int st;
+
+unsigned boardVers = fw_get_board_version( scp->fw );
+
+	if ( 255 == boardVers ) {
+		/* Simulator */
+		return 0;
+	}
+
 	if ( ! force && 0 == max195xxDLLLocked( scp->fw ) ) {
 		return 0;
 	}
@@ -480,6 +488,43 @@ scope_get_reference_freq(ScopePvt *scp)
 	return 0.0/0.0;
 }
 
+static int simPGAReadReg(FWInfo *, unsigned ch, unsigned reg)
+{
+	return -ENOTSUP;
+}
+
+static int simPGAWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val)
+{
+	return -ENOTSUP;
+}
+
+static int simPGAGetAttRange(FWInfo *, double *min, double *max)
+{
+	if ( min ) *min = 0.0;
+	if ( max ) *max = 0.0;
+	return 0;
+}
+
+static int simPGAGetAtt(FWInfo *, unsigned channel, double *val)
+{
+	if ( val ) *val = 0.0;
+	return 0;
+}
+
+static int simPGASetAtt(FWInfo *, unsigned channel, double val)
+{
+	return 0;
+}
+
+
+static struct PGAOps simPGAOps = {
+	readReg:     simPGAReadReg,
+	writeReg:    simPGAWriteReg,
+	getAttRange: simPGAGetAttRange,
+	getAtt:      simPGAGetAtt,
+	setAtt:      simPGASetAtt
+};
+
 ScopePvt *
 scope_open(FWInfo *fw)
 {
@@ -565,6 +610,10 @@ double    dfltScaleVolts = 1.0;
 			sc->fec            = tca6408FECSupCreate( fw, sc->numChannels, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
 		break;
 
+		case 255:
+			sc->pga            = &simPGAOps;
+		break;
+
 		default:
 		break;
 	}
@@ -599,7 +648,12 @@ double    dfltScaleVolts = 1.0;
 		sc->fullScaleVolts[i] = dfltScaleVolts;
 	}
 
-	st = unitDataFromFlash( &sc->unitData, fw );
+	if ( 255 == boardVersion ) {
+		/* simulator */
+		st = -ENODATA;
+	} else {
+		st = unitDataFromFlash( &sc->unitData, fw );
+	}
 	if ( st < 0 ) {
 		if ( -ENODATA == st ) {
 			UnitData *ud;
@@ -673,6 +727,12 @@ int
 buf_flush(ScopePvt *scp)
 {
 	return buf_read(scp, 0, 0, 0);
+}
+
+int
+buf_get_full_scale_ticks(ScopePvt *scp)
+{
+	return (buf_get_flags( scp ) & FW_BUF_FLG_16B) ? 32767 : 127;
 }
 
 int
