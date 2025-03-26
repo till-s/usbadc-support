@@ -14,7 +14,8 @@ entity CicFilter is
       clk          : in  std_logic;
       rst          : in  std_logic;
       cen          : in  std_logic := '1';
-      -- only used if in master mode
+      -- only used if in master mode; desired decimation factor minus one,
+      -- i.e., the actual decimatin is 'decmInp + 1'.
       decmInp      : in  unsigned(LD_MAX_DCM_G - 1 downto 0)          := (others => '0');
       -- decimator control signals to run another subordinate
       -- filter in parallel
