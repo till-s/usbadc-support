@@ -36,11 +36,20 @@ typedef struct ScopeDataDimension {
 ScopeH5Data *
 scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const size_t *dims, size_t ndims, const void *data);
 
-/* Save a ndims-dimensional sub-space out ('hyperslab')
- * the 'off' and 'count' arrays must have the same size as 'dims'
+/* Save a ndims-dimensional sub-space out ('hyperslab').
+ * The 'dims' are used to create a ('the') dataspace.
+ * 'data' may be NULL in which case no data are written
+ * (but may be added later using scope_h5_add_hslab()).
  */
 ScopeH5Data *
 scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, ScopeH5SampleType mem_type, const ScopeDataDimension *dims, size_t ndims, const void *data);
+
+/* Add a hslab of data as selected by 'selection' to the file.
+ * 'selection' *must* have the same number of elements as the
+ * array of dimensions passed to h5_create_from_hslab!
+ */
+long
+scope_h5_add_hslab( ScopeH5Data *h5d, const ScopeDataDimension *file_selection, const ScopeDataDimension  *mem_selection, const void *data );
 
 long
 scope_h5_add_uint_attr( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval );
