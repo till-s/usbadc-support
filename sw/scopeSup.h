@@ -105,6 +105,10 @@ buf_flush(ScopePvt *);
 #define FW_BUF_HDR_FLG_OVR(ch) (1<<(ch))
 #define FW_BUF_HDR_FLG_AUTO_TRIGGERED (1<<8)
 
+/* All buf_read variants return number of bytes read or negative error
+ * all buf_read variants also take care of swapping multi-byte samples
+ * to host-byte order.
+ */
 int
 buf_read(ScopePvt *, uint16_t *hdr, uint8_t *buf, size_t len);
 
