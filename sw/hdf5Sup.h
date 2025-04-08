@@ -9,7 +9,8 @@
 extern "C" {
 #endif
 
-typedef struct ScopeH5Data ScopeH5Data;
+typedef struct ScopeH5Data   ScopeH5Data;
+typedef struct ScopeH5DSpace ScopeH5DSpace;
 
 typedef enum ScopeH5SampleType { INT8_T, INT16_T, INT16LE_T, INT16BE_T, FLOAT_T, DOUBLE_T } ScopeH5SampleType;
 
@@ -24,6 +25,23 @@ typedef struct ScopeDataDimension {
 	size_t offset;
 	size_t actlen;
 } ScopeDataDimension;
+
+/*
+ * Create and destroy a dataspace.
+ */
+ScopeH5DSpace *
+scope_h5_space_create(ScopeH5SampleType typ, unsigned bitShift, unsigned precision, const ScopeDataDimension *dims, size_t rank);
+
+void
+scope_h5_space_destroy(ScopeH5DSpace *spc);
+
+/*
+ * Set hyperslab selection in a dataspace; rank must be identical to the rank of the space
+ * (at creation).
+ * RETURN: zero on success, negative status on error.
+ */
+long
+scope_h5_space_select(ScopeH5DSpace *spc, const ScopeDataDimension *dims, size_t rank);
 
 /*
  * Store sample data in a HDF5 file.
@@ -44,12 +62,18 @@ scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, co
 ScopeH5Data *
 scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, ScopeH5SampleType mem_type, const ScopeDataDimension *dims, size_t ndims, const void *data);
 
-/* Add a hslab of data as selected by 'selection' to the file.
- * 'selection' *must* have the same number of elements as the
- * array of dimensions passed to h5_create_from_hslab!
+/* Create witout adding any data (convenience wrapper); data may
+ * be added using scope_h5_add_hslab().
+ */
+ScopeH5Data *
+scope_h5_create_only(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, const ScopeDataDimension *hdims, size_t ndims);
+
+/* Add a hslab of data as selected by the selections to the file.
+ * 'mem_space' may be NULL (equivalent to passing mem_space_id = H5S_ALL to H5Dwrite()
+ * 'file_selection' may be NULL (equivalent to passing file_space_id = H5S_ALL to H5Dwrite().
  */
 long
-scope_h5_add_hslab( ScopeH5Data *h5d, const ScopeDataDimension *file_selection, const ScopeDataDimension  *mem_selection, const void *data );
+scope_h5_add_hslab( ScopeH5Data *h5d, const ScopeDataDimension *file_selection, const ScopeH5DSpace *mem_space, const void *data );
 
 long
 scope_h5_add_uint_attr( ScopeH5Data *h5d, const char *name, const unsigned *val, size_t nval );
@@ -62,6 +86,12 @@ scope_h5_add_double_attr( ScopeH5Data *h5d, const char *name, const double *val,
 
 long
 scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val);
+
+size_t
+scope_h5_space_get_rank( const ScopeH5DSpace *spc );
+
+ScopeH5DSpace *
+scope_h5_get_dspace( ScopeH5Data *h5d);
 
 #define H5K_SCALE_VOLT "scaleVolt"
 #define H5K_DECIMATION "decimation"
