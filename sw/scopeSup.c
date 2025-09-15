@@ -1317,6 +1317,16 @@ fecGetTermination(ScopePvt *scp, unsigned channel)
 }
 
 int
+fecGetTerminationOhm(ScopePvt *scp, unsigned channel, double *val) {
+	int st = fecGetTermination(scp, channel);
+	if ( st >= 0 ) {
+		*val = st > 0 ? 50.0 : 1.0E6;
+		st   = 0;
+	}
+	return st;
+}
+
+int
 fecSetTermination(ScopePvt *scp, unsigned channel, unsigned	val)
 {
 	if ( channel >= scope_get_num_channels( scp ) ) return -EINVAL;
@@ -1392,3 +1402,115 @@ double maxOff = 0.0;
 	return 0;
 }
 
+ScopeParams *scope_alloc_params(ScopePvt *scp) {
+	unsigned         nch  = scope_get_num_channels( scp );
+	ScopeParams     *rval = NULL;
+	ScopeParams     *p    = calloc( 1, sizeof(*p) + nch * sizeof(p->afeParams[0]) );
+	if ( ! p ) {
+		goto bail;
+	}
+
+	p->samplingFreqHz = buf_get_sampling_freq( scp );
+	p->numChannels    = nch;
+
+	rval = p;
+	p    = NULL;
+
+bail:
+	if ( p ) {
+		free( p );
+	}
+
+	return rval;
+}
+
+void scope_free_params(ScopeParams *p) {
+	free( p );
+}
+
+int scope_get_params(ScopePvt *scp, ScopeParams *p) {
+	int      st;
+	unsigned ch;
+
+	if ( (st = acq_set_params( scp, NULL, &p->acqParams )) ) {
+		fprintf(stderr, "scope_get_params() - Error %d: unable to read acquisition parameters.\n", st);
+		return st;
+	}
+
+	for ( ch = 0; ch < p->numChannels; ++ch ) {
+		if ( (st = scope_get_current_scale( scp, ch, &p->afeParams[ch].currentScaleVolts )) ) {
+			fprintf(stderr, "scope_get_params() - Error %d: reading current scale (channel %d) failed.\n", st, ch);
+			p->afeParams[ch].currentScaleVolts = 0.0;
+		}
+		if ( (st = scope_get_full_scale_volts( scp, ch, &p->afeParams[ch].fullScaleVolts )) ) {
+			fprintf(stderr, "scope_get_params() - Error %d: reading current full (channel %d) failed.\n", st, ch);
+			return st;
+		}
+		if ( (st = pgaGetAtt( scp, ch, &p->afeParams[ch].pgaAttDb )) ) {
+			if ( -ENOTSUP == st  ) {
+				p->afeParams[ch].pgaAttDb = 0.0/0.0;
+			} else {
+				fprintf(stderr, "scope_get_params() - Error %d: reading PGA attenuation (channel %d) failed.\n", st, ch);
+				return st;
+			}
+		}
+		if ( (st = fecGetAtt( scp, ch, &p->afeParams[ch].fecAttDb )) ) {
+			if ( -ENOTSUP == st  ) {
+				p->afeParams[ch].fecAttDb = 0.0/0.0;
+			} else {
+				fprintf(stderr, "scope_get_params() - Error %d: reading FEC attenuation (channel %d) failed.\n", st, ch);
+				return st;
+			}
+		}
+		if ( (st = fecGetTerminationOhm( scp, ch, &p->afeParams[ch].fecTerminationOhm )) ) {
+			if ( -ENOTSUP == st  ) {
+				p->afeParams[ch].fecTerminationOhm = 0.0/0.0;
+			} else {
+				fprintf(stderr, "scope_get_params() - Error %d: reading FEC termination (channel %d) failed.\n", st, ch);
+				return st;
+			}
+		}
+
+		st = fecGetACMode( scp, ch );
+		if ( st >= 0 ) {
+		    p->afeParams[ch].fecCouplingAC = st;
+		} else if ( -ENOTSUP == st  ) {
+			p->afeParams[ch].fecCouplingAC = -1;
+		} else {
+			fprintf(stderr, "scope_get_params() - Error %d: reading FEC coupling mode (channel %d) failed.\n", st, ch);
+			return st;
+		}
+
+		if ( (st = dacGetVolts( scp, ch, &p->afeParams[ch].dacVolts )) ) {
+			if ( -ENOTSUP == st  ) {
+				p->afeParams[ch].dacVolts = 0.0;
+			} else {
+				fprintf(stderr, "scope_get_params() - Error %d: reading DAC (channel %d) failed.\n", st, ch);
+				return st;
+			}
+		}
+
+		st = fecGetDACRangeHi( scp, ch );
+		if ( st >= 0 ) {
+		    p->afeParams[ch].dacRangeHi = st;
+		} else if ( -ENOTSUP == st  ) {
+			p->afeParams[ch].dacRangeHi = -1;
+		} else {
+			fprintf(stderr, "scope_get_params() - Error %d: reading DAC range (channel %d) failed.\n", st, ch);
+			return st;
+		}
+	}
+
+	p->triggerLevelVolts = 0.0/0.0;
+
+	if ( (unsigned)p->acqParams.src < p->numChannels ) {
+		p->triggerLevelVolts = p->afeParams[p->acqParams.src].currentScaleVolts;
+	}
+
+	if ( ! isnan( p->triggerLevelVolts ) ) {
+		p->triggerLevelVolts *= p->acqParams.level/32767.0 * (double)(1 << (buf_get_sample_size( scp ) - 1));
+	}
+
+
+	return 0;
+}

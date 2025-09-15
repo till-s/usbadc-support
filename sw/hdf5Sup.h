@@ -104,6 +104,7 @@ scope_h5_get_dspace( ScopeH5Data *h5d);
 #define H5K_FEC_CPLING "fecCouplingAC"
 #define H5K_FEC_TERM   "fecTerminationOhm"
 #define H5K_FEC_ATT_DB "fecAttenuationDB"
+#define H5K_FEC_DAC_HI "fecDACRangeHigh"
 #define H5K_PGA_ATT_DB "pgaAttenuationDB"
 #define H5K_OVERRANGE  "overRange"
 #define H5K_TRG_AUTO   "autoTriggered"
@@ -111,8 +112,13 @@ scope_h5_get_dspace( ScopeH5Data *h5d);
 #define H5K_TRG_SRC    "triggerSource"
 #define H5K_TRG_EDGE   "triggerEdge"
 
+/* Read parameters from FW and store */
 int
 scope_h5_add_acq_parameters(ScopePvt *scp, ScopeH5Data *h5d);
+
+/* Full parameters passed explicitly */
+int
+scope_h5_add_scope_parameters(ScopePvt *scp, ScopeH5Data *h5d, ScopeParams *p);
 
 int
 scope_h5_add_bufhdr(ScopeH5Data *h5d, unsigned bufHdr, unsigned numChannels);

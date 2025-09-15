@@ -118,7 +118,8 @@ buf_read_flt(ScopePvt *scp, uint16_t *hdr, float *buf, size_t nelms);
 int
 buf_read_int16(ScopePvt *scp, uint16_t *hdr, int16_t *buf, size_t nelms);
 
-typedef enum TriggerSource { CHA, CHB, EXT } TriggerSource;
+/* enum value = channel index */
+typedef enum TriggerSource { CHA = 0, CHB = 1, EXT = 10 } TriggerSource;
 
 /* Immediate (manual) trigger can be achieved by
  * setting the auto-timeout to 0
@@ -164,6 +165,32 @@ typedef struct AcqParams {
 	uint8_t       cic1Shift;
 	int32_t       scale;
 } AcqParams;
+
+typedef struct AFEParams {
+	double        fullScaleVolts;
+	double        currentScaleVolts;
+	double        pgaAttDb;
+	double        fecAttDb;
+	double        fecTerminationOhm;
+	int           fecCouplingAC;
+	double        dacVolts;
+	int           dacRangeHi;
+} AFEParams;
+
+typedef struct ScopeParams {
+	AcqParams     acqParams;
+	double        samplingFreqHz;
+	unsigned      numChannels;
+	double        triggerLevelVolts;
+	/* 'numChannels' AFE params attached */
+	AFEParams     afeParams[];
+} ScopeParams;
+
+ScopeParams *scope_alloc_params(ScopePvt *);
+void scope_free_params(ScopeParams *);
+
+int
+scope_get_params(ScopePvt *, ScopeParams *);
 
 /* Set new parameters and obtain previous parameters.
  * A new acquisition is started if any mask bit is set.
@@ -250,6 +277,7 @@ int    pgaSetAtt(ScopePvt *, unsigned channel, double att);
 int    fecGetACMode(ScopePvt *, unsigned channel);
 int    fecSetACMode(ScopePvt *, unsigned channel, unsigned on);
 int    fecGetTermination(ScopePvt *, unsigned channel);
+int    fecGetTerminationOhm(ScopePvt *, unsigned channel, double *val);
 int    fecSetTermination(ScopePvt *, unsigned channel, unsigned on);
 int    fecGetDACRangeHi(ScopePvt *, unsigned channel);
 int    fecSetDACRangeHi(ScopePvt *, unsigned channel, unsigned on);

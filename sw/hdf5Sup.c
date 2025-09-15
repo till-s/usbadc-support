@@ -660,125 +660,105 @@ int         st;
 #endif
 }
 
+#define CPY_DBL(d,p,fld) \
+	cpy_dbl((d),(p), &((AFEParams*)0)->fld)
+
+static int cpy_dbl(double *d, ScopeParams *p, double *off) {
+	unsigned  ch;
+	for ( ch = 0; ch < p->numChannels; ++ch ) {
+		if ( isnan( (d[ch] = *(double*)((uintptr_t)(&p->afeParams[ch]) + (uintptr_t)off))) ) {
+			return -1;
+		}
+	}
+	return 0;
+}
+
+#define CPY_UNS(d,p,fld) \
+	cpy_uns((d),(p), &((AFEParams*)0)->fld)
+
+static int cpy_uns(unsigned *u, ScopeParams *p, int *off) {
+	unsigned  ch;
+	for ( ch = 0; ch < p->numChannels; ++ch ) {
+		int v = * (int*) ((uintptr_t)(&p->afeParams[ch]) + (uintptr_t)off);
+		if ( v < 0 ) {
+			return -1;
+		}
+		u[ch] = (unsigned)v;
+	}
+	return 0;
+}
+
+
 int
-scope_h5_add_acq_parameters(ScopePvt *scp, ScopeH5Data *h5d)
-{
+scope_h5_add_scope_parameters(ScopePvt *scp, ScopeH5Data *h5d, ScopeParams *p) {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
 #else
-AcqParams   acqParams;
-unsigned    u[scope_get_num_channels( scp )];
-double      d[scope_get_num_channels( scp )];
-double      scaleVolts[scope_get_num_channels( scp )];
-int         chnl;
 time_t      now = time( NULL );
 int         st;
+unsigned    u[p->numChannels];
+double      d[p->numChannels];
 
-	if ( (st = acq_set_params( scp, NULL, &acqParams )) < 0 ) {
+	if ( CPY_DBL(d, p, currentScaleVolts) ) {
+		return -EINVAL;
+	}
+
+	printf("ScaleVolts: d[0] %g, d[1] %g, scl[0] %g, scl[1] %g\n", d[0], d[1], p->afeParams[0].currentScaleVolts, p->afeParams[1].currentScaleVolts);
+
+	if ( (st = scope_h5_add_double_attr( h5d, H5K_SCALE_VOLT, d, p->numChannels )) < 0 ) {
 		return st;
 	}
 
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		if ( (st = scope_get_current_scale( scp, chnl, scaleVolts + chnl )) < 0 ) {
-			return st;
-		}
-	}
-	if ( (st = scope_h5_add_double_attr( h5d, H5K_SCALE_VOLT, scaleVolts, chnl )) < 0 ) {
-		return st;
-	}
-
-	u[0] = acqParams.cic0Decimation * acqParams.cic1Decimation;
+	u[0] = p->acqParams.cic0Decimation * p->acqParams.cic1Decimation;
 	if ( (st = scope_h5_add_uint_attr( h5d, H5K_DECIMATION, u, 1 )) < 0 ) {
 		return st;
 	}
 
-	d[0] = buf_get_sampling_freq( scp );
+	d[0] = p->samplingFreqHz;
 	if ( (st = scope_h5_add_double_attr( h5d, H5K_CLOCK_F_HZ, d, 1 )) < 0 ) {
 		return st;
 	}
 
-	u[0] = acqParams.npts;
+	u[0] = p->acqParams.npts;
 	if ( (st = scope_h5_add_uint_attr( h5d, H5K_NPTS, u, 1 )) < 0 ) {
 		return st;
 	}
 
-	if ( (st = scope_h5_add_trigger_source( h5d, acqParams.src, acqParams.rising )) < 0 ) {
+	if ( (st = scope_h5_add_trigger_source( h5d, p->acqParams.src, p->acqParams.rising )) < 0 ) {
 		return st;
 	}
 
-	d[0] = 0.0/0.0;
-	switch ( acqParams.src ) {
-		case CHA : d[0] = scaleVolts[0]; break;
-		case CHB : d[0] = scaleVolts[1]; break;
-		default  :                       break;
-	}
-
-	if ( ! isnan( d[0] ) ) {
-		d[0] *= acqParams.level/32767.0 * (double)(1 << (buf_get_sample_size( scp ) - 1));
-	}
+	d[0] = p->triggerLevelVolts;
 	if ( (st = scope_h5_add_double_attr( h5d, H5K_TRG_L_VOLT, d, 1 )) < 0 ) {
 		return st;
 	}
 
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		st = pgaGetAtt( scp, chnl, d + chnl );
-		if ( st < 0 ) {
-			if ( -ENOTSUP != st ) {
-				return st;
-			}
-			break;
-		}
-	}
-	if ( 0 == st ) {
-		if ( (st = scope_h5_add_double_attr( h5d, H5K_PGA_ATT_DB, d, chnl )) < 0 ) {
+	if ( 0 == CPY_DBL(d, p, pgaAttDb) ) {
+		if ( (st = scope_h5_add_double_attr( h5d, H5K_PGA_ATT_DB, d, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
-
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		st = fecGetAtt( scp, chnl, d + chnl );
-		if ( st < 0 ) {
-			if ( -ENOTSUP != st ) {
-				return st;
-			}
-			break;
-		}
-	}
-	if ( 0 == st ) {
-		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_ATT_DB, d, chnl )) < 0 ) {
+	if ( 0 == CPY_DBL(d, p, fecAttDb) ) {
+		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_ATT_DB, d, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		st = fecGetTermination( scp, chnl );
-		if ( st < 0 ) {
-			if ( -ENOTSUP != st ) {
-				return st;
-			}
-			break;
-		}
-		d[chnl] = st ? 50.0 : 1.0E6;
-	}
-	if ( 0 <= st ) {
-		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_TERM, d, chnl )) < 0 ) {
+	if ( 0 == CPY_DBL(d, p, fecTerminationOhm) ) {
+		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_TERM, d, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
-	for ( chnl = 0; chnl < scope_get_num_channels( scp ); ++chnl ) {
-		st = fecGetACMode( scp, chnl );
-		if ( st < 0 ) {
-			if ( -ENOTSUP != st ) {
-				return st;
-			}
-			break;
+	if ( 0 == CPY_UNS(u, p, fecCouplingAC) ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_FEC_CPLING, u, p->numChannels )) < 0 ) {
+			return st;
 		}
-		u[chnl] = !!st;
 	}
-	if ( 0 <= st ) {
-		if ( (st = scope_h5_add_uint_attr( h5d, H5K_FEC_CPLING, u, chnl )) < 0 ) {
+
+	if ( 0 == CPY_UNS(u, p, dacRangeHi) ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, H5K_FEC_DAC_HI, u, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
@@ -788,6 +768,30 @@ int         st;
 	}
 
 	return 0;
+#endif
+}
+
+int
+scope_h5_add_acq_parameters(ScopePvt *scp, ScopeH5Data *h5d)
+{
+#ifndef CONFIG_WITH_HDF5
+	return -ENOTSUP;
+#else
+	ScopeParams *parms = scope_alloc_params( scp );
+	int          st;
+	if ( ! parms ) {
+		return -ENOMEM;
+	}
+
+	st = scope_get_params( scp, parms );
+
+	if ( 0 == st ) {
+		st = scope_h5_add_scope_parameters( scp, h5d, parms );
+	}
+
+	scope_free_params( parms );
+
+	return st;
 #endif
 }
 
