@@ -177,7 +177,19 @@ typedef struct AFEParams {
 	int           dacRangeHi;
 } AFEParams;
 
+struct ScopeParams;
+
+void scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
+
 typedef struct ScopeParams {
+#ifdef __cplusplus
+	ScopeParams() = delete;
+	ScopeParams(const ScopeParams &rhs) = delete;
+	ScopeParams &operator=(const ScopeParams &rhs) {
+		scope_copy_params(this, &rhs);
+		return *this;
+	}
+#endif
 	AcqParams     acqParams;
 	double        samplingFreqHz;
 	unsigned      numChannels;
@@ -188,6 +200,7 @@ typedef struct ScopeParams {
 
 ScopeParams *scope_alloc_params(ScopePvt *);
 void scope_free_params(ScopeParams *);
+
 
 int
 scope_get_params(ScopePvt *, ScopeParams *);

@@ -1428,6 +1428,17 @@ void scope_free_params(ScopeParams *p) {
 	free( p );
 }
 
+void scope_copy_params(ScopeParams *to, const ScopeParams *from) {
+	unsigned ch, numch = from->numChannels;
+	if ( to->numChannels < numch ) {
+		numch = to->numChannels;
+	}
+	*to = *from;
+	for ( ch = 0; ch < numch; ++ch ) {
+		to->afeParams[ch] = from->afeParams[ch];
+	}
+}
+
 int scope_get_params(ScopePvt *scp, ScopeParams *p) {
 	int      st;
 	unsigned ch;
