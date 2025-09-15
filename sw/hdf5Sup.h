@@ -87,6 +87,9 @@ scope_h5_add_double_attr( ScopeH5Data *h5d, const char *name, const double *val,
 long
 scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val);
 
+long
+scope_h5_add_comment( ScopeH5Data *h5d, const char *comment);
+
 size_t
 scope_h5_space_get_rank( const ScopeH5DSpace *spc );
 

@@ -40,6 +40,7 @@ static void usage(const char *nm)
 	printf("   -V                 : dump firmware version.\n");
 	printf("   -B                 : dump ADC buffer (raw).\n");
 	printf("   -5 hdf5_filename   : dump ADC buffer (HDF5).\n");
+	printf("   -C <comment>       : add <comment> to the HDF5 data.\n");
     printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor', 'extTrgOE').\n");
     printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", ACQ_LD_SCALE_ONE);
     printf("                              and may be appended with ':hysteresis'\n");
@@ -623,16 +624,18 @@ ScopePvt          *scope     = 0;
 const char        *h5nam     = NULL;
 ScopeH5Data       *h5d       = NULL;
 int                h5st      = 0;
+const char        *h5comment = NULL;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
 	}
 
-	while ( (opt = getopt(argc, argv, "Aa:B5:Dd:Ff:GhIi:P:pR:S:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "5:Aa:BC:Dd:Ff:GhIi:P:pR:S:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
 			default : fprintf(stderr, "Unknown option -%c (use -h for help)\n", opt); return 1;
+			case 'C': h5comment = optarg;                                             break;
 			case 'd': devn = optarg;                                                  break;
 			case 'D': dac  = 1; test_reg = TEST_I2C;                                  break;
 			case 'P': feOp = optarg;                                                  break;
@@ -798,6 +801,12 @@ int                h5st      = 0;
 				h5st = scope_h5_add_acq_parameters( scope, h5d );
 				if ( h5st ) {
 					goto bail;
+				}
+				if ( h5comment ) {
+					h5st = scope_h5_add_comment( h5d, h5comment );
+					if ( h5st ) {
+						goto bail;
+					}
 				}
 			} else {
 				if ( (fl & FW_BUF_FLG_16B) ) {

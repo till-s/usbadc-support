@@ -582,6 +582,11 @@ int         st;
 #endif
 }
 
+long
+scope_h5_add_comment( ScopeH5Data *h5d, const char *comment)
+{
+	return scope_h5_add_string_attr( h5d, "comment", comment );
+}
 
 long
 scope_h5_add_string_attr( ScopeH5Data *h5d, const char *name, const char *val)
