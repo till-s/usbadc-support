@@ -690,7 +690,7 @@ static int cpy_uns(unsigned *u, ScopeParams *p, int *off) {
 
 
 int
-scope_h5_add_scope_parameters(ScopePvt *scp, ScopeH5Data *h5d, ScopeParams *p) {
+scope_h5_add_scope_parameters(ScopeH5Data *h5d, const ScopeParams *p) {
 #ifndef CONFIG_WITH_HDF5
 	return -ENOTSUP;
 #else
@@ -792,7 +792,7 @@ scope_h5_add_acq_parameters(ScopePvt *scp, ScopeH5Data *h5d)
 	st = scope_get_params( scp, parms );
 
 	if ( 0 == st ) {
-		st = scope_h5_add_scope_parameters( scp, h5d, parms );
+		st = scope_h5_add_scope_parameters( h5d, parms );
 	}
 
 	scope_free_params( parms );

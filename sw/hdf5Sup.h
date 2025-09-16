@@ -118,7 +118,7 @@ scope_h5_add_acq_parameters(ScopePvt *scp, ScopeH5Data *h5d);
 
 /* Full parameters passed explicitly */
 int
-scope_h5_add_scope_parameters(ScopePvt *scp, ScopeH5Data *h5d, ScopeParams *p);
+scope_h5_add_scope_parameters(ScopeH5Data *h5d, const ScopeParams *p);
 
 int
 scope_h5_add_bufhdr(ScopeH5Data *h5d, unsigned bufHdr, unsigned numChannels);
