@@ -663,10 +663,10 @@ int         st;
 #define CPY_DBL(d,p,fld) \
 	cpy_dbl((d),(p), &((AFEParams*)0)->fld)
 
-static int cpy_dbl(double *d, ScopeParams *p, double *off) {
+static int cpy_dbl(double *d, const ScopeParams *p, double *off) {
 	unsigned  ch;
 	for ( ch = 0; ch < p->numChannels; ++ch ) {
-		if ( isnan( (d[ch] = *(double*)((uintptr_t)(&p->afeParams[ch]) + (uintptr_t)off))) ) {
+		if ( isnan( (d[ch] = *(const double*)((uintptr_t)(&p->afeParams[ch]) + (uintptr_t)off))) ) {
 			return -1;
 		}
 	}
@@ -676,10 +676,10 @@ static int cpy_dbl(double *d, ScopeParams *p, double *off) {
 #define CPY_UNS(d,p,fld) \
 	cpy_uns((d),(p), &((AFEParams*)0)->fld)
 
-static int cpy_uns(unsigned *u, ScopeParams *p, int *off) {
+static int cpy_uns(unsigned *u, const ScopeParams *p, int *off) {
 	unsigned  ch;
 	for ( ch = 0; ch < p->numChannels; ++ch ) {
-		int v = * (int*) ((uintptr_t)(&p->afeParams[ch]) + (uintptr_t)off);
+		int v = * (const int*) ((uintptr_t)(&p->afeParams[ch]) + (uintptr_t)off);
 		if ( v < 0 ) {
 			return -1;
 		}
@@ -687,7 +687,6 @@ static int cpy_uns(unsigned *u, ScopeParams *p, int *off) {
 	}
 	return 0;
 }
-
 
 int
 scope_h5_add_scope_parameters(ScopeH5Data *h5d, const ScopeParams *p) {
