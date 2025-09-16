@@ -728,7 +728,13 @@ double      d[p->numChannels];
 		return st;
 	}
 
-	d[0] = p->triggerLevelVolts;
+	if ( (unsigned)p->acqParams.src < p->numChannels ) {
+		d[0]  = p->afeParams[p->acqParams.src].currentScaleVolts;
+		d[0] *= acq_level_to_percent( p->acqParams.level )/100.0;
+	} else {
+		d[0]  = 0.0;
+	}
+
 	if ( (st = scope_h5_add_double_attr( h5d, H5K_TRG_L_VOLT, d, 1 )) < 0 ) {
 		return st;
 	}

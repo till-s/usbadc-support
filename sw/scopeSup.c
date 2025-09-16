@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #define FW_BUF_FLG_GET_SMPLSZ(flags) ( ( (flags) & FW_BUF_FLG_16B ) ? 9 + ( ( (flags) >> 1 ) & 7 ) : 8 )
 
@@ -909,9 +908,9 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 	}
 
 	if ( ( smask & ACQ_PARAM_MSK_DCM ) ) {
-        if ( 1 >= set->cic0Decimation ) {
+		if ( 1 >= set->cic0Decimation ) {
 			set->cic1Decimation = 1;
-        }
+		}
 		/* If they change the decimation but not explicitly the scale
 		 * then adjust the scale automatically
 		 */
@@ -941,21 +940,21 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 			set->nsamples = 1;
 		}
 		nsamples = set->nsamples;
-        scp->acqParams.nsamples = set->nsamples;
+		scp->acqParams.nsamples = set->nsamples;
 	}
 
-    bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK;
+	bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK;
 	len  = (apiVersion >= FW_API_VERSION_2) ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
-    putBuf( &bufp, smask, len );
+	putBuf( &bufp, smask, len );
 
 	v8  = (set->src & BITS_FW_CMD_ACQ_MSK_SRC)  << BITS_FW_CMD_ACQ_SHF_SRC;
 	v8 |= (set->rising    ? 1 : 0)              << BITS_FW_CMD_ACQ_SHF_EDG;
 	v8 |= (set->trigOutEn ? 1 : 0)              << BITS_FW_CMD_ACQ_SHF_TGO;
-    putBuf( &bufp, v8, BITS_FW_CMD_ACQ_LEN_SRC );
+	putBuf( &bufp, v8, BITS_FW_CMD_ACQ_LEN_SRC );
 
 	if ( ( smask & ACQ_PARAM_MSK_LVL ) ) {
 		scp->acqParams.level      = set->level;
-        scp->acqParams.hysteresis = set->hysteresis;
+		scp->acqParams.hysteresis = set->hysteresis;
 	}
 
 	putBuf( &bufp, set->level, BITS_FW_CMD_ACQ_LEN_LVL );
@@ -992,7 +991,7 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 	} else {
 		v24 = set->cic0Decimation - 1;
 	}
-    v24 <<= BITS_FW_CMD_ACQ_DCM0_SHFT;
+	v24 <<= BITS_FW_CMD_ACQ_DCM0_SHFT;
 
 	if ( 0 != v24 ) {
 		if ( set->cic1Decimation > (1<<16) ) {
@@ -1007,7 +1006,7 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 	putBuf( &bufp, v24, BITS_FW_CMD_ACQ_LEN_DCM );
 
 	v32 = set->cic0Shift;
-    if ( v32 > 15 ) {
+	if ( v32 > 15 ) {
 		v32 = 15;
 	}
 	v32 <<= 7;
@@ -1053,8 +1052,8 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 	get->mask = ACQ_PARAM_MSK_ALL;
 
 	len  = (apiVersion >= FW_API_VERSION_2) ? BITS_FW_CMD_ACQ_LEN_MSK_V2 : BITS_FW_CMD_ACQ_LEN_MSK_V1;
-    bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK + len;
-    v8   = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SRC );
+	bufp = buf + BITS_FW_CMD_ACQ_IDX_MSK + len;
+	v8   = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SRC );
 
 	switch ( (v8 >> BITS_FW_CMD_ACQ_SHF_SRC) & BITS_FW_CMD_ACQ_MSK_SRC) {
 		case 0:  get->src = CHA; break;
@@ -1081,8 +1080,8 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 
 	v32                 = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_DCM );
 
-    get->cic0Decimation = ((v32 >> BITS_FW_CMD_ACQ_DCM0_SHFT) & 0xf   ) + 1; /* zero-based */
-    get->cic1Decimation = ((v32 >>                         0) & 0xffff) + 1; /* zero-based */
+	get->cic0Decimation = ((v32 >> BITS_FW_CMD_ACQ_DCM0_SHFT) & 0xf   ) + 1; /* zero-based */
+	get->cic1Decimation = ((v32 >>                         0) & 0xffff) + 1; /* zero-based */
 
 	v32                 = getBuf( &bufp, BITS_FW_CMD_ACQ_LEN_SCL );
 
@@ -1115,6 +1114,18 @@ AcqParams p;
 	p.level         = level;
     p.hysteresis    = hyst;
 	return acq_set_params( scp, &p, 0 );
+}
+
+double
+acq_level_to_percent(int16_t level)
+{
+	return 100.0*(double)level/32767.0;
+}
+
+int16_t
+acq_percent_to_level(double percent)
+{
+	return round( 32767.0 * percent/100.0 );
 }
 
 int
@@ -1208,7 +1219,7 @@ AcqParams p;
 	}
 	if ( EXT == src ) {
 		p.mask     |= ACQ_PARAM_MSK_TGO;
-        p.trigOutEn = 0;
+	        p.trigOutEn = 0;
 	}
 	return acq_set_params( scp, &p, 0 );
 }
@@ -1402,16 +1413,28 @@ double maxOff = 0.0;
 	return 0;
 }
 
-ScopeParams *scope_alloc_params(ScopePvt *scp) {
-	unsigned         nch  = scope_get_num_channels( scp );
+size_t
+scope_sizeof_params(ScopePvt *scp) {
+	return sizeof(ScopeParams) + scope_get_num_channels( scp ) * sizeof( ((ScopeParams*)0)->afeParams[0] );
+}
+
+void
+scope_init_params(ScopePvt *scp, ScopeParams *p) {
+	p->samplingFreqHz = buf_get_sampling_freq( scp );
+	p->numChannels    = scope_get_num_channels( scp );
+}
+
+ScopeParams *
+scope_alloc_params(ScopePvt *scp) {
+
 	ScopeParams     *rval = NULL;
-	ScopeParams     *p    = calloc( 1, sizeof(*p) + nch * sizeof(p->afeParams[0]) );
+	ScopeParams     *p    = calloc( 1, scope_sizeof_params( scp ) );
+
 	if ( ! p ) {
 		goto bail;
 	}
 
-	p->samplingFreqHz = buf_get_sampling_freq( scp );
-	p->numChannels    = nch;
+	scope_init_params( scp, p );
 
 	rval = p;
 	p    = NULL;
@@ -1424,11 +1447,13 @@ bail:
 	return rval;
 }
 
-void scope_free_params(ScopeParams *p) {
+void
+scope_free_params(ScopeParams *p) {
 	free( p );
 }
 
-void scope_copy_params(ScopeParams *to, const ScopeParams *from) {
+void
+scope_copy_params(ScopeParams *to, const ScopeParams *from) {
 	unsigned ch, numch = from->numChannels;
 	if ( to->numChannels < numch ) {
 		numch = to->numChannels;
@@ -1439,7 +1464,8 @@ void scope_copy_params(ScopeParams *to, const ScopeParams *from) {
 	}
 }
 
-int scope_get_params(ScopePvt *scp, ScopeParams *p) {
+int
+scope_get_params(ScopePvt *scp, ScopeParams *p) {
 	int      st;
 	unsigned ch;
 
@@ -1511,17 +1537,6 @@ int scope_get_params(ScopePvt *scp, ScopeParams *p) {
 			return st;
 		}
 	}
-
-	p->triggerLevelVolts = 0.0/0.0;
-
-	if ( (unsigned)p->acqParams.src < p->numChannels ) {
-		p->triggerLevelVolts = p->afeParams[p->acqParams.src].currentScaleVolts;
-	}
-
-	if ( ! isnan( p->triggerLevelVolts ) ) {
-		p->triggerLevelVolts *= p->acqParams.level/32767.0 * (double)(1 << (buf_get_sample_size( scp ) - 1));
-	}
-
 
 	return 0;
 }

@@ -146,16 +146,16 @@ typedef enum TriggerSource { CHA = 0, CHB = 1, EXT = 10 } TriggerSource;
 #define ACQ_PARAM_TIMEOUT_INF (0xffff)
 
 typedef struct AcqParams {
-    uint32_t      mask;
-    /* note that when the source is switched to external then
-     * the 'trigOutEn' feature is automatically switched off
+	uint32_t      mask;
+	/* note that when the source is switched to external then
+	 * the 'trigOutEn' feature is automatically switched off
 	 * by firmware
-     */
+	 */
 	TriggerSource src;
-    int           trigOutEn;
+	int           trigOutEn;
 	int           rising;
 	int16_t       level;
-    uint16_t      hysteresis;
+	uint16_t      hysteresis;
 	uint32_t      npts;
 	uint32_t      nsamples;
 	uint32_t      autoTimeoutMS;
@@ -179,7 +179,8 @@ typedef struct AFEParams {
 
 struct ScopeParams;
 
-void scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
+void
+scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 
 typedef struct ScopeParams {
 #ifdef __cplusplus
@@ -193,14 +194,21 @@ typedef struct ScopeParams {
 	AcqParams     acqParams;
 	double        samplingFreqHz;
 	unsigned      numChannels;
-	double        triggerLevelVolts;
 	/* 'numChannels' AFE params attached */
 	AFEParams     afeParams[];
 } ScopeParams;
 
-ScopeParams *scope_alloc_params(ScopePvt *);
-void scope_free_params(ScopeParams *);
+ScopeParams *
+scope_alloc_params(ScopePvt *);
 
+void
+scope_free_params(ScopeParams *);
+
+void
+scope_init_params(ScopePvt *scp, ScopeParams *p);
+
+size_t
+scope_sizeof_params(ScopePvt *scp);
 
 int
 scope_get_params(ScopePvt *, ScopeParams *);
@@ -222,6 +230,12 @@ acq_manual(ScopePvt *);
 
 int
 acq_set_level(ScopePvt *, int16_t level, uint16_t hysteresis);
+
+double
+acq_level_to_percent(int16_t level);
+
+int16_t
+acq_percent_to_level(double percent);
 
 int
 acq_set_npts(ScopePvt *, uint32_t npts);
