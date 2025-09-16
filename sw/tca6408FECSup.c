@@ -59,13 +59,17 @@ writeBit(FECOps *ops, unsigned channel, I2CFECSupBitSelect which, unsigned on)
 static int
 opGetACMode(FECOps *ops, unsigned channel)
 {
-	return readBit( ops, channel, ACMODE ); 
+	int st = readBit( ops, channel, ACMODE );
+	if ( st >= 0 ) {
+		st = st ? 0 : 1;
+	}
+	return st;
 }
 
 static int
 opSetACMode(FECOps *ops, unsigned channel, unsigned on)
 {
-	return writeBit( ops, channel, ACMODE, on );
+	return writeBit( ops, channel, ACMODE, ! on );
 }
 
 static int
