@@ -1451,6 +1451,7 @@ void
 scope_init_params(ScopePvt *scp, ScopeParams *p) {
 	p->samplingFreqHz = buf_get_sampling_freq( scp );
 	p->numChannels    = scope_get_num_channels( scp );
+	p->trigMode       = -1;
 }
 
 ScopeParams *
@@ -1568,4 +1569,28 @@ scope_get_params(ScopePvt *scp, ScopeParams *p) {
 	}
 
 	return 0;
+}
+
+static double level2Volt(const ScopeParams *p, int l)
+{
+double d;
+	if ( (unsigned)p->acqParams.src < p->numChannels ) {
+		d  = p->afeParams[p->acqParams.src].currentScaleVolt;
+		d *= acq_level_to_percent( l )/100.0;
+	} else {
+		d  = 0.0;
+	}
+	return d;
+}
+
+double
+scope_trig_level_volt(const ScopeParams *p)
+{
+	return level2Volt( p, p->acqParams.level );
+}
+
+double
+scope_trig_hysteresis_volt(const ScopeParams *p)
+{
+	return level2Volt( p, p->acqParams.hysteresis );
 }

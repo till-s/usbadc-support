@@ -702,8 +702,6 @@ double      d[p->numChannels];
 		return -EINVAL;
 	}
 
-	printf("ScaleVolt: d[0] %g, d[1] %g, scl[0] %g, scl[1] %g\n", d[0], d[1], p->afeParams[0].currentScaleVolt, p->afeParams[1].currentScaleVolt);
-
 	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_SCALE_VOLT, d, p->numChannels )) < 0 ) {
 		return st;
 	}
@@ -727,12 +725,7 @@ double      d[p->numChannels];
 		return st;
 	}
 
-	if ( (unsigned)p->acqParams.src < p->numChannels ) {
-		d[0]  = p->afeParams[p->acqParams.src].currentScaleVolt;
-		d[0] *= acq_level_to_percent( p->acqParams.level )/100.0;
-	} else {
-		d[0]  = 0.0;
-	}
+	d[0] = scope_trig_level_volt( p );
 
 	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_TRG_L_VOLT, d, 1 )) < 0 ) {
 		return st;
