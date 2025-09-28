@@ -531,6 +531,7 @@ ScopePvt *sc;
 int       i,st;
 unsigned  boardVersion   = fw_get_board_version( fw );
 double    dfltScaleVolt  = 1.0;
+int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 
 	if ( ! ( fw_get_features( fw ) & FW_FEATURE_ADC ) ) {
 		fprintf(stderr, "scope_open: ERROR - FW has no ADC feature\n");
@@ -587,7 +588,19 @@ double    dfltScaleVolt  = 1.0;
 		}
 	}
 
-	if ( (st = scope_init( sc, !!getenv("BBCLI_FORCE_INIT") )) ) {
+	/* If firmware implements adc pll status reg then that's a better
+	 * indicator than the MAX DLL lock.
+	 */
+	if ( ! forceInit ) {
+		st = scope_adc_pll_locked( sc );
+		if ( -EBUSY == st ) {
+			/* not locked */
+			forceInit = 1;
+		}
+	}
+
+
+	if ( (st = scope_init( sc, forceInit )) ) {
 		fprintf(stderr, "Error %d: scope_init() failed; ADC clock not configured\n", st);
 		goto bail;
 	}
@@ -696,6 +709,22 @@ scope_close(ScopePvt *scp)
 		free( scp->offsetVolt );
 		free( scp );
 	}
+}
+
+#define ADC_PLL_STATUS_REG 4
+#define ADC_PLL_LOCKED     (1<<0)
+
+int
+scope_adc_pll_locked(ScopePvt *scp)
+{
+	uint8_t reg=0xa5;
+	int st = fw_reg_read( scp->fw, ADC_PLL_STATUS_REG, &reg, 1, 0 );
+	if ( 1 == st ) {
+		st =  ! (reg & ADC_PLL_LOCKED) ? -EBUSY : 0;
+	} else if ( -EIO == st || 0 == st || -EBUSY == st ) {
+		st = -ENOTSUP;
+	}
+	return st;
 }
 
 unsigned long

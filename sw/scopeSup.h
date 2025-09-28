@@ -45,6 +45,16 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
 double
 scope_get_reference_freq(ScopePvt *scp);
 
+/* Return
+ * 0        if the ADC PLL is locked,
+ * -EBUSY   if not locked
+ * -ENOTSUP if functionality is not implemented,
+ * ...      other negative errno if other errors are
+ *          encountered.
+ */
+int
+scope_adc_pll_locked(ScopePvt *scp);
+
 /* volt = counts/maxCounts * scaleVolt * scaleRelat - offsetVolt
  * relative gain differences (scaleRelat) may be compensated/calibrated
  * by tuning the PGA.
