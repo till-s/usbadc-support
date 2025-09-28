@@ -135,9 +135,11 @@ fw_spireg_cmd_read(unsigned ch);
 uint8_t
 fw_spireg_cmd_write(unsigned ch);
 
+/* RETURN: number of bytes read or negative error code */
 int
 fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags);
 
+/* RETURN: number of bytes written or negative error code */
 int
 fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned flags);
 
