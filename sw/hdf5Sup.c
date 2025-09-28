@@ -575,7 +575,7 @@ int         st;
 	if ( whenl >= 1 ) {
 		whenstr[whenl-1] = 0;
 	}
-	if ( (st = scope_h5_add_string_attr( h5d, H5K_DATE, whenstr )) < 0 ) {
+	if ( (st = scope_h5_add_string_attr( h5d, SCOPE_KEY_DATE, whenstr )) < 0 ) {
 		return st;
 	}
 	return 0;
@@ -648,12 +648,12 @@ int         st;
 		default  : s = "EXT"; break;
 	}
 
-	if ( (st = scope_h5_add_string_attr( h5d, H5K_TRG_SRC, s )) < 0 ) {
+	if ( (st = scope_h5_add_string_attr( h5d, SCOPE_KEY_TRG_SRC, s )) < 0 ) {
 		return st;
 	}
 
 	s =rising ? "rising" : "falling";
-	if ( (st = scope_h5_add_string_attr( h5d, H5K_TRG_EDGE, s )) < 0 ) {
+	if ( (st = scope_h5_add_string_attr( h5d, SCOPE_KEY_TRG_EDGE, s )) < 0 ) {
 		return st;
 	}
 	return 0;
@@ -704,22 +704,22 @@ double      d[p->numChannels];
 
 	printf("ScaleVolt: d[0] %g, d[1] %g, scl[0] %g, scl[1] %g\n", d[0], d[1], p->afeParams[0].currentScaleVolt, p->afeParams[1].currentScaleVolt);
 
-	if ( (st = scope_h5_add_double_attr( h5d, H5K_SCALE_VOLT, d, p->numChannels )) < 0 ) {
+	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_SCALE_VOLT, d, p->numChannels )) < 0 ) {
 		return st;
 	}
 
 	u[0] = p->acqParams.cic0Decimation * p->acqParams.cic1Decimation;
-	if ( (st = scope_h5_add_uint_attr( h5d, H5K_DECIMATION, u, 1 )) < 0 ) {
+	if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_DECIMATION, u, 1 )) < 0 ) {
 		return st;
 	}
 
 	d[0] = p->samplingFreqHz;
-	if ( (st = scope_h5_add_double_attr( h5d, H5K_CLOCK_F_HZ, d, 1 )) < 0 ) {
+	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_CLOCK_F_HZ, d, 1 )) < 0 ) {
 		return st;
 	}
 
 	u[0] = p->acqParams.npts;
-	if ( (st = scope_h5_add_uint_attr( h5d, H5K_NPTS, u, 1 )) < 0 ) {
+	if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_NPTS, u, 1 )) < 0 ) {
 		return st;
 	}
 
@@ -734,36 +734,36 @@ double      d[p->numChannels];
 		d[0]  = 0.0;
 	}
 
-	if ( (st = scope_h5_add_double_attr( h5d, H5K_TRG_L_VOLT, d, 1 )) < 0 ) {
+	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_TRG_L_VOLT, d, 1 )) < 0 ) {
 		return st;
 	}
 
 	if ( 0 == CPY_DBL(d, p, pgaAttDb) ) {
-		if ( (st = scope_h5_add_double_attr( h5d, H5K_PGA_ATT_DB, d, p->numChannels )) < 0 ) {
+		if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_PGA_ATT_DB, d, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
 	if ( 0 == CPY_DBL(d, p, fecAttDb) ) {
-		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_ATT_DB, d, p->numChannels )) < 0 ) {
+		if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_FEC_ATT_DB, d, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
 	if ( 0 == CPY_DBL(d, p, fecTerminationOhm) ) {
-		if ( (st = scope_h5_add_double_attr( h5d, H5K_FEC_TERM, d, p->numChannels )) < 0 ) {
+		if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_FEC_TERM, d, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
 	if ( 0 == CPY_UNS(u, p, fecCouplingAC) ) {
-		if ( (st = scope_h5_add_uint_attr( h5d, H5K_FEC_CPLING, u, p->numChannels )) < 0 ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_FEC_CPLING, u, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
 
 	if ( 0 == CPY_UNS(u, p, dacRangeHi) ) {
-		if ( (st = scope_h5_add_uint_attr( h5d, H5K_FEC_DAC_HI, u, p->numChannels )) < 0 ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_FEC_DAC_HI, u, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}
@@ -815,12 +815,12 @@ int      st;
 		for ( chnl = 0; chnl < numChannels; ++chnl ) {
 			u[chnl] = !! (FW_BUF_HDR_FLG_OVR( chnl ) & bufHdr);
 		}
-		if ( (st = scope_h5_add_uint_attr( h5d, H5K_OVERRANGE, u, chnl )) < 0 ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_OVERRANGE, u, chnl )) < 0 ) {
 			return st;
 		}
 
 		u[0] = !! (FW_BUF_HDR_FLG_AUTO_TRIGGERED & bufHdr);
-		if ( (st = scope_h5_add_uint_attr( h5d, H5K_TRG_AUTO, u, 1 )) < 0 ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_TRG_AUTO, u, 1 )) < 0 ) {
 			return st;
 		}
 	}

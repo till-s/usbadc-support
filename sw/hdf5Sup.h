@@ -96,22 +96,6 @@ scope_h5_space_get_rank( const ScopeH5DSpace *spc );
 ScopeH5DSpace *
 scope_h5_get_dspace( ScopeH5Data *h5d);
 
-#define H5K_SCALE_VOLT "scaleVolt"
-#define H5K_DECIMATION "decimation"
-#define H5K_CLOCK_F_HZ "clockFrequencyHz"
-#define H5K_NPTS       "numPreTriggerSamples"
-#define H5K_TRG_L_VOLT "triggerLevelVolt"
-#define H5K_FEC_CPLING "fecCouplingAC"
-#define H5K_FEC_TERM   "fecTerminationOhm"
-#define H5K_FEC_ATT_DB "fecAttenuationDB"
-#define H5K_FEC_DAC_HI "fecDACRangeHigh"
-#define H5K_PGA_ATT_DB "pgaAttenuationDB"
-#define H5K_OVERRANGE  "overRange"
-#define H5K_TRG_AUTO   "autoTriggered"
-#define H5K_DATE       "date"
-#define H5K_TRG_SRC    "triggerSource"
-#define H5K_TRG_EDGE   "triggerEdge"
-
 /* Read parameters from FW and store */
 int
 scope_h5_add_acq_parameters(ScopePvt *scp, ScopeH5Data *h5d);

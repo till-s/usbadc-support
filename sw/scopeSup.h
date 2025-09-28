@@ -192,6 +192,25 @@ struct ScopeParams;
 void
 scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 
+
+/* Keys for storing parameters (json, hdf5, ...) */
+#define SCOPE_KEY_SCALE_VOLT "scaleVolt"
+#define SCOPE_KEY_DECIMATION "decimation"
+#define SCOPE_KEY_CLOCK_F_HZ "clockFrequencyHz"
+#define SCOPE_KEY_NPTS       "numPreTriggerSamples"
+#define SCOPE_KEY_TRG_L_VOLT "triggerLevelVolt"
+#define SCOPE_KEY_FEC_CPLING "fecCouplingAC"
+#define SCOPE_KEY_FEC_TERM   "fecTerminationOhm"
+#define SCOPE_KEY_FEC_ATT_DB "fecAttenuationDB"
+#define SCOPE_KEY_FEC_DAC_HI "fecDACRangeHigh"
+#define SCOPE_KEY_DAC_VOLT   "dacVolt"
+#define SCOPE_KEY_PGA_ATT_DB "pgaAttenuationDB"
+#define SCOPE_KEY_OVERRANGE  "overRange"
+#define SCOPE_KEY_TRG_AUTO   "autoTriggered"
+#define SCOPE_KEY_DATE       "date"
+#define SCOPE_KEY_TRG_SRC    "triggerSource"
+#define SCOPE_KEY_TRG_EDGE   "triggerEdge"
+
 typedef struct ScopeParams {
 #ifdef __cplusplus
 	ScopeParams() = delete;
