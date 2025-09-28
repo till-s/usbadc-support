@@ -698,11 +698,11 @@ int         st;
 unsigned    u[p->numChannels];
 double      d[p->numChannels];
 
-	if ( CPY_DBL(d, p, currentScaleVolts) ) {
+	if ( CPY_DBL(d, p, currentScaleVolt) ) {
 		return -EINVAL;
 	}
 
-	printf("ScaleVolts: d[0] %g, d[1] %g, scl[0] %g, scl[1] %g\n", d[0], d[1], p->afeParams[0].currentScaleVolts, p->afeParams[1].currentScaleVolts);
+	printf("ScaleVolt: d[0] %g, d[1] %g, scl[0] %g, scl[1] %g\n", d[0], d[1], p->afeParams[0].currentScaleVolt, p->afeParams[1].currentScaleVolt);
 
 	if ( (st = scope_h5_add_double_attr( h5d, H5K_SCALE_VOLT, d, p->numChannels )) < 0 ) {
 		return st;
@@ -728,7 +728,7 @@ double      d[p->numChannels];
 	}
 
 	if ( (unsigned)p->acqParams.src < p->numChannels ) {
-		d[0]  = p->afeParams[p->acqParams.src].currentScaleVolts;
+		d[0]  = p->afeParams[p->acqParams.src].currentScaleVolt;
 		d[0] *= acq_level_to_percent( p->acqParams.level )/100.0;
 	} else {
 		d[0]  = 0.0;

@@ -33,10 +33,10 @@ scope_get_num_channels(ScopePvt *scp);
 
 /* full-scale at zero attenuation */
 int
-scope_get_full_scale_volts(ScopePvt *scp, unsigned channel, double *fullScaleVolts);
+scope_get_full_scale_volt(ScopePvt *scp, unsigned channel, double *fullScaleVolt);
 
 int
-scope_set_full_scale_volts(ScopePvt *scp, unsigned channel, double fullScaleVolts);
+scope_set_full_scale_volt(ScopePvt *scp, unsigned channel, double fullScaleVolt);
 
 int
 scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
@@ -45,13 +45,13 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
 double
 scope_get_reference_freq(ScopePvt *scp);
 
-/* volts = counts/maxCounts * scaleVolts * scaleRelat - offsetVolts
+/* volt = counts/maxCounts * scaleVolt * scaleRelat - offsetVolt
  * relative gain differences (scaleRelat) may be compensated/calibrated
  * by tuning the PGA.
- * 'scaleVolts' is controlled with scope_get/set_full_scale_volts.
+ * 'scaleVolt' is controlled with scope_get/set_full_scale_volt.
  */
 typedef struct ScopeCalData {
-	double offsetVolts;
+	double offsetVolt;
 	double scaleRelat;
 } ScopeCalData;
 
@@ -59,7 +59,7 @@ int
 scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
 
 /* A NULL pointer may be passed for calDataArray which causes
- * all calibration to be reset (offsetVolts => 0.0, scaleRelat => 1.0)
+ * all calibration to be reset (offsetVolt => 0.0, scaleRelat => 1.0)
  */
 int
 scope_set_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
@@ -167,13 +167,13 @@ typedef struct AcqParams {
 } AcqParams;
 
 typedef struct AFEParams {
-	double        fullScaleVolts;
-	double        currentScaleVolts;
+	double        fullScaleVolt;
+	double        currentScaleVolt;
 	double        pgaAttDb;
 	double        fecAttDb;
 	double        fecTerminationOhm;
 	int           fecCouplingAC;
-	double        dacVolts;
+	double        dacVolt;
 	int           dacRangeHi;
 } AFEParams;
 
@@ -314,9 +314,9 @@ int    fecSetAtt(ScopePvt *, unsigned channel, double att);
 void   fecClose(ScopePvt *);
 
 /* return negative error code or 0 on success */
-int    dacGetVoltsRange(ScopePvt *, double *pVoltsMin, double *pVoltsMax);
-int    dacGetVolts(ScopePvt *, unsigned channel, double *pvolts);
-int    dacSetVolts(ScopePvt *, unsigned channel, double volts);
+int    dacGetVoltRange(ScopePvt *, double *pVoltMin, double *pVoltMax);
+int    dacGetVolt(ScopePvt *, unsigned channel, double *pvolt);
+int    dacSetVolt(ScopePvt *, unsigned channel, double volt);
 
 #ifdef __cplusplus
 }

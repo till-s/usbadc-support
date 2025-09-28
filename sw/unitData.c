@@ -45,9 +45,9 @@
 struct UnitData {
 	unsigned version;
 	unsigned numChannels;
-	float   *scaleVolts;
+	float   *scaleVolt;
 	float   *scaleRelat;
-	float   *offsetVolts;
+	float   *offsetVolt;
 };
 
 unsigned
@@ -72,19 +72,19 @@ check(const char *nm, const UnitData *ud, unsigned ch)
 }
 
 double
-unitDataGetScaleVolts(const UnitData *ud, unsigned ch)
+unitDataGetScaleVolt(const UnitData *ud, unsigned ch)
 {
 	check( __PRETTY_FUNCTION__, ud, ch );
-	return ud->scaleVolts[ch];
+	return ud->scaleVolt[ch];
 }
 
 int
-unitDataSetScaleVolts(UnitData *ud, unsigned ch, double value)
+unitDataSetScaleVolt(UnitData *ud, unsigned ch, double value)
 {
 	if ( ch >= ud->numChannels ) {
 		return -EINVAL;
 	}
-	ud->scaleVolts[ch] = (float)value;
+	ud->scaleVolt[ch] = (float)value;
 	return 0;
 }
 
@@ -97,10 +97,10 @@ unitDataGetScaleRelat(const UnitData *ud, unsigned ch)
 
 
 double
-unitDataGetOffsetVolts(const UnitData *ud, unsigned ch)
+unitDataGetOffsetVolt(const UnitData *ud, unsigned ch)
 {
 	check( __PRETTY_FUNCTION__, ud, ch );
-	return ud->offsetVolts[ch];
+	return ud->offsetVolt[ch];
 }
 
 static int
@@ -224,12 +224,12 @@ unsigned  layoutVersion;
 		}
 		switch ( buf[off + IO_TAG] ) {
 			case TAG_SCALE_VOLTS:
-				if ( (st = scanFloats( &ud->scaleVolts, ud->numChannels, __PRETTY_FUNCTION__, "ScaleVolts", buf + off)) < 0 ) {
+				if ( (st = scanFloats( &ud->scaleVolt, ud->numChannels, __PRETTY_FUNCTION__, "ScaleVolt", buf + off)) < 0 ) {
 					goto bail;
 				}
 				break;
 			case TAG_OFFSET_VOLTS:
-				if ( (st = scanFloats( &ud->offsetVolts, ud->numChannels, __PRETTY_FUNCTION__, "OffsetVolts", buf + off)) ) {
+				if ( (st = scanFloats( &ud->offsetVolt, ud->numChannels, __PRETTY_FUNCTION__, "OffsetVolt", buf + off)) ) {
 					goto bail;
 				}
 				break;
@@ -250,14 +250,14 @@ unsigned  layoutVersion;
 		goto bail;
 	}
 
-	if ( ! ud->offsetVolts ) {
-		fprintf(stderr, "Error: (%s) - incomplete data; OffsetVolts not found\n", __PRETTY_FUNCTION__);
+	if ( ! ud->offsetVolt ) {
+		fprintf(stderr, "Error: (%s) - incomplete data; OffsetVolt not found\n", __PRETTY_FUNCTION__);
 		st = -ENODATA;
 		goto bail;
 	}
 
-	if ( ! ud->scaleVolts ) {
-		fprintf(stderr, "Error: (%s) - incomplete data; ScaleVolts not found\n", __PRETTY_FUNCTION__);
+	if ( ! ud->scaleVolt ) {
+		fprintf(stderr, "Error: (%s) - incomplete data; ScaleVolt not found\n", __PRETTY_FUNCTION__);
 		st = -ENODATA;
 		goto bail;
 	}
@@ -280,7 +280,7 @@ unitDataFree(const UnitData *ud)
 {
 	if ( ud ) {
 		free( ud->scaleRelat );
-		free( ud->offsetVolts );
+		free( ud->offsetVolt );
 		free( (UnitData*)ud );
 	}
 }
@@ -303,15 +303,15 @@ int       i;
 		free( ud );
 		return NULL;
 	}
-	if ( ! (ud->offsetVolts = malloc( sizeof(*ud->offsetVolts) * numChannels )) ) {
+	if ( ! (ud->offsetVolt = malloc( sizeof(*ud->offsetVolt) * numChannels )) ) {
 		fprintf(stderr,"Error: (%s) no memory\n", __PRETTY_FUNCTION__);
 		free( ud->scaleRelat );
 		free( ud );
 		return NULL;
 	}
-	if ( ! (ud->scaleVolts = malloc( sizeof(*ud->scaleVolts) * numChannels )) ) {
+	if ( ! (ud->scaleVolt = malloc( sizeof(*ud->scaleVolt) * numChannels )) ) {
 		fprintf(stderr,"Error: (%s) no memory\n", __PRETTY_FUNCTION__);
-		free( ud->offsetVolts);
+		free( ud->offsetVolt);
 		free( ud->scaleRelat );
 		free( ud );
 		return NULL;
@@ -320,9 +320,9 @@ int       i;
 	ud->numChannels = numChannels;
 
 	for ( i = 0; i < numChannels; ++i ) {
-		ud->scaleRelat[i]  = 1.0;
-		ud->offsetVolts[i] = 0.0;
-		ud->scaleVolts[i]  = 0.0/0.0;
+		ud->scaleRelat[i] = 1.0;
+		ud->offsetVolt[i] = 0.0;
+		ud->scaleVolt[i]  = 0.0/0.0;
 	}
 	return ud;
 }
@@ -338,12 +338,12 @@ unitDataSetScaleRelat(UnitData *ud, unsigned ch, double value)
 }
 
 int
-unitDataSetOffsetVolts(UnitData *ud, unsigned ch, double value)
+unitDataSetOffsetVolt(UnitData *ud, unsigned ch, double value)
 {
 	if ( ch >= ud->numChannels ) {
 		return -EINVAL;
 	}
-	ud->offsetVolts[ch] = (float)value;
+	ud->offsetVolt[ch] = (float)value;
 	return 0;
 }
 
@@ -351,9 +351,9 @@ size_t
 unitDataGetSerializedSize(unsigned numChannels)
 {
 	return O_PAYLOAD + \
-		IO_DAT + sizeof( *((UnitData*)NULL)->scaleVolts ) * numChannels + \
+		IO_DAT + sizeof( *((UnitData*)NULL)->scaleVolt ) * numChannels + \
 		IO_DAT + sizeof( *((UnitData*)NULL)->scaleRelat ) * numChannels + \
-		IO_DAT + sizeof( *((UnitData*)NULL)->offsetVolts ) * numChannels + \
+		IO_DAT + sizeof( *((UnitData*)NULL)->offsetVolt ) * numChannels + \
 		1; /* terminating tag */
 }
 
@@ -398,9 +398,9 @@ uint8_t *item;
 	buf[O_TOTSIZE + 1] = ((totSize >> 8) & 0xff);
 	item               = buf + O_PAYLOAD;
 	item[IO_TAG]       = TAG_SCALE_VOLTS;
-	item              += serializeFloat( ud->scaleVolts, ud->numChannels, item );
+	item              += serializeFloat( ud->scaleVolt, ud->numChannels, item );
 	item[IO_TAG]       = TAG_OFFSET_VOLTS;
-	item              += serializeFloat( ud->offsetVolts, ud->numChannels, item );
+	item              += serializeFloat( ud->offsetVolt, ud->numChannels, item );
 	item[IO_TAG]       = TAG_SCALE_RELAT;
 	item              += serializeFloat( ud->scaleRelat, ud->numChannels, item );
 	item[IO_TAG]       = TAG_TERM;

@@ -37,7 +37,7 @@ int st = scope_write_unit_data_nonvolatile( scp, unitData );
 }
 
 static int
-measure(ScopePvt *scp, size_t nSamples, int16_t *buf, double pgaAtt, double dacVolts, double *result)
+measure(ScopePvt *scp, size_t nSamples, int16_t *buf, double pgaAtt, double dacVolt, double *result)
 {
 unsigned nChannels = scope_get_num_channels( scp );
 size_t   nElms     = nSamples * nChannels;
@@ -56,9 +56,9 @@ uint16_t bufHdr;
 			goto bail;
 		}
 
-		st = dacSetVolts( scp, ch, dacVolts );
+		st = dacSetVolt( scp, ch, dacVolt );
 		if ( st < 0 ) {
-			fprintf( stderr, "Error; dacSetVolts(%lg) failed: %s\n", dacVolts, strerror(-st));
+			fprintf( stderr, "Error; dacSetVolt(%lg) failed: %s\n", dacVolt, strerror(-st));
 			goto bail;
 		}
 	}
@@ -87,7 +87,7 @@ uint16_t bufHdr;
 		for ( n = ch; n < nElms; n += nChannels ) {
 			sum += (double)buf[n];
 		}
-		/* not volts yet; just counts! */
+		/* not volt yet; just counts! */
 		result[ch] = sum / (double)nSamples;
 	}
 
@@ -96,14 +96,14 @@ bail:
 }
 
 static void
-printCal(ScopeCalData *calData, unsigned nChannels, double fullScaleVolts)
+printCal(ScopeCalData *calData, unsigned nChannels, double fullScaleVolt)
 {
 unsigned ch;
 	printf("Calibration Data:\n");
-	printf("  Full Scale Volts: %lg\n", fullScaleVolts);
+	printf("  Full Scale Volt: %lg\n", fullScaleVolt);
 	printf("  Channel        | Relative Gain | Offset [V]\n");
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		printf("  %-15u|%15.3lg|%15.3lg\n", ch, calData[ch].scaleRelat, calData[ch].offsetVolts);
+		printf("  %-15u|%15.3lg|%15.3lg\n", ch, calData[ch].scaleRelat, calData[ch].offsetVolt);
 	}
 }
 
@@ -129,9 +129,9 @@ double                  pgaMinAttDb    = 0.0/0.0;
 double                  pgaMaxAttDb    = 0.0/0.0;
 double                 *dvals          = NULL;
 UnitData               *unitData       = NULL;
-double                  dacCalVolts    = 0.3;
-/* full-scale volts at 0dB pga attenuation */
-double                  fullScaleVolts = 0.0/0.0;
+double                  dacCalVolt     = 0.3;
+/* full-scale volt at 0dB pga attenuation */
+double                  fullScaleVolt  = 0.0/0.0;
 unsigned                nChannels      = 0;
 int                     doWrite        = 0;
 int                     doPrint        = 0;
@@ -154,9 +154,9 @@ size_t                 *z_p;
 			case 'a': d_p     = &pgaMinAttDb;             break;
 			case 'A': d_p     = &pgaMaxAttDb;             break;
 			case 'd': devName = optarg;                   break;
-			case 'D': d_p     = &dacCalVolts;             break;
+			case 'D': d_p     = &dacCalVolt;              break;
 			case 'E': doErase = 1;                        break;
-			case 'F': d_p     = &fullScaleVolts;          break;
+			case 'F': d_p     = &fullScaleVolt;           break;
 			case 'I': allowPreInited = 1;                 break;
 			case 'n': z_p     = &nSamples;                break;
 			case 'w': doWrite = 1;                        break;
@@ -193,7 +193,7 @@ size_t                 *z_p;
 		goto bail; /* OK exit if st == 0 */
 	}
 
-	st = dacGetVolts( scp, 0, &dval );
+	st = dacGetVolt( scp, 0, &dval );
 	if ( st < 0 ) {
 		fprintf( stderr, "Error with calibration DAC: %s\n", strerror(-st));
 		goto bail;
@@ -252,13 +252,13 @@ size_t                 *z_p;
 	if ( doPrint ) {
 		double scl,lscl = 0.0/0.0;
 		for ( ch = 0; ch < nChannels; ++ch ) {
-			st = scope_get_full_scale_volts( scp, ch, &scl );
+			st = scope_get_full_scale_volt( scp, ch, &scl );
 			if ( st < 0 ) {
-				fprintf( stderr, "Error; scope_get_full_scale_volts() failed: %s\n", strerror(-st));
+				fprintf( stderr, "Error; scope_get_full_scale_volt() failed: %s\n", strerror(-st));
 				goto bail;
 			}
 			if ( ch > 0 && scl != lscl ) {
-				fprintf(stderr, "Warning: have different fullScaleVolts on channel[%u]!\n", ch);
+				fprintf(stderr, "Warning: have different fullScaleVolt on channel[%u]!\n", ch);
 			}
 			lscl = scl;
 		}
@@ -302,19 +302,19 @@ size_t                 *z_p;
 	}
 	for ( ch = 0; ch < nChannels; ++ch ) {
 		printf("Offset[%u] (pgaAtt: %gdB): %lg clicks\n", ch, pgaMaxAttDb, dvals[ch]);
-		/* not volts yet! */
-		calData[ch].offsetVolts = dvals[ch];
+		/* not volt yet! */
+		calData[ch].offsetVolt = dvals[ch];
 	}
 
-	st = measure( scp, nSamples, buf, pgaMaxAttDb, dacCalVolts, dvals );
+	st = measure( scp, nSamples, buf, pgaMaxAttDb, dacCalVolt, dvals );
 	if ( st < 0 ) {
 		goto bail;
 	}
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		printf("Cal scale[%u] (pgaAtt: %lgdB): %lg clicks @ DAC %lg Volts\n", ch, pgaMaxAttDb, dvals[ch], dacCalVolts);
-		/* not volts yet! */
-		calData[ch].scaleRelat = dacCalVolts / (dvals[ch] - calData[ch].offsetVolts);
-		printf("Full scale[%u] (pgaAtt: %lgdB, dac: %lgV): %lg volts\n", ch, pgaMaxAttDb, dacCalVolts, ((double)INT16_MAX)*calData[ch].scaleRelat);
+		printf("Cal scale[%u] (pgaAtt: %lgdB): %lg clicks @ DAC %lg Volt\n", ch, pgaMaxAttDb, dvals[ch], dacCalVolt);
+		/* not volt yet! */
+		calData[ch].scaleRelat = dacCalVolt / (dvals[ch] - calData[ch].offsetVolt);
+		printf("Full scale[%u] (pgaAtt: %lgdB, dac: %lgV): %lg volt\n", ch, pgaMaxAttDb, dacCalVolt, ((double)INT16_MAX)*calData[ch].scaleRelat);
 	}
 
 	st = measure( scp, nSamples, buf, pgaMinAttDb, 0.0, dvals );
@@ -328,14 +328,14 @@ size_t                 *z_p;
 		printf("Offset[%u] (pgaMin: %gdB): %lg clicks\n", ch, pgaMinAttDb, dvals[ch]);
 		/* renormalize scale for att 0 dB */
 		calData[ch].scaleRelat /= pgaMaxAtt;
-		/* convert offset clicks into volts (min att may not be 0dB!) */
-		calData[ch].offsetVolts = pgaMinAtt * dvals[ch] * calData[ch].scaleRelat;
-		printf("Offset[%u] (pgaMin: %gdB): %lg volts\n", ch, pgaMinAttDb, calData[ch].offsetVolts);
-		/* full-scale volts at 0dB */
+		/* convert offset clicks into volt (min att may not be 0dB!) */
+		calData[ch].offsetVolt  = pgaMinAtt * dvals[ch] * calData[ch].scaleRelat;
+		printf("Offset[%u] (pgaMin: %gdB): %lg volt\n", ch, pgaMinAttDb, calData[ch].offsetVolt);
+		/* full-scale volt at 0dB */
 		calData[ch].scaleRelat *= (double)(INT16_MAX);
 	}
 
-	if ( isnan( fullScaleVolts ) ) {
+	if ( isnan( fullScaleVolt ) ) {
 		maxScale = 0.0;
 		for ( ch = 0; ch < nChannels; ++ch ) {
 			if ( fabs( calData[ch].scaleRelat ) > fabs( maxScale ) ) {
@@ -343,14 +343,14 @@ size_t                 *z_p;
 			}
 		}
 
-		fullScaleVolts = maxScale;
+		fullScaleVolt = maxScale;
 	}
 	for ( ch = 0; ch < nChannels; ++ch ) {
 		/* compute relative gain (of this channel) */
-		calData[ch].scaleRelat = fullScaleVolts / calData[ch].scaleRelat;
+		calData[ch].scaleRelat = fullScaleVolt / calData[ch].scaleRelat;
 	}
 
-	printCal( calData, nChannels, fullScaleVolts );
+	printCal( calData, nChannels, fullScaleVolt );
 
 	if ( doWrite ) {
 		if ( ! (unitData = unitDataCreate( nChannels )) ) {
@@ -358,19 +358,19 @@ size_t                 *z_p;
 			goto bail;
 		}
 		for ( ch = 0; ch < nChannels; ++ch ) {
-			st = unitDataSetScaleVolts ( unitData, ch, fullScaleVolts );
+			st = unitDataSetScaleVolt( unitData, ch, fullScaleVolt );
 			if ( st < 0 ) {
-				fprintf( stderr, "Error; unitDataSetScaleVolts failed: %s\n", strerror(-st));
+				fprintf( stderr, "Error; unitDataSetScaleVolt failed: %s\n", strerror(-st));
 				goto bail;
 			}
-			st = unitDataSetScaleRelat ( unitData, ch, calData[ch].scaleRelat  );
+			st = unitDataSetScaleRelat( unitData, ch, calData[ch].scaleRelat  );
 			if ( st < 0 ) {
 				fprintf( stderr, "Error; unitDataSetScaleRelat failed: %s\n", strerror(-st));
 				goto bail;
 			}
-			st = unitDataSetOffsetVolts( unitData, ch, calData[ch].offsetVolts );
+			st = unitDataSetOffsetVolt( unitData, ch, calData[ch].offsetVolt );
 			if ( st < 0 ) {
-				fprintf( stderr, "Error; unitDataSetOffsetVolts failed: %s\n", strerror(-st));
+				fprintf( stderr, "Error; unitDataSetOffsetVolt failed: %s\n", strerror(-st));
 				goto bail;
 			}
 		}

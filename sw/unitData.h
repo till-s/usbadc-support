@@ -11,16 +11,16 @@ typedef struct UnitData UnitData;
 
 unsigned unitDataGetVersion(const UnitData *);
 unsigned unitDataGetNumChannels(const UnitData *);
-double   unitDataGetScaleVolts(const UnitData *, unsigned ch);
+double   unitDataGetScaleVolt(const UnitData *, unsigned ch);
 double   unitDataGetScaleRelat(const UnitData *, unsigned ch);
-double   unitDataGetOffsetVolts(const UnitData *, unsigned ch);
+double   unitDataGetOffsetVolt(const UnitData *, unsigned ch);
 
 /* Create (empty) UnitData object */
 UnitData *unitDataCreate(unsigned numChannels);
 /* returns negative error status or 0 on success */
-int      unitDataSetScaleVolts(UnitData *ud, unsigned ch, double value);
+int      unitDataSetScaleVolt(UnitData *ud, unsigned ch, double value);
 int      unitDataSetScaleRelat(UnitData *ud, unsigned ch, double value);
-int      unitDataSetOffsetVolts(UnitData *ud, unsigned ch, double value);
+int      unitDataSetOffsetVolt(UnitData *ud, unsigned ch, double value);
 
 
 /* Parse serialized unitData into an (abstract) object;
