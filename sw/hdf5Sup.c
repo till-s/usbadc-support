@@ -768,6 +768,13 @@ double      d[p->numChannels];
 		}
 	}
 
+	if ( 0 == CPY_DBL(d, p, dacVolt) ) {
+		if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_DAC_VOLT, d, p->numChannels )) < 0 ) {
+			return st;
+		}
+	}
+
+
 	if ( (st = scope_h5_add_date( h5d, now )) < 0 ) {
 		return st;
 	}
