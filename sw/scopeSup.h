@@ -204,6 +204,8 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 #define SCOPE_KEY_TRG_EDGE   "triggerEdge"
 #define SCOPE_KEY_TRG_L_VOLT "triggerLevelVolt"
 #define SCOPE_KEY_TRG_H_VOLT "triggerHysteresisVolt"
+#define SCOPE_KEY_TRG_L_PERC "triggerLevelPercent"
+#define SCOPE_KEY_TRG_H_PERC "triggerHysteresisPercent"
 #define SCOPE_KEY_NPTS       "numPreTriggerSamples"
 #define SCOPE_KEY_NSAMPLES   "numSamples"
 #define SCOPE_KEY_TRG_AUTO   "autoTriggered"
@@ -217,7 +219,7 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 #define SCOPE_KEY_FEC_TERM   "fecTerminationOhm"
 #define SCOPE_KEY_FEC_CPLING "fecCouplingAC"
 #define SCOPE_KEY_DAC_VOLT   "dacVolt"
-#define SCOPE_KEY_FEC_DAC_HI "fecDACRangeHigh"
+#define SCOPE_KEY_DAC_RNG_HI "dacRangeHigh"
 #define SCOPE_KEY_OVERRANGE  "overRange"
 
 
@@ -305,6 +307,13 @@ acq_default_cic1Scale(uint32_t cic1Decimation);
 
 int
 acq_set_decimation(ScopePvt *, uint8_t cic0Decimation, uint32_t cic1Decimation);
+
+/* auto-compute the cic0Decimation and cic1Decimation;
+ *
+ * RETURN: 0 on success, -EINVAL or -ERANGE if computation fails (leaving params unchanged)
+ */
+int
+acq_auto_decimation(ScopePvt *, unsigned decimation, uint8_t *cic0Decimation, uint32_t *cic1Decimation);
 
 int
 acq_set_scale(ScopePvt *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale);

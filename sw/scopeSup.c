@@ -1141,7 +1141,7 @@ acq_set_level(ScopePvt *scp, int16_t level, uint16_t hyst)
 AcqParams p;
 	p.mask          = ACQ_PARAM_MSK_LVL;
 	p.level         = level;
-    p.hysteresis    = hyst;
+	p.hysteresis    = hyst;
 	return acq_set_params( scp, &p, 0 );
 }
 
@@ -1222,6 +1222,33 @@ AcqParams p;
 	p.cic0Decimation = cic0Decimation;
 	p.cic1Decimation = cic1Decimation;
 	return acq_set_params( scp, &p, 0 );
+}
+
+int
+acq_auto_decimation(ScopePvt *, unsigned decimation, uint8_t *cic0Decimation, uint32_t *cic1Decimation)
+{
+	uint8_t  cic0Dec;
+	uint32_t cic1Dec;
+	if ( decimation < 1 || decimation > 16 * (1<<12) ) {
+		return -ERANGE;
+	}
+	if ( 1 == decimation ) {
+		cic0Dec = 1;
+		cic1Dec = 1;
+	} else {
+		for ( cic0Dec = 16; cic0Dec > 1; cic0Dec-- ) {
+			if ( (decimation % cic0Dec) == 0 ) {
+				cic1Dec = decimation / cic0Dec;
+				break;
+			}
+		}
+		if ( 1 == cic0Dec ) {
+			return -EINVAL;
+		}
+	}
+	*cic0Decimation = cic0Dec;
+	*cic1Decimation = cic1Dec;
+	return 0;
 }
 
 int
@@ -1458,6 +1485,7 @@ void
 scope_init_params(ScopePvt *scp, ScopeParams *p) {
 	p->samplingFreqHz = buf_get_sampling_freq( scp );
 	p->numChannels    = scope_get_num_channels( scp );
+	p->acqParams.mask = 0;
 	p->trigMode       = -1;
 }
 

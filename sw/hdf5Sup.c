@@ -756,7 +756,7 @@ double      d[p->numChannels];
 	}
 
 	if ( 0 == CPY_UNS(u, p, dacRangeHi) ) {
-		if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_FEC_DAC_HI, u, p->numChannels )) < 0 ) {
+		if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_DAC_RNG_HI, u, p->numChannels )) < 0 ) {
 			return st;
 		}
 	}

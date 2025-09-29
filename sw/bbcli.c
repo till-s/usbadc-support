@@ -460,7 +460,7 @@ int   badParm = 0;
 				if ( (col = strchr( eq, ':')) ) {
 					if ( scanl( tok, col, &v[0] ) ) goto bail;
 				}
-                pp->hysteresis = (int16_t)v[0];
+				pp->hysteresis = (int16_t)v[0];
 				pp->mask |= ACQ_PARAM_MSK_LVL;
 				break;
 			case 'N':
@@ -741,7 +741,7 @@ ScopeParams       *settings  = NULL;
 		printf("Trigger Hysteresis : %" PRId16 "\n", p.hysteresis );
 		printf(" NOTE: Trigger level is int16_t, ADC numbers are normalized to\n");
 		printf("       this range!\n");
-        printf("External Trigger   : %s\n", p.trigOutEn ? "OUTPUT" : "INPUT");
+		printf("External Trigger   : %s\n", p.trigOutEn ? "OUTPUT" : "INPUT");
 		printf("N Samples          : %" PRIu32 "\n", p.nsamples  );
 		printf("N Pretrig samples  : %" PRIu32 "\n", p.npts      );
 		printf("Autotrig timeout   : ");
