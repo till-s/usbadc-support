@@ -263,7 +263,7 @@ size_t                 *z_p;
 			lscl = scl;
 		}
 		printf("Current calibration parameters:\n");
-	    printCal( calData, nChannels, scl );
+		printCal( calData, nChannels, scl );
 		st = 0;
 		goto bail;
 	}

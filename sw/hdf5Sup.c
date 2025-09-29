@@ -702,7 +702,7 @@ double      d[p->numChannels];
 		return -EINVAL;
 	}
 
-	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_SCALE_VOLT, d, p->numChannels )) < 0 ) {
+	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_CURSCL_VLT, d, p->numChannels )) < 0 ) {
 		return st;
 	}
 

@@ -107,17 +107,27 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 		goto bail;
 	}
 
+	if ( json_object_set_new( top, SCOPE_KEY_NUM_CHNLS, json_integer( settings->numChannels ) ) ) {
+		st = -ENOENT;
+		goto bail;
+	}
+
+	if ( json_object_set_new( top, SCOPE_KEY_CLOCK_F_HZ, json_real( settings->samplingFreqHz ) ) ) {
+		st = -ENOENT;
+		goto bail;
+	}
+
+	if ( json_object_set_new( top, SCOPE_KEY_TRG_MODE, json_integer( settings->trigMode ) ) ) {
+		st = -ENOENT;
+		goto bail;
+	}
+
 	if ( json_object_set_new( top, SCOPE_KEY_TRG_SRC   , json_integer( settings->acqParams.src ) ) ) {
 		st = -ENOENT;
 		goto bail;
 	}
 
 	if ( json_object_set_new( top, SCOPE_KEY_TRG_OUT_EN, json_integer( settings->acqParams.trigOutEn ) ) ) {
-		st = -ENOENT;
-		goto bail;
-	}
-
-	if ( json_object_set_new( top, SCOPE_KEY_TRG_MODE, json_integer( settings->trigMode ) ) ) {
 		st = -ENOENT;
 		goto bail;
 	}
@@ -162,8 +172,9 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 		goto bail;
 	}
 
-	/* order of settings matters; set attenuators first */
-	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_SCALE_VOLT, currentScaleVolt  );
+	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_FULSCL_VLT, fullScaleVolt  );
+
+	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_CURSCL_VLT, currentScaleVolt  );
 	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_FEC_ATT_DB, fecAttDb          );
 	SAVE_PERCH_UNS( top, settings, SCOPE_KEY_FEC_CPLING, fecCouplingAC     );
 	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_PGA_ATT_DB, pgaAttDb          );

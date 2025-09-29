@@ -927,7 +927,7 @@ unsigned  apiVersion = fw_get_api_version( scp->fw );
 		scp->acqParams.trigOutEn = set->trigOutEn;
 	}
 
-    if ( EXT == scp->acqParams.src && !! scp->acqParams.trigOutEn ) {
+	if ( EXT == scp->acqParams.src && !! scp->acqParams.trigOutEn ) {
 		scp->acqParams.trigOutEn = set->trigOutEn = 0;
 		smask |= ACQ_PARAM_MSK_TGO;
 	}
@@ -1199,10 +1199,10 @@ double   scale;
 
 	if ( cic1Decimation < 2 ) {
 		shift = 0;
-        nbits = 0;
+		nbits = 0;
 	} else {
         nbits = (uint32_t)floor( log2( (double)(cic1Decimation - 1) ) ) + 1;
-        /* implicit 'floor' in integer operation */
+		/* implicit 'floor' in integer operation */
 		shift = (nbits - 1) / STRIDE_STAGS_RAT;
 	}
 	/* Correct the CIC1 gain */
@@ -1357,13 +1357,20 @@ fecGetTermination(ScopePvt *scp, unsigned channel)
 }
 
 int
-fecGetTerminationOhm(ScopePvt *scp, unsigned channel, double *val) {
+fecGetTerminationOhm(ScopePvt *scp, unsigned channel, double *val)
+{
 	int st = fecGetTermination(scp, channel);
 	if ( st >= 0 ) {
 		*val = st > 0 ? 50.0 : 1.0E6;
 		st   = 0;
 	}
 	return st;
+}
+
+int
+fecSetTerminationOhm(ScopePvt *scp, unsigned channel, double val)
+{
+	return fecSetTermination(scp, channel, (val <= 100.0));
 }
 
 int
@@ -1495,7 +1502,8 @@ scope_copy_params(ScopeParams *to, const ScopeParams *from) {
 }
 
 int
-scope_get_params(ScopePvt *scp, ScopeParams *p) {
+scope_get_params(ScopePvt *scp, ScopeParams *p)
+{
 	int      st;
 	unsigned ch;
 
@@ -1569,6 +1577,125 @@ scope_get_params(ScopePvt *scp, ScopeParams *p) {
 	}
 
 	return 0;
+}
+
+/* helper struct to reduce number of arguments */
+typedef struct ch_set_s {
+	ScopePvt    *scp;
+	ScopeParams *p;
+	unsigned     ch;
+} ch_set_s;
+
+static int
+ch_set_dbl(ch_set_s *a, int (*f)(ScopePvt *, unsigned, double), double *off, const char *msg)
+{
+	int    st;
+	double v;
+      
+	v = *(double*)((uintptr_t)&a->p->afeParams[a->ch] + (uintptr_t)off);
+	if ( isnan( v ) ) {
+		/* not parameter available; ignore */
+		return 0;
+	}
+	st = f( a->scp, a->ch, v );
+	if ( -ENOTSUP == st ) {
+		fprintf( stderr, "scope_set_params: WARNING - settings contain %s but not supported by this device.\n", msg );
+		st = 0;
+	} else if ( st < 0 ) {
+		fprintf( stderr, "scope_set_params: WARNING - setting %s failed; %s\n", strerror( -st ), msg );
+		st = -EPERM; /* not safe to operate */
+	}
+	return st;
+}
+
+static int
+ch_set_uns(ch_set_s *a, int (*f)(ScopePvt *, unsigned, unsigned), int *off, const char *msg)
+{
+	int    st;
+	int    v;
+      
+	v = *(int*)((uintptr_t)&a->p->afeParams[a->ch] + (uintptr_t)off);
+	if ( v < 0 ) {
+		/* no parameter available; ignore */
+		return 0;
+	}
+	st = f( a->scp, a->ch, (unsigned)v );
+	if ( -ENOTSUP == st ) {
+		fprintf( stderr, "scope_set_params: WARNING - settings contain %s but not supported by this device.\n", msg );
+		st = 0;
+	} else if ( st < 0 ) {
+		fprintf( stderr, "scope_set_params: WARNING - setting %s failed; %s\n", strerror( -st ), msg );
+		st = -EPERM; /* not safe to operate */
+	}
+	return st;
+}
+
+#define CH_SET_DBL(a, fn, fld, m) ch_set_dbl((a),(fn),&((AFEParams*)0)->fld, (m))
+#define CH_SET_UNS(a, fn, fld, m) ch_set_uns((a),(fn),&((AFEParams*)0)->fld, (m))
+
+int
+scope_set_params(ScopePvt *scp, ScopeParams *p)
+{
+	int      st;
+	unsigned ch;
+	ch_set_s h; /* helper */
+
+	h.scp = scp;
+	h.p   = p;
+
+	if ( p->numChannels != scope_get_num_channels( scp ) ) {
+		fprintf( stderr, "scope_set_params: incompatible settings - number of channels does not match.\n" );
+		return -EINVAL;
+	}
+
+	if ( p->samplingFreqHz != buf_get_sampling_freq( scp ) ) {
+		fprintf( stderr, "scope_set_params: incompatible settings - sampling frequency does not match.\n" );
+		return -EINVAL;
+	}
+
+	for ( ch = 0; ch < p->numChannels; ++ch ) {
+		h.ch = ch;
+
+		/* fullScaleVolt is normally set by device calibration;
+		 * most use-cases will have 'nan' in the settings!
+		 */
+		if ( ! isnan( p->afeParams[ch].fullScaleVolt ) ) {
+			if ( (st = scope_set_full_scale_volt( scp, ch, p->afeParams[ch].fullScaleVolt )) < 0 ) {
+				/* should never happen */
+				return -EPERM;
+			}
+		}
+		/* current scale is defined by full-scale + attenuator settings;
+		 * ignore passed-in value.
+		 */
+
+		st = CH_SET_DBL( &h, fecSetAtt, fecAttDb, "AFE attenuation" );
+		if ( st < 0 ) {
+			return st;
+		}
+
+		st = CH_SET_DBL( &h, pgaSetAtt, pgaAttDb, "PGA attenuation" );
+		if ( st < 0 ) {
+			return st;
+		}
+
+		st = CH_SET_UNS( &h, fecSetACMode, fecCouplingAC, "AC coupling mode" );
+		if ( st < 0 ) {
+			return st;
+		}
+
+		st = CH_SET_DBL( &h, fecSetTerminationOhm, fecTerminationOhm, "termination" );
+		/* ignore errors */
+
+		st = CH_SET_UNS( &h, fecSetDACRangeHi, dacRangeHi, "DAC range" );
+		if ( st < 0 ) {
+			return st;
+		}
+
+		st = CH_SET_DBL( &h, dacSetVolt, dacVolt, "DAC" );
+	}
+
+	return acq_set_params( scp, &p->acqParams, NULL );
 }
 
 static double level2Volt(const ScopeParams *p, int l)

@@ -194,6 +194,7 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 
 
 /* Keys for storing parameters (json, hdf5, ...) */
+#define SCOPE_KEY_NUM_CHNLS  "numChannels"
 #define SCOPE_KEY_CLOCK_F_HZ "clockFrequencyHz"
 #define SCOPE_KEY_DATE       "date"
 
@@ -209,7 +210,8 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 #define SCOPE_KEY_AUTOTRG_MS "autoTriggerMilliSeconds"
 #define SCOPE_KEY_DECIMATION "decimation"
 
-#define SCOPE_KEY_SCALE_VOLT "scaleVolt"
+#define SCOPE_KEY_FULSCL_VLT "fullScaleVolt"
+#define SCOPE_KEY_CURSCL_VLT "scaleVolt"
 #define SCOPE_KEY_PGA_ATT_DB "pgaAttenuationDB"
 #define SCOPE_KEY_FEC_ATT_DB "fecAttenuationDB"
 #define SCOPE_KEY_FEC_TERM   "fecTerminationOhm"
@@ -256,10 +258,16 @@ scope_sizeof_params(ScopePvt *scp);
 int
 scope_get_params(ScopePvt *, ScopeParams *);
 
+int
+scope_set_params(ScopePvt *, ScopeParams *);
+
+
 /* Set new parameters and obtain previous parameters.
  * A new acquisition is started if any mask bit is set.
  *
  * Either 'set' or 'get' may be NULL with obvious semantics.
+ *
+ * NOTE: Superseded by 'scope_set_params()'.
  */
 
 int
@@ -354,6 +362,7 @@ int    fecGetACMode(ScopePvt *, unsigned channel);
 int    fecSetACMode(ScopePvt *, unsigned channel, unsigned on);
 int    fecGetTermination(ScopePvt *, unsigned channel);
 int    fecGetTerminationOhm(ScopePvt *, unsigned channel, double *val);
+int    fecSetTerminationOhm(ScopePvt *, unsigned channel, double val);
 int    fecSetTermination(ScopePvt *, unsigned channel, unsigned on);
 int    fecGetDACRangeHi(ScopePvt *, unsigned channel);
 int    fecSetDACRangeHi(ScopePvt *, unsigned channel, unsigned on);
