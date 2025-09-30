@@ -98,7 +98,6 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 #ifdef CONFIG_WITH_JANSSON
 	json_t       *top         = NULL;
 	int           st          = -ENOMEM;
-	unsigned      ch;
 	unsigned long ul;
 	int           i;
 	double        d;
@@ -249,7 +248,6 @@ static int
 jget_num(json_t *dict, const char *key, double *d, int *i, unsigned nelms, int quiet)
 {
 	json_t  *val;
-	json_t  *aval;
 	unsigned ch;
 	int      st;
 	if ( ! (val = jget( dict, key, quiet )) ) {
@@ -358,7 +356,6 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 {
 #ifdef CONFIG_WITH_JANSSON
 	json_t      *top;
-	json_t      *elm;
 	json_error_t jerr;
 	int          st   = -ENOENT;
 	int          ival;
@@ -377,7 +374,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 		goto bail;
 	}
 
-	if ( (st = jget_int( top, SCOPE_KEY_NUM_CHNLS, &settings->numChannels, SCLR, ALRT )) ) {
+	if ( (st = jget_int( top, SCOPE_KEY_NUM_CHNLS, (int*)&settings->numChannels, SCLR, ALRT )) ) {
 		goto bail;
 	}
 
