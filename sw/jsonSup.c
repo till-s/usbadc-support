@@ -526,7 +526,6 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 		if ( st ) {
 			goto bail;
 		}
-		settings->acqParams.nsamples   = ival;
 		if ( !! ( settings->acqParams.mask & ACQ_PARAM_MSK_NSM ) ) {
 			if ( ival >= settings->acqParams.nsamples ) {
 				fprintf(stderr, "%s: WARNING - reducing npts to number of samples.\n", __func__);
