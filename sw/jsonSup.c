@@ -12,7 +12,7 @@
  *         unsupported.
  */
 int
-scope_json_supported(ScopePvt *scp)
+scope_json_supported()
 {
 #ifdef CONFIG_WITH_JANSSON
 	return 0;

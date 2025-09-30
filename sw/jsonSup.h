@@ -12,7 +12,7 @@ struct ScopePvt;
  *         unsupported.
  */
 int
-scope_json_supported(ScopePvt *);
+scope_json_supported();
 
 /* Save current settings to JSON file.
  * RETURN 0 on success, negative error status on error.
