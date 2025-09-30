@@ -194,6 +194,8 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 
 
 /* Keys for storing parameters (json, hdf5, ...) */
+#define SCOPE_KEY_VERSION    "settingsVersion"
+#define SCOPE_SETTINGS_VERSION_1 1
 #define SCOPE_KEY_NUM_CHNLS  "numChannels"
 #define SCOPE_KEY_CLOCK_F_HZ "clockFrequencyHz"
 #define SCOPE_KEY_DATE       "date"

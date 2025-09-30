@@ -46,7 +46,7 @@ save_dbl(json_t *obj, const ScopeParams *p, const char *key, const double *off)
 	if ( 0 == json_object_set_new( obj, key, a ) ) {
 		return 0;
 	}
-	st = -ENOENT;
+	st = -ENOMEM;
 
 bail:
 	json_decref( a );
@@ -77,7 +77,7 @@ save_uns(json_t *obj, const ScopeParams *p, const char *key, const int *off)
 	if ( 0 == json_object_set_new( obj, key, a ) ) {
 		return 0;
 	}
-	st = -ENOENT;
+	st = -ENOMEM;
 
 bail:
 	json_decref( a );
@@ -106,31 +106,36 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 		goto bail;
 	}
 
+	if ( json_object_set_new( top, SCOPE_KEY_VERSION, json_integer( SCOPE_SETTINGS_VERSION_1 ) ) ) {
+		st = -ENOMEM;
+		goto bail;
+	}
+
 	if ( json_object_set_new( top, SCOPE_KEY_NUM_CHNLS, json_integer( settings->numChannels ) ) ) {
-		st = -ENOENT;
+		st = -ENOMEM;
 		goto bail;
 	}
 
 	if ( json_object_set_new( top, SCOPE_KEY_CLOCK_F_HZ, json_real( settings->samplingFreqHz ) ) ) {
-		st = -ENOENT;
+		st = -ENOMEM;
 		goto bail;
 	}
 
 	if ( json_object_set_new( top, SCOPE_KEY_TRG_MODE, json_integer( settings->trigMode ) ) ) {
-		st = -ENOENT;
+		st = -ENOMEM;
 		goto bail;
 	}
 
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_SRC ) ) {
 		if ( json_object_set_new( top, SCOPE_KEY_TRG_SRC   , json_integer( settings->acqParams.src ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
 
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_TGO ) ) {
 		if ( json_object_set_new( top, SCOPE_KEY_TRG_OUT_EN, json_integer( settings->acqParams.trigOutEn ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
@@ -138,7 +143,7 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_EDG ) ) {
 		i = settings->acqParams.rising ? 1 : -1;
 		if ( json_object_set_new( top, SCOPE_KEY_TRG_EDGE, json_integer( i ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
@@ -146,34 +151,34 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_LVL ) ) {
 		d = acq_level_to_percent( settings->acqParams.level );
 		if ( json_object_set_new( top, SCOPE_KEY_TRG_L_PERC, json_real( d ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 
 		d = acq_level_to_percent( settings->acqParams.hysteresis );
 		if ( json_object_set_new( top, SCOPE_KEY_TRG_H_PERC, json_real( d ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
 
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_NPT ) ) {
 		if ( json_object_set_new( top, SCOPE_KEY_NPTS      , json_integer( settings->acqParams.npts ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
 
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_NSM ) ) {
 		if ( json_object_set_new( top, SCOPE_KEY_NSAMPLES  , json_integer( settings->acqParams.nsamples ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
 
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_AUT ) ) {
 		if ( json_object_set_new( top, SCOPE_KEY_AUTOTRG_MS, json_integer( settings->acqParams.autoTimeoutMS ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
@@ -181,7 +186,7 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 	if ( !! (settings->acqParams.mask & ACQ_PARAM_MSK_DCM ) ) {
 		ul = settings->acqParams.cic0Decimation * settings->acqParams.cic1Decimation;
 		if ( json_object_set_new( top, SCOPE_KEY_DECIMATION, json_integer( ul ) ) ) {
-			st = -ENOENT;
+			st = -ENOMEM;
 			goto bail;
 		}
 	}
@@ -251,7 +256,7 @@ jget_num(json_t *dict, const char *key, double *d, int *i, unsigned nelms, int q
 	unsigned ch;
 	int      st;
 	if ( ! (val = jget( dict, key, quiet )) ) {
-		return -ENOENT;
+		return -ENOKEY;
 	}
 	if ( nelms > 0 ) {
 		if ( ! json_is_array( val ) ) {
@@ -289,7 +294,7 @@ jget_real_or_nan(json_t *dict, const char *key, double *d, unsigned nelms)
 {
 	int      st = jget_real( dict, key, d, nelms, QUIET );
 	unsigned ch;
-	if ( -ENOENT == st ) {
+	if ( -ENOKEY == st ) {
 		for ( ch = 0; ch < (SCLR != nelms ? nelms : 1); ++ch ) {
 			d[ch] = 0.0/0.0;
 		}
@@ -303,7 +308,7 @@ jget_int_or_neg(json_t *dict, const char *key, int *i, unsigned nelms)
 {
 	int      st = jget_int( dict, key, i, nelms, QUIET );
 	unsigned ch;
-	if ( -ENOENT == st ) {
+	if ( -ENOKEY == st ) {
 		for ( ch = 0; ch < (SCLR != nelms ? nelms : 1); ++ch ) {
 			i[ch] = -1;
 		}
@@ -357,20 +362,35 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 #ifdef CONFIG_WITH_JANSSON
 	json_t      *top;
 	json_error_t jerr;
-	int          st   = -ENOENT;
+	int          st   = -EINVAL;
 	int          ival;
 	double       dval;
+	int          settingsVersion = -1;
 
 	settings->acqParams.mask = 0;
 
 	top = json_load_file( filename, 0, &jerr );
 	if ( ! top ) {
 		fprintf(stderr, "%s: loading file failed (%s), line %d, col %d, pos %d\n", __func__, jerr.text, jerr.line, jerr.column, jerr.position);
+		if ( json_error_cannot_open_file == json_error_code( &jerr ) ) {
+			st = -ENOENT;
+		} else {
+			st = -EINVAL;
+		}
 		goto bail;
 	}
 	if ( ! json_is_object( top ) ) {
 		fprintf(stderr, "%s: top-level JSON not an object.\n", __func__);
 		st = -EINVAL;
+		goto bail;
+	}
+
+	if ( (st = jget_int( top, SCOPE_KEY_VERSION, &settingsVersion, SCLR, ALRT )) ) {
+		goto bail;
+	}
+	if ( SCOPE_SETTINGS_VERSION_1 != settingsVersion ) {
+		fprintf(stderr, "%s: unexpected/unsupported version number in settings file: %d\n", __func__, settingsVersion);
+		st = EACCES;
 		goto bail;
 	}
 
@@ -439,7 +459,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_TRG_SRC, &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -457,7 +477,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_TRG_OUT_EN, &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -472,7 +492,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_TRG_EDGE, &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -481,7 +501,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_real( top, SCOPE_KEY_TRG_L_PERC, &dval, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -492,7 +512,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_real( top, SCOPE_KEY_TRG_H_PERC, &dval, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -505,7 +525,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_NSAMPLES  , &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -522,7 +542,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_NPTS      , &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -541,7 +561,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_AUTOTRG_MS, &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
@@ -550,7 +570,7 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 	}
 
 	st = jget_int( top, SCOPE_KEY_DECIMATION, &ival, SCLR, QUIET );
-	if ( -ENOENT != st ) {
+	if ( -ENOKEY != st ) {
 		if ( st ) {
 			goto bail;
 		}
