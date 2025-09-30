@@ -27,7 +27,7 @@
 
 static void usage(const char *nm)
 {
-	printf("usage: %s [-hvDI!?] [-d usb-dev] [-S SPI_flashCmd] [-a flash_addr] [-f flash_file] [-j json_file] [register] [values...]\n", nm);
+	printf("usage: %s [-hvDI!?] [-d usb-dev] [-S SPI_flashCmd] [-a flash_addr] [-f flash_file] [-j|J json_file] [register] [values...]\n", nm);
 	printf("   -S cmd{,cmd}       : commands to execute on 25DF041 SPI flash (see below).\n");
 	printf("   -f flash-file      : file to write/verify when operating on SPI flash.\n");
     printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
@@ -56,7 +56,8 @@ static void usage(const char *nm)
     printf("                           DACRangeHigh=On|Off\n");
     printf("                           PGAAttenuation=<value_in_dB>\n");
     printf("                         Example: -PTerm[0]=On,Term[1]=Off,Coupling=AC\n");
-	printf("   -j <json_file>     : save current settings to <json_file>.\n");
+	printf("   -J <json_file>     : save current settings to <json_file>.\n");
+	printf("   -j <json_file>     : load settings from <json_file>.\n");
 	printf("   -R <reg_op>        : register read/write operation:\n");
 	printf("                         READ : <addr>:<len>\n");
 	printf("                         WRITE: <addr>=<val>{,<val>}\n");
@@ -627,14 +628,15 @@ const char        *h5nam     = NULL;
 ScopeH5Data       *h5d       = NULL;
 int                h5st      = 0;
 const char        *h5comment = NULL;
-const char        *jsonFnam  = NULL;
+const char        *jsonIFnam = NULL;
+const char        *jsonOFnam = NULL;
 ScopeParams       *settings  = NULL;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
 	}
 
-	while ( (opt = getopt(argc, argv, "5:Aa:BC:Dd:Ff:GhIi:j:P:pR:S:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "5:Aa:BC:Dd:Ff:GhIi:j:J:P:pR:S:T:Vv!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -654,7 +656,8 @@ ScopeParams       *settings  = NULL;
 			case 'V': fwVersion= 1;                                                   break;
 			case 'I': dac = 0; test_reg = TEST_I2C;                                   break;
 			case 'i': dac = 0; test_reg = TEST_I2C; u_p = &sla;                       break;
-			case 'j': jsonFnam = optarg;                                              break;
+			case 'j': jsonIFnam= optarg;                                              break;
+			case 'J': jsonOFnam= optarg;                                              break;
 			case 'S': test_spi = strdup(optarg);                                      break;
 			case 'T': trgOp    = optarg;                                              break;
 			case 'a': u_p      = &flashAddr;                                          break;
@@ -700,7 +703,13 @@ ScopeParams       *settings  = NULL;
 		printf("  Board HW: %8"  PRIu8  "\n", v_brd);
 	}
 
-	if ( trgOp || feOp || dumpPrms || dumpAdc || jsonFnam ) {
+	if ( (jsonIFnam || jsonOFnam ) && ( 0 != scope_json_supported() ) ) {
+		fprintf(stderr, "JSON support not compiled in; disabling\n");
+		jsonIFnam = NULL;
+		jsonOFnam = NULL;
+	}
+
+	if ( trgOp || feOp || dumpPrms || dumpAdc || jsonIFnam || jsonOFnam ) {
 		if ( (fw_get_features( fw ) & FW_FEATURE_ADC) ) {
 			if ( ! (scope = scope_open( fw )) ) {
 				fprintf(stderr, "ERROR: scope_open failed\n");
@@ -710,6 +719,21 @@ ScopeParams       *settings  = NULL;
 		if ( ! scope ) {
 			fprintf(stderr, "No scope support in firmware; requested operation not supported\n");
 			goto bail;
+		}
+		if ( jsonIFnam || jsonOFnam ) {
+			if ( ! ( settings = scope_alloc_params( scope ) ) ) {
+				fprintf(stderr, "ERROR: scope_alloc_params failed.\n");
+				goto bail;
+			}
+		}
+		if ( jsonIFnam ) {
+			if ( scope_json_load( scope, jsonIFnam, settings ) ) {
+				fprintf(stderr, "ERROR: scope_json_load failed.\n");
+			}
+			if ( scope_set_params( scope, settings ) ) {
+				fprintf(stderr, "ERROR: scope_set_params failed.\n");
+				goto bail;
+			}
 		}
 	}
 
@@ -1144,13 +1168,9 @@ ScopeParams       *settings  = NULL;
 		}
 	}
 
-	if ( jsonFnam ) {
+	if ( jsonOFnam ) {
 		if ( scope_json_supported( scope ) < 0 ) {
 			fprintf(stderr, "ERROR: JSON support not compiled in.\n");
-			goto bail;
-		}
-		if ( ! ( settings = scope_alloc_params( scope ) ) ) {
-			fprintf(stderr, "ERROR: scope_alloc_params failed.\n");
 			goto bail;
 		}
 		if ( scope_get_params( scope, settings ) < 0 ) {
@@ -1158,7 +1178,7 @@ ScopeParams       *settings  = NULL;
 			goto bail;
 		}
 		printf("fec term %g %g\n", settings->afeParams[0].fecTerminationOhm, settings->afeParams[1].fecTerminationOhm);
-		if ( scope_json_save( scope, jsonFnam, settings ) ) {
+		if ( scope_json_save( scope, jsonOFnam, settings ) ) {
 			fprintf(stderr, "ERROR: scope_json_save failed.\n");
 			goto bail;
 		}
