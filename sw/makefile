@@ -12,16 +12,29 @@ HAVE_H5=NO
 endif
 endif
 
+ifndef HAVE_JANSSON
+$(shell pkg-config --exists jansson)
+ifeq ($(.SHELLSTATUS),0)
+HAVE_JANSSON=YES
+JANSSON_LIBS=$(shell pkg-config --libs jansson)
+else
+HAVE_JANSSON=NO
+endif
+endif
+
 HCC_NO=$(CC)
 
 H5_DEFINES_YES=CONFIG_WITH_HDF5
+JANSSON_DEFINES_YES=CONFIG_WITH_JANSSON
 
-CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing $(addprefix -D,$(H5_DEFINES_$(HAVE_H5))) -I.
+CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing -I.
+CFLAGS+=$(addprefix -D,$(H5_DEFINES_$(HAVE_H5)))
+CFLAGS+=$(addprefix -D,$(JANSSON_DEFINES_$(HAVE_JANSSON)))
 
 OBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 OBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
 OBJS+=tca6408FECSup.o at24EepromSup.o unitData.o unitDataFlash.o
-OBJS+=scopeSup.o
+OBJS+=scopeSup.o jsonSup.o
 
 LOBJS=$(OBJS) $(H5_OBJS)
 
@@ -41,7 +54,7 @@ libfwcomm.a: $(LOBJS)
 	$(AR) r $@ $^
 
 bbcli scopeCal unitDataTst:%:%.o libfwcomm.a
-	$(HCC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm
+	$(HCC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm $(JANSSON_LIBS)
 
 pyfwcomm.o: $(PYFWCOMM_C)
 	$(CC) $(CFLAGS) -c -o $@ $^ -I $(PYINC)
@@ -76,7 +89,8 @@ pyfwcomm.so: pyfwcomm.o libfwcomm.a
 CMakeLists.txt: makefile
 	@$(RM) $@
 	@echo '# AUTOMATICALLY GENERATED (makefile); do not modify!' >> $@
-	@echo 'cmake_minimum_required(VERSION 3.5)'                  >> $@
+	@echo 'cmake_minimum_required(VERSION 3.10)'                 >> $@
+	@echo 'include( FindPkgConfig )'                             >> $@
 	@echo ''                                                     >> $@
 	@echo 'project( fwcomm LANGUAGES C )'                        >> $@
 	@echo ''                                                     >> $@
@@ -88,8 +102,15 @@ CMakeLists.txt: makefile
 	@echo 'find_package(HDF5 COMPONENTS C)'                      >> $@
 	@echo 'if( HDF5_FOUND )'                                     >> $@
 	@echo '  include_directories( $${HDF5_INCLUDE_DIR} )'        >> $@
-	@echo '  add_compile_definitions( CONFIG_WITH_HDF5 )'        >> $@
+	@echo '  add_compile_definitions( CONFIG_WITH_HDF5=1 )'      >> $@
 	@echo '  list( APPEND LIBS    $${HDF5_LIBRARIES} )'          >> $@
+	@echo 'endif()'                                              >> $@
+	@echo ''                                                     >> $@
+	@echo 'pkg_check_modules(JANSSON jansson)'                   >> $@
+	@echo 'if ( JANSSON_FOUND )'                                 >> $@
+	@echo '  include_directories( $${JANSSON_INCLUDE_DIR} )'     >> $@
+	@echo '  add_compile_definitions( CONFIG_WITH_JANSSON=1 )'   >> $@
+	@echo '  list( APPEND LIBS    $${JANSSON_LIBRARIES} )'       >> $@
 	@echo 'endif()'                                              >> $@
 	@echo ''                                                     >> $@
 	@echo 'list( APPEND LIBS m )'                                >> $@
@@ -100,3 +121,8 @@ CMakeLists.txt: makefile
 		echo "add_executable( $$p $$p.c )"                       >> $@ ;\
 		echo "target_link_libraries( $$p PRIVATE \$${LIBS} )"    >> $@ ;\
 	done
+	@echo ''                                                     >> $@
+	@echo 'if ( JANSSON_FOUND )'                                 >> $@
+	@echo '  add_executable( jsonTest jsonTest.c )'              >> $@
+	@echo '  target_link_libraries( jsonTest PRIVATE $${LIBS} )' >> $@
+	@echo 'endif()'                                              >> $@
