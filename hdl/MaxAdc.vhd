@@ -167,7 +167,6 @@ architecture rtl of MaxADC is
       decmIs1 : boolean;
       tgl     : std_logic;
       armLvl  : signed(RamWord'range);
-      tmrStrt : std_logic;
       fifoFul : std_logic;
    end record WrRegType;
 
@@ -183,7 +182,6 @@ architecture rtl of MaxADC is
       decmIs1 => true,
       tgl     => '0',
       armLvl  => (others => '0'),
-      tmrStrt => '0',
       fifoFul => '0'
    );
 
@@ -339,8 +337,7 @@ architecture rtl of MaxADC is
 
    signal msTickCounter     : natural range 0 to MS_TICK_PERIOD_C - 1 := MS_TICK_PERIOD_C - 1;
    signal msTimer           : unsigned( 15 downto 0 )                 := AUTO_TIME_STOP_C;
-   signal msTimerExpired    : boolean   := false;
-   signal msTimerStartDly   : std_logic;
+   signal msTimerExpired    : boolean                                 := false;
 
    signal lparms            : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
 
@@ -627,21 +624,21 @@ begin
    begin
       if ( rising_edge( memClk ) ) then
          -- not absolutely precise timing...
-         msTimerStartDly <= rWr.tmrStrt;
-         if ( msTimer = 0 ) then
-            msTimerExpired <= true;
-         end if;
          if ( msTickCounter = 0 ) then
             msTickCounter <= MS_TICK_PERIOD_C - 1;
             if ( msTimer /= AUTO_TIME_STOP_C ) then
+               if ( msTimer = 0 ) then
+                  msTimerExpired <= true;
+               end if;
                msTimer <= msTimer - 1;
             end if;
          else
             msTickCounter <= msTickCounter - 1;
          end if;
-         if ( (rWr.tmrStrt and not msTimerStartDly) = '1' ) then
-           msTimer        <= lparms.autoTimeMs;
+         if ( rWr.state = FILL ) then
            msTimerExpired <= false;
+           msTimer        <= lparms.autoTimeMs;
+           msTickCounter  <= 0;
          end if;
       end if;
    end process P_TICK;
@@ -653,7 +650,6 @@ begin
    begin
 
       v         := rWr;
-      v.tmrStrt := '0';
 
       wrDat     <= '0' & wdatB & wdatA;
 
@@ -700,7 +696,6 @@ begin
                v.state   := RUN;
                -- discard oldest sample (need 1 to fill 'lstTrg')
                v.nsmpls  := resize( lparms.nprets, v.nsmpls'length );
-               v.tmrStrt := '1';
             end if;
 
          when RUN        =>
