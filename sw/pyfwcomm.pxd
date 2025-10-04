@@ -166,9 +166,9 @@ cdef extern from "scopeSup.h":
   int            acq_set_scale(ScopePvt *, uint8_t cic0RShift, uint8_t cic1RShift, int32_t scale) nogil
   int            pgaReadReg(ScopePvt *, unsigned ch, unsigned reg) nogil
   int            pgaWriteReg(ScopePvt *, unsigned ch, unsigned reg, unsigned val) nogil
-  int            pgaGetAttRange(ScopePvt*, double *min, double *max) nogil
-  int            pgaGetAtt(ScopePvt *, unsigned channel, double *att) nogil
-  int            pgaSetAtt(ScopePvt *, unsigned channel, double att) nogil
+  int            pgaGetAttRangeDb(ScopePvt*, double *min, double *max) nogil
+  int            pgaGetAttDb(ScopePvt *, unsigned channel, double *att) nogil
+  int            pgaSetAttDb(ScopePvt *, unsigned channel, double att) nogil
   int            fecGetACMode(ScopePvt *, unsigned channel) nogil
   int            fecSetACMode(ScopePvt *, unsigned channel, unsigned on) nogil
   int            fecGetTermination(ScopePvt *, unsigned channel) nogil

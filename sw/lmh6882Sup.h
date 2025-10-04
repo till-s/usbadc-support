@@ -16,10 +16,10 @@ lmh6882WriteReg(FWInfo *fw, uint8_t reg, uint8_t val);
 
 /* Attenuation in dB or negative value on error */
 float
-lmh6882GetAtt(FWInfo *fw, unsigned channel);
+lmh6882GetAttDb(FWInfo *fw, unsigned channel);
 
 int
-lmh6882SetAtt(FWInfo *fw, unsigned channel, float att);
+lmh6882SetAttDb(FWInfo *fw, unsigned channel, float att);
 
 /* RETURNS: previous power state or -1 on error.
  *          Sets new power state: off (state > 0), on (state == 0),

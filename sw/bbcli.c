@@ -179,14 +179,14 @@ unsigned numCh = scope_get_num_channels( scp );
 
 	printf("Front End Settings:\n");
 	printf("  PGA:");
-	if ( 0 != pgaGetAttRange( scp, &vd1, &vd2 ) ) {
+	if ( 0 != pgaGetAttRangeDb( scp, &vd1, &vd2 ) ) {
 		printf(" NOT SUPPORTED\n");
 	} else {
 		printf("\n");
 		printf("    %-15s: %.0lfdB..%.0lfdB\n", "Range", vd1, vd2);
 		printf("    %-15s:", "Attenuation");
 		for ( ch = 0; ch < numCh; ++ch ) {
-			if ( 0 == pgaGetAtt( scp, ch, &vd1 ) ) {
+			if ( 0 == pgaGetAttDb( scp, ch, &vd1 ) ) {
 				printf(" CH %d: %3.1lfdB", ch, vd1);
 			} else {
 				printf(" NOT SUPPORTED");
@@ -349,7 +349,7 @@ regmatch_t matches[5];
 				goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = pgaSetAtt( scp, chb, dv1 )) < 0 ) {
+				if ( (st = pgaSetAttDb( scp, chb, dv1 )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'PGAAttenuator' failed: %s\n", strerror(-st));
 					goto bail;
 				}

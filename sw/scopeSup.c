@@ -485,7 +485,7 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *pscl)
 			/* don't bother */
 			return scl;
 		}
-		st = pgaGetAtt( scp, channel, &att );
+		st = pgaGetAttDb( scp, channel, &att );
 		if ( st < 0 ) {
 			if ( -ENOTSUP != st ) {
 				return st;
@@ -535,31 +535,31 @@ static int simPGAWriteReg(FWInfo *, unsigned ch, unsigned reg, unsigned val)
 	return -ENOTSUP;
 }
 
-static int simPGAGetAttRange(FWInfo *, double *min, double *max)
+static int simPGAGetAttRangeDb(FWInfo *, double *min, double *max)
 {
 	if ( min ) *min = 0.0;
 	if ( max ) *max = 0.0;
 	return 0;
 }
 
-static int simPGAGetAtt(FWInfo *, unsigned channel, double *val)
+static int simPGAGetAttDb(FWInfo *, unsigned channel, double *val)
 {
 	if ( val ) *val = 0.0;
 	return 0;
 }
 
-static int simPGASetAtt(FWInfo *, unsigned channel, double val)
+static int simPGASetAttDb(FWInfo *, unsigned channel, double val)
 {
 	return 0;
 }
 
 
 static struct PGAOps simPGAOps = {
-	readReg:     simPGAReadReg,
-	writeReg:    simPGAWriteReg,
-	getAttRange: simPGAGetAttRange,
-	getAtt:      simPGAGetAtt,
-	setAtt:      simPGASetAtt
+	readReg:       simPGAReadReg,
+	writeReg:      simPGAWriteReg,
+	getAttRangeDb: simPGAGetAttRangeDb,
+	getAttDb:      simPGAGetAttDb,
+	setAttDb:      simPGASetAttDb
 };
 
 ScopePvt *
@@ -1343,13 +1343,13 @@ pgaWriteReg(ScopePvt *scp, unsigned ch, unsigned reg, unsigned val)
 }
 
 int
-pgaGetAttRange(ScopePvt*scp, double *min, double *max)
+pgaGetAttRangeDb(ScopePvt*scp, double *min, double *max)
 {
-	return scp && scp->pga && scp->pga->getAttRange ? scp->pga->getAttRange(scp->fw, min, max) : -ENOTSUP;
+	return scp && scp->pga && scp->pga->getAttRangeDb ? scp->pga->getAttRangeDb(scp->fw, min, max) : -ENOTSUP;
 }
 
 int
-pgaGetAtt(ScopePvt *scp, unsigned channel, double *attp)
+pgaGetAttDb(ScopePvt *scp, unsigned channel, double *attp)
 {
 int st;
 double att;
@@ -1357,7 +1357,7 @@ double att;
 		return -EINVAL;
 	}
 	
-	st = scp && scp->pga && scp->pga->getAtt ? scp->pga->getAtt(scp->fw, channel, &att) : -ENOTSUP;
+	st = scp && scp->pga && scp->pga->getAttDb ? scp->pga->getAttDb(scp->fw, channel, &att) : -ENOTSUP;
 	if ( 0 == st ) {
 		*attp = att - scp->attOffset[channel];
 	}
@@ -1365,12 +1365,12 @@ double att;
 }
 
 int
-pgaSetAtt(ScopePvt *scp, unsigned channel, double att)
+pgaSetAttDb(ScopePvt *scp, unsigned channel, double att)
 {
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	return scp && scp->pga && scp->pga->setAtt ? scp->pga->setAtt(scp->fw, channel, att + scp->attOffset[channel]) : -ENOTSUP;
+	return scp && scp->pga && scp->pga->setAttDb ? scp->pga->setAttDb(scp->fw, channel, att + scp->attOffset[channel]) : -ENOTSUP;
 }
 
 
@@ -1581,7 +1581,7 @@ scope_get_params(ScopePvt *scp, ScopeParams *p)
 			fprintf(stderr, "scope_get_params() - Error %d: reading current full (channel %d) failed.\n", st, ch);
 			return st;
 		}
-		if ( (st = pgaGetAtt( scp, ch, &p->afeParams[ch].pgaAttDb )) ) {
+		if ( (st = pgaGetAttDb( scp, ch, &p->afeParams[ch].pgaAttDb )) ) {
 			if ( -ENOTSUP == st  ) {
 				p->afeParams[ch].pgaAttDb = 0.0/0.0;
 			} else {
@@ -1734,7 +1734,7 @@ scope_set_params(ScopePvt *scp, ScopeParams *p)
 			return st;
 		}
 
-		st = CH_SET_DBL( &h, pgaSetAtt, pgaAttDb, "PGA attenuation" );
+		st = CH_SET_DBL( &h, pgaSetAttDb, pgaAttDb, "PGA attenuation" );
 		if ( st < 0 ) {
 			return st;
 		}

@@ -482,7 +482,7 @@ cdef class Amp(ScopeDev):
   def getS2Range(self):
     cdef double attMin, attMax
     with self as scp,nogil:
-      rv = pgaGetAttRange(scp, &attMin, &attMax)
+      rv = pgaGetAttRangeDb(scp, &attMin, &attMax)
     if ( rv < 0 ):
       raise IOError("Amp.getS2Range(): failed")
     return (attMin,attMax)
@@ -490,7 +490,7 @@ cdef class Amp(ScopeDev):
   def getS2Att(self, unsigned channel):
     cdef double att
     with self as scp, nogil:
-      rv = pgaGetAtt( scp, channel, &att )
+      rv = pgaGetAttDb( scp, channel, &att )
     if ( rv <= -1 ):
       if ( rv < -1 ):
         raise ValueError("Amp.getS2Att(): invalid channel")
@@ -501,7 +501,7 @@ cdef class Amp(ScopeDev):
   def setS2Att(self, unsigned channel, double att):
     cdef int rv
     with self as scp, nogil:
-      rv = pgaSetAtt( scp, channel, att )
+      rv = pgaSetAttDb( scp, channel, att )
     if ( rv < 0 ):
       if ( rv < -1 ):
         raise ValueError("Amp.setS2Att(): invalid channel or attenuation")

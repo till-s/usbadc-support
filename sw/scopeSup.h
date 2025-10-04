@@ -345,9 +345,9 @@ typedef struct PGAOps {
 	int    (*readReg)(FWInfo *, unsigned ch, unsigned reg);
 	int    (*writeReg)(FWInfo *, unsigned ch, unsigned reg, unsigned val);
 	/*  min-max attenuation in db; return 0 on success */
-	int    (*getAttRange)(FWInfo*, double *min, double *max);
-	int    (*getAtt)(FWInfo *, unsigned channel, double *att);
-	int    (*setAtt)(FWInfo *, unsigned channel, double att);
+	int    (*getAttRangeDb)(FWInfo*, double *min, double *max);
+	int    (*getAttDb)(FWInfo *, unsigned channel, double *att);
+	int    (*setAttDb)(FWInfo *, unsigned channel, double att);
 } PGAOps;
 
 typedef struct FECOps FECOps;
@@ -372,9 +372,9 @@ int    pgaWriteReg(ScopePvt *, unsigned ch, unsigned reg, unsigned val);
 /* at min-att
  *  min-max attenuation in db; return 0 on success; stage 0 is closest to ADC
  */
-int    pgaGetAttRange(ScopePvt*, double *min, double *max);
-int    pgaGetAtt(ScopePvt *, unsigned channel, double *att);
-int    pgaSetAtt(ScopePvt *, unsigned channel, double att);
+int    pgaGetAttRangeDb(ScopePvt*, double *min, double *max);
+int    pgaGetAttDb(ScopePvt *, unsigned channel, double *att);
+int    pgaSetAttDb(ScopePvt *, unsigned channel, double att);
 
 /* returns 0, 1, negative error */
 int    fecGetACMode(ScopePvt *, unsigned channel);

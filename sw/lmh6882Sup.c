@@ -41,7 +41,7 @@ int     st;
 
 /* Attenuation in dB or negative value on error */
 float
-lmh6882GetAtt(FWInfo *fw, unsigned channel)
+lmh6882GetAttDb(FWInfo *fw, unsigned channel)
 {
 int v;
 	if ( channel > 1 ) {
@@ -54,14 +54,14 @@ int v;
 }
 
 int
-lmh6882SetAtt(FWInfo *fw, unsigned channel, float att)
+lmh6882SetAttDb(FWInfo *fw, unsigned channel, float att)
 {
 uint8_t v;
 	if ( channel > 1 ) {
 		return -EINVAL;
 	}
 	if ( att < 0.0 || att > 20.0 ) {
-		fprintf(stderr, "lmh6228SetAtt: value out of range (0..20)\n");
+		fprintf(stderr, "lmh6228SetAttDb: value out of range (0..20)\n");
 		return -EINVAL;
 	}
 	v = round( att * 4.0 );
@@ -110,7 +110,7 @@ opWriteReg(FWInfo *fw, unsigned ch, unsigned reg, unsigned val)
 }
 
 static	int
-opGetAttRange(FWInfo *fw, double *min, double *max)
+opGetAttRangeDb(FWInfo *fw, double *min, double *max)
 {
 	if ( min ) *min = 0;
 	if ( max ) *max = 20;
@@ -118,9 +118,9 @@ opGetAttRange(FWInfo *fw, double *min, double *max)
 }
 
 static	int
-opGetAtt(FWInfo *fw, unsigned channel, double *att)
+opGetAttDb(FWInfo *fw, unsigned channel, double *att)
 {
-	double val = (double)lmh6882GetAtt( fw, channel );
+	double val = (double)lmh6882GetAttDb( fw, channel );
 	if ( val < 0.0 ) {
 		return (int)val;
 	}
@@ -129,15 +129,15 @@ opGetAtt(FWInfo *fw, unsigned channel, double *att)
 }
 
 static	int
-opSetAtt(FWInfo *fw, unsigned channel, double att)
+opSetAttDb(FWInfo *fw, unsigned channel, double att)
 {
-	return lmh6882SetAtt( fw, channel, (float)att );
+	return lmh6882SetAttDb( fw, channel, (float)att );
 }
 
 PGAOps lmh6882PGAOps = {
-	.readReg     = opReadReg,
-	.writeReg    = opWriteReg,
-	.getAttRange = opGetAttRange,
-	.getAtt      = opGetAtt,
-	.setAtt      = opSetAtt
+	.readReg       = opReadReg,
+	.writeReg      = opWriteReg,
+	.getAttRangeDb = opGetAttRangeDb,
+	.getAttDb      = opGetAttDb,
+	.setAttDb      = opSetAttDb
 };

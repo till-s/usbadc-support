@@ -36,8 +36,17 @@ int st = scope_write_unit_data_nonvolatile( scp, unitData );
 	return st;
 }
 
+/*
+ * 1. set PGA attenuation to 'pgaAtt' (40dB if nan)
+ * 2. set dac to 'dacVolt'
+ * 3. sleep(1)
+ * 4. flush ADC buffer
+ * 5. read data
+ * 6. compute and return average of ADC ticks
+ */
+
 static int
-measure(ScopePvt *scp, size_t nSamples, int16_t *buf, double pgaAtt, double dacVolt, double *result)
+measure(ScopePvt *scp, size_t nSamples, int16_t *buf, double pgaAttDb, double dacVolt, double *result)
 {
 unsigned nChannels = scope_get_num_channels( scp );
 size_t   nElms     = nSamples * nChannels;
@@ -45,14 +54,14 @@ int      ch,n;
 int      st;
 uint16_t bufHdr;
 
-	if ( isnan(pgaAtt) ) {
-		pgaAtt = 40.0;
+	if ( isnan(pgaAttDb) ) {
+		pgaAttDb = 40.0;
 	}
 
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		st = pgaSetAtt( scp, ch, pgaAtt );
+		st = pgaSetAttDb( scp, ch, pgaAttDb );
 		if ( st < 0 ) {
-			fprintf( stderr, "Error; pgaSetAtt(%lg) failed: %s\n", pgaAtt, strerror(-st));
+			fprintf( stderr, "Error; pgaSetAttDb(%lg) failed: %s\n", pgaAttDb, strerror(-st));
 			goto bail;
 		}
 
@@ -107,11 +116,29 @@ unsigned ch;
 	}
 }
 
+static const char  *DFLT_DEV = "/dev/ttyACM0";
+static const double DFLT_DAC = 1.0;
+static const size_t DFLT_NSM = 1024*1024;
+
 
 static void
 usage(const char *name)
 {
-	printf("Usage: %s\n", name);
+	printf("Usage: %s [-EhIpw] [-a <pgaMinAttDb>] [-A <pgaMaxAttDb>] [-d <device>] [-D <calVolt>] [-F <fullScaleVolt>] [-n <nsamples>]\n", name);
+	printf("       -h                   : Print this message.\n");
+	printf("       -E                   : Erase existing calibration from non-volatile memory.\n");
+	printf("                              Note: program exits after erase; no other operations performed.\n");
+	printf("       -I                   : Allow calibration of a device that appears to have been\n");
+	printf("                              already. Normally, this is prohibited as the device could be\n");
+	printf("                              in an unknown state.\n");
+	printf("       -p                   : Print initial calibration (before running calibration).\n");
+	printf("       -w                   : Write to non-volatile memory after running calilbration.\n");
+	printf("       -a <pgaMinAttDb>     : Set PGA min. attenuation in dB (default: read from device).\n");
+	printf("       -a <pgaMaxAttDb>     : Set PGA max. attenuation in dB (default: read from device).\n");
+	printf("       -d <device>          : Select tty <device> (default: %s).\n", DFLT_DEV);
+	printf("       -D <calVolt>         : Run calibratiokn at <calVolt> (default: %gV).\n", DFLT_DAC);
+	printf("       -F <fullScaleVolt>   : Set Volts at full scale (default: read from device).\n");
+	printf("       -n <num_samples>     : Use <num_samples (default: %zd).\n", DFLT_NSM);
 }
 
 int
@@ -121,15 +148,15 @@ int16_t                *buf            = NULL;
 FWInfo                 *fw             = NULL;
 ScopePvt               *scp            = NULL;
 int                     rv             = 1;
-size_t                  nSamples       = 1024*1024;
-const char             *devName        = "/dev/ttyACM0";
+size_t                  nSamples       = DFLT_NSM;
+const char             *devName        = DFLT_DEV;
 int                     allowPreInited = 0;
 ScopeCalData           *calData        = NULL;
 double                  pgaMinAttDb    = 0.0/0.0;
 double                  pgaMaxAttDb    = 0.0/0.0;
 double                 *dvals          = NULL;
 UnitData               *unitData       = NULL;
-double                  dacCalVolt     = 0.3;
+double                  dacCalVolt     = DFLT_DAC;
 /* full-scale volt at 0dB pga attenuation */
 double                  fullScaleVolt  = 0.0/0.0;
 unsigned                nChannels      = 0;
@@ -182,6 +209,12 @@ size_t                 *z_p;
 		fprintf( stderr, "Error: unable to open firmware (wrong tty device?)\n");
 		goto bail;
 	}
+
+	if ( ! allowPreInited && scope_is_initialized( fw ) ) {
+		fprintf( stderr, "Error: Scope seems already initialized; please power-cycle\n");
+		goto bail;
+	}
+
 	if ( ! (scp = scope_open( fw )) ) {
 		fprintf( stderr, "Error: unable to open Scope (wrong firmware?)\n");
 		goto bail;
@@ -198,17 +231,7 @@ size_t                 *z_p;
 		fprintf( stderr, "Error with calibration DAC: %s\n", strerror(-st));
 		goto bail;
 	}
-	if ( ! allowPreInited && (0 == max195xxDLLLocked( fw )) ) {
-		fprintf( stderr, "Error: Scope seems already initialized; please power-cycle\n");
-		goto bail;
-	}
 	
-	st = scope_init( scp, 1 );
-	if ( st < 0 ) {
-		fprintf( stderr, "Error; scope_init failed: %s\n", strerror(-st));
-		goto bail;
-	}
-
 	nChannels = scope_get_num_channels( scp );
 
 	if ( ! (dvals = malloc( sizeof(*dvals) * nChannels ) ) ) {
@@ -276,15 +299,15 @@ size_t                 *z_p;
 	}
 
 	if ( isnan( pgaMinAttDb ) || isnan( pgaMaxAttDb ) ) {
-		st = pgaGetAttRange( scp, (isnan(pgaMinAttDb) ? &pgaMinAttDb : NULL), (isnan(pgaMaxAttDb) ? &pgaMaxAttDb : NULL) );
+		st = pgaGetAttRangeDb( scp, (isnan(pgaMinAttDb) ? &pgaMinAttDb : NULL), (isnan(pgaMaxAttDb) ? &pgaMaxAttDb : NULL) );
 		if ( st < 0 ) {
-			fprintf( stderr, "Error; pgaGetAttRange failed: %s\n", strerror(-st));
+			fprintf( stderr, "Error; pgaGetAttRangeDb failed: %s\n", strerror(-st));
 			goto bail;
 		}
 	}
 
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		st = fecSetACMode( scp, ch, 1 );
+		st = fecSetACMode( scp, ch, 0 );
 		if ( st < 0 ) {
 			fprintf( stderr, "Error; fecSetACMode(1) failed: %s\n", strerror(-st));
 			goto bail;
@@ -296,7 +319,9 @@ size_t                 *z_p;
 		}
 	}
 
-	st = measure( scp, nSamples, buf, pgaMaxAttDb, 0.0, dvals );
+	double dacCalZeroVolt = 0.0;
+
+	st = measure( scp, nSamples, buf, pgaMaxAttDb, dacCalZeroVolt, dvals );
 	if ( st < 0 ) {
 		goto bail;
 	}
@@ -312,25 +337,26 @@ size_t                 *z_p;
 	}
 	for ( ch = 0; ch < nChannels; ++ch ) {
 		printf("Cal scale[%u] (pgaAtt: %lgdB): %lg clicks @ DAC %lg Volt\n", ch, pgaMaxAttDb, dvals[ch], dacCalVolt);
-		/* not volt yet! */
-		calData[ch].scaleRelat = dacCalVolt / (dvals[ch] - calData[ch].offsetVolt);
-		printf("Full scale[%u] (pgaAtt: %lgdB, dac: %lgV): %lg volt\n", ch, pgaMaxAttDb, dacCalVolt, ((double)INT16_MAX)*calData[ch].scaleRelat);
-	}
-
-	st = measure( scp, nSamples, buf, pgaMinAttDb, 0.0, dvals );
-	if ( st < 0 ) {
-		goto bail;
+		/* 'offsetVolt' are not volt yet! */
+		calData[ch].scaleRelat = (dacCalVolt - dacCalZeroVolt) / (dvals[ch] - calData[ch].offsetVolt);
+		/* now offset becomes volts */
+		calData[ch].offsetVolt *= calData[ch].scaleRelat;
+		printf("Full scale[%u] (pgaAtt: %lgdB, dac: %lgV): %lg volt, offset %lg volt\n",
+			ch,
+			pgaMaxAttDb,
+			dacCalVolt,
+			((double)INT16_MAX)*calData[ch].scaleRelat,
+			calData[ch].offsetVolt
+		);
 	}
 
 	pgaMaxAtt = exp10( pgaMaxAttDb / 20.0 );
 	pgaMinAtt = exp10( pgaMinAttDb / 20.0 );
+
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		printf("Offset[%u] (pgaMin: %gdB): %lg clicks\n", ch, pgaMinAttDb, dvals[ch]);
-		/* renormalize scale for att 0 dB */
+		/* renormalize for att 0 dB */
 		calData[ch].scaleRelat /= pgaMaxAtt;
-		/* convert offset clicks into volt (min att may not be 0dB!) */
-		calData[ch].offsetVolt  = pgaMinAtt * dvals[ch] * calData[ch].scaleRelat;
-		printf("Offset[%u] (pgaMin: %gdB): %lg volt\n", ch, pgaMinAttDb, calData[ch].offsetVolt);
+		calData[ch].offsetVolt /= pgaMaxAtt;
 		/* full-scale volt at 0dB */
 		calData[ch].scaleRelat *= (double)(INT16_MAX);
 	}
