@@ -40,7 +40,7 @@ static const double PREGAIN = 7.079458;
 static const double MAXGAIN = 34.0; /* dB */
 
 int
-ad8370SetAtt(FWInfo *fw, unsigned channel, float att)
+ad8370SetAttDb(FWInfo *fw, unsigned channel, float att)
 {
 uint8_t        v;
 
@@ -80,7 +80,7 @@ unsigned       cod;
 }
 
 float
-ad8370GetAtt(FWInfo *fw, unsigned channel)
+ad8370GetAttDb(FWInfo *fw, unsigned channel)
 {
 int     v  = ad8370Read( fw, channel );
 int     hi;
@@ -125,7 +125,7 @@ opWriteReg(FWInfo *fw, unsigned ch, unsigned reg, unsigned val)
 }
 
 static	int
-opGetAttRange(FWInfo *fw, double *min, double *max)
+opGetAttRangeDb(FWInfo *fw, double *min, double *max)
 {
 	if ( min ) *min = 0;
 	if ( max ) *max = 40;
@@ -133,9 +133,9 @@ opGetAttRange(FWInfo *fw, double *min, double *max)
 }
 
 static	int
-opGetAtt(FWInfo *fw, unsigned channel, double *att)
+opGetAttDb(FWInfo *fw, unsigned channel, double *att)
 {
-	double val = (double)ad8370GetAtt( fw, channel );
+	double val = (double)ad8370GetAttDb( fw, channel );
 	if ( isnan( val ) ) {
 		return -EINVAL;
 	}
@@ -147,15 +147,15 @@ opGetAtt(FWInfo *fw, unsigned channel, double *att)
 }
 
 static	int
-opSetAtt(FWInfo *fw, unsigned channel, double att)
+opSetAttDb(FWInfo *fw, unsigned channel, double att)
 {
-	return ad8370SetAtt( fw, channel, (float)att );
+	return ad8370SetAttDb( fw, channel, (float)att );
 }
 
 PGAOps ad8370PGAOps = {
 	.readReg     = opReadReg,
 	.writeReg    = opWriteReg,
-	.getAttRange = opGetAttRange,
-	.getAtt      = opGetAtt,
-	.setAtt      = opSetAtt
+	.getAttRangeDb = opGetAttRangeDb,
+	.getAttDb      = opGetAttDb,
+	.setAttDb      = opSetAttDb
 };

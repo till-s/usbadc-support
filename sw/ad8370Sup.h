@@ -15,11 +15,11 @@ int
 ad8370Read(FWInfo *fw, int channel);
 
 int
-ad8370SetAtt(FWInfo *fw, unsigned channel, float att);
+ad8370SetAttDb(FWInfo *fw, unsigned channel, float att);
 
 /* returns NaN if there is an error */
 float
-ad8370GetAtt(FWInfo *fw, unsigned channel);
+ad8370GetAttDb(FWInfo *fw, unsigned channel);
 
 struct PGAOps;
 extern struct PGAOps ad8370PGAOps;
