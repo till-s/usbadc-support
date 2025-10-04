@@ -13,8 +13,8 @@ typedef struct TCA6408FECSup {
 	FECOps       ops;
 	FWInfo      *fw;
 	uint8_t      sla;
-	double       attMin;
-	double       attMax;
+	double       attMinDb;
+	double       attMaxDb;
 	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which);
 } TCA6408FECSup;
 
@@ -100,37 +100,37 @@ opSetDACRangeHi(FECOps *ops, unsigned channel, unsigned on)
 }
 
 static int
-opGetAttRange(FECOps *ops, double *min, double *max)
+opGetAttRangeDb(FECOps *ops, double *min, double *max)
 {
 	TCA6408FECSup *fec  = (TCA6408FECSup*)ops;
 	if ( min ) {
-		*min = fec->attMin;
+		*min = fec->attMinDb;
 	}
 	if ( max ) {
-		*max = fec->attMax;
+		*max = fec->attMaxDb;
 	}
 	return 0;
 }
 
 static int
-opGetAtt(FECOps *ops, unsigned channel, double *att)
+opGetAttDb(FECOps *ops, unsigned channel, double *attDb)
 {
 	TCA6408FECSup *fec = (TCA6408FECSup*)ops;
 	int             st = readBit( ops, channel, ATTENUATOR );
 	if ( st < 0 ) {
 		return st;
 	}
-	if ( att ) {
-		*att = !!st ? fec->attMax : fec->attMin;
+	if ( attDb ) {
+		*attDb = !!st ? fec->attMaxDb : fec->attMinDb;
 	}
 	return 0;
 }
 
 static int
-opSetAtt(FECOps *ops, unsigned channel, double att)
+opSetAttDb(FECOps *ops, unsigned channel, double attDb)
 {
 	TCA6408FECSup *fec = (TCA6408FECSup*)ops;
-	return writeBit( ops, channel, ATTENUATOR, (fec->attMin + fec->attMax) > 2.0 * att ? 0 : 1 );
+	return writeBit( ops, channel, ATTENUATOR, (fec->attMinDb + fec->attMaxDb) > 2.0 * attDb ? 0 : 1 );
 }
 
 static void
@@ -143,8 +143,8 @@ struct FECOps *tca6408FECSupCreate(
 	struct FWInfo *fw,
 	unsigned       numChannels,
 	uint8_t        sla,
-	double         attMin,
-	double         attMax,
+	double         attMinDb,
+	double         attMaxDb,
 	/* returns bit mask for selected bit/channel or negative status if not supported */
 	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
 )
@@ -172,8 +172,8 @@ int            dir;
 
 	fec->fw                 = fw;
 	fec->sla                = sla;
-	fec->attMin             = attMin;
-	fec->attMax             = attMax;
+	fec->attMinDb           = attMinDb;
+	fec->attMaxDb           = attMaxDb;
 	fec->getBit             = getBit;
 	fec->ops.getACMode      = opGetACMode;
 	fec->ops.setACMode      = opSetACMode;
@@ -181,9 +181,9 @@ int            dir;
 	fec->ops.setTermination = opSetTermination;
 	fec->ops.getDACRangeHi  = opGetDACRangeHi;
 	fec->ops.setDACRangeHi  = opSetDACRangeHi;
-	fec->ops.getAttRange    = opGetAttRange;
-	fec->ops.getAtt         = opGetAtt;
-	fec->ops.setAtt         = opSetAtt;
+	fec->ops.getAttRangeDb  = opGetAttRangeDb;
+	fec->ops.getAttDb       = opGetAttDb;
+	fec->ops.setAttDb       = opSetAttDb;
 	fec->ops.close          = opClose;
 
 	/* Only initialize if it has not been done yet; otherwise leave alone */
@@ -193,7 +193,7 @@ int            dir;
 		for ( chn = 0; chn < numChannels; ++chn ) {
 			opSetTermination( &fec->ops, chn, 0 );
 			opSetACMode     ( &fec->ops, chn, 1 );
-			opSetAtt        ( &fec->ops, chn, attMax );
+			opSetAttDb      ( &fec->ops, chn, attMaxDb );
 			opSetDACRangeHi ( &fec->ops, chn, 1 );
 		}
 

@@ -572,7 +572,7 @@ cdef class FEC(ScopeDev):
   def __init__(self, *args, **kwargs):
     cdef int st
     with self as scp, nogil:
-      st = fecGetAttRange( scp, &self.min_, &self.max_ )
+      st = fecGetAttRangeDb( scp, &self.min_, &self.max_ )
     if ( st < 0 ):
       raise RuntimeError("Front-End has no Attenuator controls")
 
@@ -584,7 +584,7 @@ cdef class FEC(ScopeDev):
     else:
       val = self.min_
     with self as scp, nogil:
-      st = fecSetAtt( scp, channel, val )
+      st = fecSetAttDb( scp, channel, val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'setAttenuator' failed")
 
@@ -592,7 +592,7 @@ cdef class FEC(ScopeDev):
     cdef int st
     cdef double val
     with self as scp, nogil:
-      st = fecGetAtt( scp, channel, &val )
+      st = fecGetAttDb( scp, channel, &val )
     if ( st < 0 ):
       raise RuntimeError("Front-End 'getAttenuator' failed")
     return abs(self.max_ - val) < abs(self.min_ - val)

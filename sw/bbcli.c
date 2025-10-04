@@ -201,7 +201,7 @@ unsigned numCh = scope_get_num_channels( scp );
 	pronoff( scp, "DACHighRange", "    On", "   Off", fecGetDACRangeHi );
 	printf("    %-15s:", "Attenuation");
 	for ( ch = 0; ch < numCh; ++ch ) {
-		if ( 0 == fecGetAtt( scp, ch, &vd1 ) ) {
+		if ( 0 == fecGetAttDb( scp, ch, &vd1 ) ) {
 			/* map channel index to 'A'.. */
 			printf(" CH %X: %4.0lfdB", ch + 10, vd1);
 		} else {
@@ -328,7 +328,7 @@ regmatch_t matches[5];
 				++chb;
 			}
 		} else if ( 0 == strncasecmp( tok, "FECA", 4 ) ) {
-			if ( fecGetAttRange( scp, &dv1, &dv2 ) < 0 ) {
+			if ( fecGetAttRangeDb( scp, &dv1, &dv2 ) < 0 ) {
 				fprintf(stderr, "Error -- Setting FEC Attenuator not supported?\n");
 				goto bail;
 			}
@@ -337,7 +337,7 @@ regmatch_t matches[5];
 				goto bail;
 			}
 			while ( chb <= che ) {
-				if ( (st = fecSetAtt( scp, chb, iv ? dv2 : dv1 )) < 0 ) {
+				if ( (st = fecSetAttDb( scp, chb, iv ? dv2 : dv1 )) < 0 ) {
 					fprintf(stderr, "Error -- setting 'FECAttenuator' failed: %s\n", strerror(-st));
 					goto bail;
 				}

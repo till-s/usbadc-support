@@ -175,7 +175,7 @@ cdef extern from "scopeSup.h":
   int            fecSetTermination(ScopePvt *, unsigned channel, unsigned on) nogil
   int            fecGetDACRangeHi(ScopePvt *, unsigned channel) nogil
   int            fecSetDACRangeHi(ScopePvt *, unsigned channel, unsigned on) nogil
-  int            fecGetAttRange(ScopePvt*, double *min, double *max) nogil
-  int            fecGetAtt(ScopePvt *, unsigned channel, double *att) nogil
-  int            fecSetAtt(ScopePvt *, unsigned channel, double att) nogil
+  int            fecGetAttRangeDb(ScopePvt*, double *min, double *max) nogil
+  int            fecGetAttDb(ScopePvt *, unsigned channel, double *att) nogil
+  int            fecSetAttDb(ScopePvt *, unsigned channel, double att) nogil
   void           fecClose(ScopePvt *) nogil

@@ -251,7 +251,7 @@ int ch, st;
 		if ( (st = fecSetTermination( scp, ch, 0 )) && -ENOTSUP != st ) {
 			return st;
 		}
-		if ( (st = fecSetAtt( scp, ch, 0 )) && -ENOTSUP != st ) {
+		if ( (st = fecSetAttDb( scp, ch, 0 )) && -ENOTSUP != st ) {
 			return st;
 		}
 		if ( (st = fecSetACMode( scp, ch, 0 )) && -ENOTSUP != st ) {
@@ -494,7 +494,7 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *pscl)
 		} else {
 			totAtt += att;
 		}
-		st = fecGetAtt( scp, channel, &att );
+		st = fecGetAttDb( scp, channel, &att );
 		if ( st < 0 ) {
 			if ( -ENOTSUP != st ) {
 				return st;
@@ -1375,23 +1375,23 @@ pgaSetAtt(ScopePvt *scp, unsigned channel, double att)
 
 
 int
-fecGetAttRange(ScopePvt*scp, double *min, double *max)
+fecGetAttRangeDb(ScopePvt*scp, double *min, double *max)
 {
-	return scp && scp->fec && scp->fec->getAttRange ? scp->fec->getAttRange(scp->fec, min, max) : -ENOTSUP;
+	return scp && scp->fec && scp->fec->getAttRangeDb ? scp->fec->getAttRangeDb(scp->fec, min, max) : -ENOTSUP;
 }
 
 int
-fecGetAtt(ScopePvt *scp, unsigned channel, double *att)
+fecGetAttDb(ScopePvt *scp, unsigned channel, double *attDb)
 {
 	if ( channel >= scope_get_num_channels( scp ) ) return -EINVAL;
-	return scp && scp->fec && scp->fec->getAtt ? scp->fec->getAtt(scp->fec, channel, att) : -ENOTSUP;
+	return scp && scp->fec && scp->fec->getAttDb ? scp->fec->getAttDb(scp->fec, channel, attDb) : -ENOTSUP;
 }
 
 int
-fecSetAtt(ScopePvt *scp, unsigned channel, double att)
+fecSetAttDb(ScopePvt *scp, unsigned channel, double attDb)
 {
 	if ( channel >= scope_get_num_channels( scp ) ) return -EINVAL;
-	return scp && scp->fec && scp->fec->setAtt ? scp->fec->setAtt(scp->fec, channel, att) : -ENOTSUP;
+	return scp && scp->fec && scp->fec->setAttDb ? scp->fec->setAttDb(scp->fec, channel, attDb) : -ENOTSUP;
 }
 
 int
@@ -1589,7 +1589,7 @@ scope_get_params(ScopePvt *scp, ScopeParams *p)
 				return st;
 			}
 		}
-		if ( (st = fecGetAtt( scp, ch, &p->afeParams[ch].fecAttDb )) ) {
+		if ( (st = fecGetAttDb( scp, ch, &p->afeParams[ch].fecAttDb )) ) {
 			if ( -ENOTSUP == st  ) {
 				p->afeParams[ch].fecAttDb = 0.0/0.0;
 			} else {
@@ -1729,7 +1729,7 @@ scope_set_params(ScopePvt *scp, ScopeParams *p)
 		 * ignore passed-in value.
 		 */
 
-		st = CH_SET_DBL( &h, fecSetAtt, fecAttDb, "AFE attenuation" );
+		st = CH_SET_DBL( &h, fecSetAttDb, fecAttDb, "AFE attenuation" );
 		if ( st < 0 ) {
 			return st;
 		}

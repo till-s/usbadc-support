@@ -359,9 +359,9 @@ struct FECOps {
 	int    (*getTermination)(FECOps *, unsigned channel);
 	int    (*setTermination)(FECOps *, unsigned channel, unsigned on);
 	/* assume 2-step attenuator on/off */
-	int    (*getAttRange)(FECOps*, double *min, double *max);
-	int    (*getAtt)(FECOps *, unsigned channel, double *att);
-	int    (*setAtt)(FECOps *, unsigned channel, double att);
+	int    (*getAttRangeDb)(FECOps*, double *min, double *max);
+	int    (*getAttDb)(FECOps *, unsigned channel, double *att);
+	int    (*setAttDb)(FECOps *, unsigned channel, double att);
 	int    (*getDACRangeHi)(FECOps*, unsigned channel);
 	int    (*setDACRangeHi)(FECOps*, unsigned channel, unsigned on);
 	void   (*close)(FECOps *);
@@ -385,9 +385,9 @@ int    fecSetTerminationOhm(ScopePvt *, unsigned channel, double val);
 int    fecSetTermination(ScopePvt *, unsigned channel, unsigned on);
 int    fecGetDACRangeHi(ScopePvt *, unsigned channel);
 int    fecSetDACRangeHi(ScopePvt *, unsigned channel, unsigned on);
-int    fecGetAttRange(ScopePvt*, double *min, double *max);
-int    fecGetAtt(ScopePvt *, unsigned channel, double *att);
-int    fecSetAtt(ScopePvt *, unsigned channel, double att);
+int    fecGetAttRangeDb(ScopePvt*, double *min, double *max);
+int    fecGetAttDb(ScopePvt *, unsigned channel, double *att);
+int    fecSetAttDb(ScopePvt *, unsigned channel, double att);
 void   fecClose(ScopePvt *);
 
 /* return negative error code or 0 on success */

@@ -20,8 +20,8 @@ struct FECOps *tca6408FECSupCreate(
 	struct FWInfo *fw,
 	unsigned       numChannels,
 	uint8_t        sla,
-	double         attMin,
-	double         attMax,
+	double         attMinDb,
+	double         attMaxDb,
 	/* returns bit mask for selected bit/channel or negative status if not supported */
 	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
 );
