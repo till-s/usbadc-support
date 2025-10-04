@@ -69,8 +69,8 @@ scope_adc_pll_locked(ScopePvt *scp);
  * 'scaleVolt' is controlled with scope_get/set_full_scale_volt.
  */
 typedef struct ScopeCalData {
-	double offsetVolt;
-	double scaleRelat;
+	double fullScaleVolt; // at max gain
+	double offsetVolt;    // at max gain
 } ScopeCalData;
 
 int

@@ -60,9 +60,7 @@ typedef struct ScopePvt {
 	double          samplingFreq;
 	unsigned        numChannels;
 	int             sampleSize;
-	double         *attOffset;
-	double         *offsetVolt;
-	double         *fullScaleVolt;
+	ScopeCalData   *calData;
 	PGAOps         *pga;
 	FECOps         *fec;
 	const UnitData *unitData;
@@ -189,15 +187,47 @@ double            fVCO, outDiv;
 	return 0;
 }
 
+static double
+getDfltScaleVolt( FWInfo *fw )
+{
+double dfltScaleVolt;
+	switch ( fw_get_board_version( fw ) ) {
+		case 0:
+			/* at full attenuation the gain is 6dB; final division by 10
+			 * yields gain at 0dB.
+			 */
+			dfltScaleVolt  = 0.75 / (2.0 * (232.0/(232.0+178.0))) / 10.0;
+			break;
+		case 1:
+			/* at 40dB attenuation the PGA gain is -6dB * output load factor.
+			 * Full scale of the ADC is 0.75V, translating to full-scale
+			 * at the input by dividing by the PGA gain.
+			 * Finally: divide by 100 to yield gain at attenuation 0
+			 */
+			dfltScaleVolt  = 0.75 / (0.5 * 1.98/(1 + 98.0/200.0)) / 100.0;
+			break;
+		case 2:
+			/* diff. load on this HW is 301 Ohm and there is a divider
+			 * (for establishing the correct common-mode voltage).
+			 */
+			dfltScaleVolt  = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0) * (226.0/301.0) ) / 100.0;
+			break;
+		default:
+			fprintf(stderr, "FATAL ERROR: getDfltScaleVolt(): unsupported board version\n");
+			abort();
+		break;
+	}
+	return dfltScaleVolt;
+}
+
 static void
-computeAttOffset(double *attOffset, double *offsetVolt, double *scaleVolt, unsigned numChannels, const UnitData *ud)
+computeAttOffset(ScopeCalData *calData, unsigned numChannels, const UnitData *ud)
 {
 int    i;
 
 	for ( i = 0; i < numChannels; ++i ) {
-		attOffset[i]  = 20.0*log10( unitDataGetScaleRelat( ud, i ) );
-		offsetVolt[i] = unitDataGetOffsetVolt( ud, i );
-		scaleVolt[i]  = unitDataGetScaleVolt( ud, i );
+		calData[i].offsetVolt     = unitDataGetOffsetVolt( ud, i );
+		calData[i].fullScaleVolt  = unitDataGetScaleVolt( ud, i ) / unitDataGetScaleRelat( ud, i );
 	}
 }
 
@@ -209,8 +239,7 @@ unsigned ch;
 		return -EINVAL;
 	}
 	for ( ch = 0; ch < nelms; ++ch ) {
-		calDataArray[ch].offsetVolt  = scp->offsetVolt[ch];
-		calDataArray[ch].scaleRelat  = exp10( scp->attOffset[ch]/20.0 );
+		calDataArray[ch] = scp->calData[ch];
 	}
 	return 0;
 }
@@ -224,13 +253,12 @@ unsigned ch;
 	}
 	if ( ! calDataArray ) {
 		for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
-			scp->offsetVolt[ch]     = 0.0;
-			scp->attOffset[ch]      = 0.0;
+			scp->calData[ch].offsetVolt     = 0.0;
+			scp->calData[ch].fullScaleVolt  = getDfltScaleVolt( scp->fw );
 		}
 	} else {
 		for ( ch = 0; ch < nelms; ++ch ) {
-			scp->offsetVolt[ch]     = calDataArray[ch].offsetVolt;
-			scp->attOffset[ch]      = 20.0*log10( calDataArray[ch].scaleRelat );
+			scp->calData[ch]                = calDataArray[ch];
 		}
 	}
 	return 0;
@@ -448,7 +476,7 @@ scope_get_full_scale_volt(ScopePvt *scp, unsigned channel, double *pVal)
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	*pVal = scp->fullScaleVolt[channel];
+	*pVal = scp->calData[channel].fullScaleVolt;
 	return 0;
 }
 
@@ -458,7 +486,7 @@ scope_set_full_scale_volt(ScopePvt *scp, unsigned channel, double fullScaleVolt)
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	scp->fullScaleVolt[channel] = fullScaleVolt;
+	scp->calData[channel].fullScaleVolt = fullScaleVolt;
 	return 0;
 }
 
@@ -568,7 +596,7 @@ scope_open(FWInfo *fw)
 ScopePvt *sc;
 int       i,st;
 unsigned  boardVersion   = fw_get_board_version( fw );
-double    dfltScaleVolt  = 1.0;
+double    dfltScaleVolt  = getDfltScaleVolt( fw );
 int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 
 	if ( ! ( fw_get_features( fw ) & FW_FEATURE_ADC ) ) {
@@ -589,20 +617,8 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 	sc->sampleSize     = -ENOTSUP;
 	sc->numChannels    = 2;
 
-	sc->attOffset      = calloc( sizeof(*sc->attOffset), sc->numChannels );
-	if ( ! sc->attOffset ) {
-		perror("fw_open(): no memory");
-		goto bail;
-	}
-
-	sc->offsetVolt     = calloc( sizeof(*sc->offsetVolt), sc->numChannels );
-	if ( ! sc->offsetVolt ) {
-		perror("fw_open(): no memory");
-		goto bail;
-	}
-
-	sc->fullScaleVolt  = calloc( sizeof(*sc->fullScaleVolt), sc->numChannels );
-	if ( ! sc->fullScaleVolt ) {
+	sc->calData        = calloc( sizeof(*sc->calData), sc->numChannels );
+	if ( ! sc->calData ) {
 		perror("fw_open(): no memory");
 		goto bail;
 	}
@@ -668,34 +684,9 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 		break;
 	}
 
-	switch ( boardVersion ) {
-		case 0:
-			/* at full attenuation the gain is 6dB; final division by 10
-			 * yields gain at 0dB.
-			 */
-			dfltScaleVolt  = 0.75 / (2.0 * (232.0/(232.0+178.0))) / 10.0;
-			break;
-		case 1:
-			/* at 40dB attenuation the PGA gain is -6dB * output load factor.
-			 * Full scale of the ADC is 0.75V, translating to full-scale
-			 * at the input by dividing by the PGA gain.
-			 * Finally: divide by 100 to yield gain at attenuation 0
-			 */
-			dfltScaleVolt  = 0.75 / (0.5 * 1.98/(1 + 98.0/200.0)) / 100.0;
-			break;
-		case 2:
-			/* diff. load on this HW is 301 Ohm and there is a divider
-			 * (for establishing the correct common-mode voltage).
-			 */
-			dfltScaleVolt  = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0) * (226.0/301.0) ) / 100.0;
-			break;
-		default:
-		break;
-	}
 	for ( i = 0; i < sc->numChannels; ++i ) {
-		sc->attOffset[i]      = 0.0;
-		sc->offsetVolt[i]     = 0.0;
-		sc->fullScaleVolt[i]  = dfltScaleVolt;
+		sc->calData[i].offsetVolt     = 0.0;
+		sc->calData[i].fullScaleVolt  = dfltScaleVolt;
 	}
 
 	if ( 255 == boardVersion ) {
@@ -710,7 +701,7 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 			fprintf(stderr, "WARNING: No calibration data found in flash; using defaults\n");
 			ud = unitDataCreate( sc->numChannels );
 			for ( i = 0; i < scope_get_num_channels( sc ); ++i ) {
-				if ( (st = unitDataSetScaleVolt( ud, i, sc->fullScaleVolt[i] )) < 0 ) {
+				if ( (st = unitDataSetScaleVolt( ud, i, sc->calData[i].fullScaleVolt )) < 0 ) {
 					goto bail;
 				}
 			}
@@ -726,7 +717,7 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 		}
 	}
 
-	computeAttOffset( sc->attOffset, sc->offsetVolt, sc->fullScaleVolt, sc->numChannels, sc->unitData );
+	computeAttOffset( sc->calData, sc->numChannels, sc->unitData );
 
 	return sc;
 bail:
@@ -740,8 +731,7 @@ scope_close(ScopePvt *scp)
 	if ( scp ) {
 		unitDataFree( scp->unitData );
 		fecClose( scp );
-		free( scp->attOffset );
-		free( scp->offsetVolt );
+		free( scp->calData );
 		free( scp );
 	}
 }
@@ -1357,10 +1347,7 @@ double att;
 		return -EINVAL;
 	}
 	
-	st = scp && scp->pga && scp->pga->getAttDb ? scp->pga->getAttDb(scp->fw, channel, &att) : -ENOTSUP;
-	if ( 0 == st ) {
-		*attp = att - scp->attOffset[channel];
-	}
+	st = scp && scp->pga && scp->pga->getAttDb ? scp->pga->getAttDb(scp->fw, channel, attp) : -ENOTSUP;
 	return st;
 }
 
@@ -1370,7 +1357,7 @@ pgaSetAttDb(ScopePvt *scp, unsigned channel, double att)
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	return scp && scp->pga && scp->pga->setAttDb ? scp->pga->setAttDb(scp->fw, channel, att + scp->attOffset[channel]) : -ENOTSUP;
+	return scp && scp->pga && scp->pga->setAttDb ? scp->pga->setAttDb(scp->fw, channel, att) : -ENOTSUP;
 }
 
 
@@ -1472,7 +1459,7 @@ int   st;
 	if ( (st = dac47cxGetVolt( scp->fw, channel, &val )) < 0 ) {
 		return st;
 	}
-	*pvolt = (double)val + scp->offsetVolt[channel];
+	*pvolt = (double)val;
 	return 0;
 }
 
@@ -1483,7 +1470,7 @@ float val;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	val = (float)volt - scp->offsetVolt[channel];
+	val = (float)volt;
 	return dac47cxSetVolt( scp->fw, channel, val );
 }
 
@@ -1492,18 +1479,12 @@ dacGetVoltRange(ScopePvt *scp, double *pvoltMin, double *pvoltMax)
 {
 float  voltMin, voltMax;
 int    ch;
-double maxOff = 0.0;
-	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
-		if ( maxOff < fabs( scp->offsetVolt[ch] ) ) {
-			maxOff = fabs( scp->offsetVolt[ch] );
-		}
-	}
 	dac47cxGetRange( scp->fw, NULL, NULL, &voltMin, &voltMax );
 	if ( pvoltMin ) {
-		*pvoltMin = (double)voltMin + maxOff;
+		*pvoltMin = (double)voltMin;
 	}
 	if ( pvoltMax ) {
-		*pvoltMax = (double)voltMax - maxOff;
+		*pvoltMax = (double)voltMax;
 	}
 	return 0;
 }
