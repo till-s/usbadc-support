@@ -12,6 +12,14 @@ typedef struct ScopePvt ScopePvt;
 typedef struct FWInfo   FWInfo;
 typedef struct UnitData UnitData;
 
+
+/* Return 1 if the the firmware has been initialized
+ * already, 0 otherwise.
+ */
+
+int
+scope_is_initialized(FWInfo *fw);
+
 ScopePvt *
 scope_open(FWInfo *fw);
 

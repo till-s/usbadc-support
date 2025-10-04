@@ -48,6 +48,9 @@
 
 #define BITS_FW_CMD_ACQ_DCM0_SHFT 20
 
+/* Use first (reserved) bit to indicate initialization status */
+#define FW_USR_CSR_INIT_FLAG      (1<<1)
+
 
 typedef struct ScopePvt {
 	FWInfo         *fw;
@@ -375,6 +378,41 @@ FWInfo         *fw = scp->fw;
 }
 
 int
+scope_is_initialized(FWInfo *fw)
+{
+	uint8_t reg,tst;
+	int st = fw_reg_read( fw, FW_USR_CSR_REG, &reg, 1, 0 );
+	if ( 0 > st ) {
+		/* fw registers not implemented; fall back on DLL status */
+		return (0 == max195xxDLLLocked( fw ));
+	}
+	/* check if the init bit is writable */
+	tst = (reg ^ FW_USR_CSR_INIT_FLAG);
+	st = fw_reg_write( fw, FW_USR_CSR_REG, &tst, 1, 0 );
+	tst = reg;
+	if ( 0 <= st ) {
+		if ( 0 > (st = fw_reg_read( fw, FW_USR_CSR_REG, &tst, 1, 0)) ) {
+			fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (POWER_CYCLE RECOMMENDED).\n");
+			/* best effort to restore */
+			fw_reg_write( fw, FW_USR_CSR_REG, &reg, 1, 0 );
+			abort();
+		}
+		if ( FW_USR_CSR_INIT_FLAG == (( (tst ^ reg) & FW_USR_CSR_INIT_FLAG) ) )  {
+			/* appears to be writable; restore */
+			if ( (st = fw_reg_write( fw, FW_USR_CSR_REG, &reg, 1, 0)) ) {
+				fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (POWER_CYCLE RECOMMENDED).\n");
+				abort();
+			}
+			return !! (reg & FW_USR_CSR_INIT_FLAG);
+		}
+	}
+	/* we get here if either the first reg_write failed or the write doesn't stick;
+	 * return the ADC PLL lock status
+	 */
+	return !! (reg & FW_USR_CSR_ADC_PLL_LOCKED);
+}
+
+int
 scope_init(ScopePvt *scp, int force)
 {
 int st;
@@ -386,7 +424,7 @@ unsigned boardVers = fw_get_board_version( scp->fw );
 		return 0;
 	}
 
-	if ( ! force && 0 == max195xxDLLLocked( scp->fw ) ) {
+	if ( ! force && scope_is_initialized( scp->fw ) ) {
 		return 0;
 	}
 	if ( (st = boardClkInit( scp )) ) {
@@ -696,9 +734,6 @@ bail:
 	return NULL;
 }
 
-int
-scope_set_calibration(ScopePvt *scp, unsigned channel, double fullScaleVolt, double offsetVolt);
-
 void
 scope_close(ScopePvt *scp)
 {
@@ -711,16 +746,13 @@ scope_close(ScopePvt *scp)
 	}
 }
 
-#define ADC_PLL_STATUS_REG 4
-#define ADC_PLL_LOCKED     (1<<0)
-
 int
 scope_adc_pll_locked(ScopePvt *scp)
 {
-	uint8_t reg=0xa5;
-	int st = fw_reg_read( scp->fw, ADC_PLL_STATUS_REG, &reg, 1, 0 );
+	uint8_t reg;
+	int st = fw_reg_read( scp->fw, FW_USR_CSR_REG, &reg, 1, 0 );
 	if ( 1 == st ) {
-		st =  ! (reg & ADC_PLL_LOCKED) ? -EBUSY : 0;
+		st =  ! (reg & FW_USR_CSR_ADC_PLL_LOCKED) ? -EBUSY : 0;
 	} else if ( -EIO == st || 0 == st || -EBUSY == st ) {
 		st = -ENOTSUP;
 	}
