@@ -149,9 +149,14 @@ int      st;
 #define VOLT_REF   1.214
 #define VOLT_MIN   (-VOLT_REF/2.0)
 
+#define BRD_V2_G_REF (40.3/(40.3+59.0+18.0)*(80.6+18.0+18.0)/(18.0+18.0))
+#define BRD_V2_G_DAC (80.6/(18.0+18.0))
+
 static double tick2Volt(FWInfo *fw, int tick, int maxDac)
 {
-	double volt = (VOLT_MIN + VOLT_REF * ((double)(tick)) / (double)(maxDac + 1));
+	double ratio = ((double)tick)/((double)(maxDac + 1));
+	double volt = (VOLT_MIN + VOLT_REF * ratio);
+
 	switch ( fw_get_board_version( fw ) ) {
 		case 255:
 			/* simulator */
@@ -161,8 +166,14 @@ static double tick2Volt(FWInfo *fw, int tick, int maxDac)
 		case 0:
 		break;
 
-		case 1: /* fall through */
-		case 2: volt *= -0.5;
+		case 1:
+			volt *= -0.5;
+		break;
+
+		case 2:
+			{
+			volt = VOLT_REF*(BRD_V2_G_REF - ratio*BRD_V2_G_DAC);
+			}
 		break;
 
 		default:
@@ -175,13 +186,17 @@ static double tick2Volt(FWInfo *fw, int tick, int maxDac)
 static int volt2Tick(FWInfo *fw, double volt, int maxDac)
 {
 	int tick;
+	double ratio;
 
 	switch ( fw_get_board_version( fw ) ) {
+		case 1: volt *= 2.0;
+			/* fall through */
 		case 0:
+			ratio = (volt - VOLT_MIN)/VOLT_REF;
 		break;
 
-		case 1: /* fall through */
-		case 2: volt *= -2.0;
+		case 2:
+			ratio = (BRD_V2_G_REF - volt/VOLT_REF)/BRD_V2_G_DAC;
 		break;
 
 		default:
@@ -189,7 +204,8 @@ static int volt2Tick(FWInfo *fw, double volt, int maxDac)
 			abort();
 	}
 
-	tick = round( (volt - VOLT_MIN)/VOLT_REF * (double)(maxDac + 1) );
+	tick = round( ratio * (double)(maxDac + 1) );
+
 	if ( tick < 0 ) {
 		tick = 0;
 	}
