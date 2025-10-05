@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <scopeCalData.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -11,17 +13,39 @@ typedef struct UnitData UnitData;
 
 unsigned unitDataGetVersion(const UnitData *);
 unsigned unitDataGetNumChannels(const UnitData *);
-double   unitDataGetScaleVolt(const UnitData *, unsigned ch);
-double   unitDataGetScaleRelat(const UnitData *, unsigned ch);
-double   unitDataGetOffsetVolt(const UnitData *, unsigned ch);
+
+/* Array of all channels */
+const ScopeCalData *
+unitDataGetCalDataArray(const UnitData *);
+
+/* For convenience: just one channel */
+
+/* get pointer to const internal object */
+const ScopeCalData *
+unitDataGetCalData(const UnitData *, unsigned ch);
+
+/* copy into user's memory */
+int
+unitDataCopyCalData(const UnitData *, unsigned ch, ScopeCalData *dest);
+
+double
+unitDataGetFullScaleVolt(const UnitData *, unsigned ch);
+
+int
+unitDataSetFullScaleVolt(UnitData *, unsigned ch, double volt);
+
+double
+unitDataGetOffsetVolt(const UnitData *, unsigned ch);
+
+int
+unitDataSetOffsetVolt(UnitData *, unsigned ch, double volt);
 
 /* Create (empty) UnitData object */
 UnitData *unitDataCreate(unsigned numChannels);
-/* returns negative error status or 0 on success */
-int      unitDataSetScaleVolt(UnitData *ud, unsigned ch, double value);
-int      unitDataSetScaleRelat(UnitData *ud, unsigned ch, double value);
-int      unitDataSetOffsetVolt(UnitData *ud, unsigned ch, double value);
 
+/* For convenience: just one channel */
+int
+unitDataSetCalData(const UnitData *, unsigned ch, const ScopeCalData *);
 
 /* Parse serialized unitData into an (abstract) object;
  * RETURNS:

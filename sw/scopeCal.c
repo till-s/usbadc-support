@@ -7,6 +7,7 @@
 #include <time.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "fwComm.h"
 #include "scopeSup.h"
@@ -22,6 +23,14 @@ struct timespec wai;
 	wai.tv_nsec = 100UL*1000UL*1000UL;
 	while ( 0 == (st = buf_read_int16( scp, hdr, buf, nElms )) ) {
 		clock_nanosleep( CLOCK_REALTIME, 0, &wai, NULL );
+	}
+	if ( st > 0 ) {
+		unsigned ch;
+		for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
+			if ( ( *hdr & FW_BUF_HDR_FLG_OVR(ch) ) ) {
+				return -ERANGE;
+			}
+		}
 	}
 	return st;
 }
@@ -110,9 +119,14 @@ printCal(ScopeCalData *calData, unsigned nChannels)
 unsigned ch;
 	printf("Calibration Data:\n");
 	printf("  Full Scale Volt (ch 0): %lg\n", calData[0].fullScaleVolt);
-	printf("  Channel        | Relative Gain | Offset [V]\n");
+	printf("  Channel        | Relative Gain | Input Offset [V] | post-gain Offset (ticks)\n");
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		printf("  %-15u|%15.3lg|%15.3lg\n", ch, calData[0].fullScaleVolt/calData[ch].fullScaleVolt, calData[ch].offsetVolt);
+		printf("  %-15u|%15.3lg|%18.3lg|%26.3lg\n",
+			ch,
+			calData[0].fullScaleVolt/calData[ch].fullScaleVolt,
+			calData[ch].offsetVolt,
+			calData[ch].postGainOffsetTick
+			);
 	}
 }
 
@@ -308,7 +322,22 @@ size_t                 *z_p;
 			fprintf( stderr, "Error; fecSetTermination(1) failed: %s\n", strerror(-st));
 			goto bail;
 		}
+		st = fecSetAttDb( scp, ch, 20.0 );
+		if ( st < 0 ) {
+			fprintf( stderr, "Error; fecSetAttDb(20.0) failed: %s\n", strerror(-st));
+			goto bail;
+		}
 	}
+
+	/* number of bits per sample */
+	if ( ( maxADCTicks = buf_get_sample_size( scp ) ) < 0 ) {
+		fprintf( stderr, "Unable to determine sample size\n");
+		goto bail;
+	}
+	/* max ticks */
+	maxADCTicks  = buf_get_full_scale_ticks( scp );
+	pgaMaxAtt    = exp10( pgaMaxAttDb / 20.0 );
+	pgaMinAtt    = exp10( pgaMinAttDb / 20.0 );
 
 	st = measure( scp, nSamples, buf, pgaMaxAttDb, dacCalZeroVolt, dvals );
 	if ( st < 0 ) {
@@ -325,52 +354,41 @@ size_t                 *z_p;
 		goto bail;
 	}
 
-	/* number of bits per sample */
-	if ( ( maxADCTicks = buf_get_sample_size( scp ) ) < 0 ) {
-		fprintf( stderr, "Unable to determine sample size\n");
+	/* compute scale */
+	for ( ch = 0; ch < nChannels; ++ch ) {
+		calData[ch].fullScaleVolt = (dacCalVolt - dacCalZeroVolt) / (dvals[ch] - calData[ch].offsetVolt);
+		printf("Scale[%u] %lgV/click\n", ch, calData[ch].fullScaleVolt);
+		/* scale at 0dB */
+		calData[ch].fullScaleVolt /= pgaMaxAtt;
+	}
+
+	st = measure( scp, nSamples, buf, pgaMinAttDb, dacCalZeroVolt, dvals );
+	if ( st < 0 ) {
 		goto bail;
 	}
-	/* convert to bytes */
-	maxADCTicks  = (maxADCTicks + 7) / 8;
-	/* number of bits, aligned to bytes */
-	maxADCTicks *= 8;
-	/* max ticks */
-	maxADCTicks  = (1<<(maxADCTicks - 1));
-	for ( ch = 0; ch < nChannels; ++ch ) {
-		printf("Cal scale[%u] (pgaAtt: %lgdB): %lg clicks @ DAC %lg Volt\n", ch, pgaMaxAttDb, dvals[ch], dacCalVolt);
-		/* 'offsetVolt' are not volt yet! */
-		calData[ch].fullScaleVolt = (dacCalVolt - dacCalZeroVolt) / (dvals[ch] - calData[ch].offsetVolt);
-		/* now offset becomes volts; fullScaleVolt is now volt/tick */
-		calData[ch].offsetVolt *= calData[ch].fullScaleVolt;
-		printf("Full scale[%u] (pgaAtt: %lgdB, dac: %lgV): %lg volt, offset %lg volt\n",
-			ch,
-			pgaMaxAttDb,
-			dacCalVolt,
-			((double)maxADCTicks)*calData[ch].fullScaleVolt,
-			calData[ch].offsetVolt
-		);
-	}
 
-	pgaMaxAtt = exp10( pgaMaxAttDb / 20.0 );
-	pgaMinAtt = exp10( pgaMinAttDb / 20.0 );
-
+	/* compute offsets
+	 *   measured_offset = (input_offset/att) + adc_offset
+	 *   input_offset    = (measured_offset(lo_att) - measured_offset(hi_att))/(1/lo_att - 1/hi_att)
+	 *   adc_offset      = measured_offset(hi_att) - input_offset/hi_att
+	 */
 	for ( ch = 0; ch < nChannels; ++ch ) {
-		/* renormalize for att 0 dB */
-		calData[ch].fullScaleVolt /= pgaMaxAtt;
-		calData[ch].offsetVolt    /= pgaMaxAtt;
+		printf("Offset[%u] (pgaAtt: %gdB): %lg clicks\n", ch, pgaMinAttDb, dvals[ch]);
+		/* fullScaleVolt is still volt/click -- at max. attenuation */
+		calData[ch].offsetVolt          = (calData[ch].offsetVolt - dvals[ch])/(1.0/pgaMaxAtt - 1.0/pgaMinAtt);
+		calData[ch].postGainOffsetTick  = dvals[ch] - calData[ch].offsetVolt / pgaMinAtt;
+		/* convert input offset to volts by applying the scale; since this offset */
+		calData[ch].offsetVolt         *= calData[ch].fullScaleVolt;
+
 		/* full-scale volt at 0dB */
 		calData[ch].fullScaleVolt *= (double)(maxADCTicks);
 	}
 
-	if ( isnan( fullScaleVolt ) ) {
-		maxScale = 0.0;
+	if ( ! isnan( fullScaleVolt ) ) {
+		printf("Overriding full-scale with user/cmdline setting %gV\n", fullScaleVolt);
 		for ( ch = 0; ch < nChannels; ++ch ) {
-			if ( fabs( calData[ch].fullScaleVolt ) > fabs( maxScale ) ) {
-				maxScale = calData[ch].fullScaleVolt;
-			}
+			calData[ch].fullScaleVolt = fullScaleVolt;
 		}
-
-		fullScaleVolt = maxScale;
 	}
 
 	printCal( calData, nChannels );
@@ -381,19 +399,9 @@ size_t                 *z_p;
 			goto bail;
 		}
 		for ( ch = 0; ch < nChannels; ++ch ) {
-			st = unitDataSetScaleVolt( unitData, ch, fullScaleVolt );
+			st = unitDataSetCalData( unitData, ch, calData + ch );
 			if ( st < 0 ) {
-				fprintf( stderr, "Error; unitDataSetScaleVolt failed: %s\n", strerror(-st));
-				goto bail;
-			}
-			st = unitDataSetScaleRelat( unitData, ch, fullScaleVolt/calData[ch].fullScaleVolt  );
-			if ( st < 0 ) {
-				fprintf( stderr, "Error; unitDataSetScaleRelat failed: %s\n", strerror(-st));
-				goto bail;
-			}
-			st = unitDataSetOffsetVolt( unitData, ch, calData[ch].offsetVolt );
-			if ( st < 0 ) {
-				fprintf( stderr, "Error; unitDataSetOffsetVolt failed: %s\n", strerror(-st));
+				fprintf( stderr, "Error; unitDataSetCalData failed: %s\n", strerror(-st));
 				goto bail;
 			}
 		}

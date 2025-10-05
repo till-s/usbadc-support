@@ -220,17 +220,6 @@ double dfltScaleVolt;
 	return dfltScaleVolt;
 }
 
-static void
-computeAttOffset(ScopeCalData *calData, unsigned numChannels, const UnitData *ud)
-{
-int    i;
-
-	for ( i = 0; i < numChannels; ++i ) {
-		calData[i].offsetVolt     = unitDataGetOffsetVolt( ud, i );
-		calData[i].fullScaleVolt  = unitDataGetScaleVolt( ud, i ) / unitDataGetScaleRelat( ud, i );
-	}
-}
-
 int
 scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms)
 {
@@ -245,23 +234,40 @@ unsigned ch;
 }
 
 int
-scope_set_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms)
+scope_set_cal_data(ScopePvt *scp, const ScopeCalData *calDataArray, unsigned nelms)
 {
 unsigned ch;
+double   orig;
+int      st;
 	if ( nelms > scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	if ( ! calDataArray ) {
-		for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
-			scp->calData[ch].offsetVolt     = 0.0;
+	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
+		/* offset is applied by the DAC; make sure the new
+		 * setting is propagated.
+		 */
+		if ( (st = dacGetVolt( scp, ch, &orig )) < 0 )
+			return st;
+
+		if ( ! calDataArray ) {
+			scope_cal_data_init( &scp->calData[ch] );
 			scp->calData[ch].fullScaleVolt  = getDfltScaleVolt( scp->fw );
-		}
-	} else {
-		for ( ch = 0; ch < nelms; ++ch ) {
+		} else {
 			scp->calData[ch]                = calDataArray[ch];
+		}
+		if ( (st = dacSetVolt( scp, ch, orig )) < 0 ) {
+			return st;
 		}
 	}
 	return 0;
+}
+
+void
+scope_cal_data_init(ScopeCalData *d)
+{
+	d->fullScaleVolt      = 0.0/0.0;
+	d->offsetVolt         = 0.0;
+	d->postGainOffsetTick = 0.0;
 }
 
 int
@@ -481,6 +487,17 @@ scope_get_full_scale_volt(ScopePvt *scp, unsigned channel, double *pVal)
 }
 
 int
+scope_get_post_gain_offset_tick(ScopePvt *scp, unsigned channel, double *pVal)
+{
+	if ( channel >= scope_get_num_channels( scp ) ) {
+		return -EINVAL;
+	}
+	*pVal = scp->calData[channel].postGainOffsetTick;
+	return 0;
+}
+
+
+int
 scope_set_full_scale_volt(ScopePvt *scp, unsigned channel, double fullScaleVolt)
 {
 	if ( channel >= scope_get_num_channels( scp ) ) {
@@ -598,6 +615,7 @@ int       i,st;
 unsigned  boardVersion   = fw_get_board_version( fw );
 double    dfltScaleVolt  = getDfltScaleVolt( fw );
 int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
+int       wasInitialized;
 
 	if ( ! ( fw_get_features( fw ) & FW_FEATURE_ADC ) ) {
 		fprintf(stderr, "scope_open: ERROR - FW has no ADC feature\n");
@@ -653,6 +671,7 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 		}
 	}
 
+	wasInitialized = ! forceInit && scope_is_initialized( fw );
 
 	if ( (st = scope_init( sc, forceInit )) ) {
 		fprintf(stderr, "Error %d: scope_init() failed; ADC clock not configured\n", st);
@@ -685,7 +704,7 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 	}
 
 	for ( i = 0; i < sc->numChannels; ++i ) {
-		sc->calData[i].offsetVolt     = 0.0;
+		scope_cal_data_init( &sc->calData[i] );
 		sc->calData[i].fullScaleVolt  = dfltScaleVolt;
 	}
 
@@ -697,18 +716,23 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 	}
 	if ( st < 0 ) {
 		if ( -ENODATA == st ) {
-			UnitData *ud;
 			fprintf(stderr, "WARNING: No calibration data found in flash; using defaults\n");
-			ud = unitDataCreate( sc->numChannels );
-			for ( i = 0; i < scope_get_num_channels( sc ); ++i ) {
-				if ( (st = unitDataSetScaleVolt( ud, i, sc->calData[i].fullScaleVolt )) < 0 ) {
-					goto bail;
-				}
-			}
-			sc->unitData = ud;
+		} else {
+			fprintf(stderr, "WARNING: Invalid calibration data found in flash; using defaults\n");
 		}
+		sc->unitData = unitDataCreate( sc->numChannels );
 		if ( ! sc->unitData ) {
 			goto bail;
+		}
+		for ( i = 0; i < sc->numChannels; ++i ) {
+			ScopeCalData calData;
+			if ( (st = unitDataCopyCalData( sc->unitData, i, &calData )) ) {
+				goto bail;
+			}
+			calData.fullScaleVolt = sc->calData[i].fullScaleVolt;
+			if ( (st = unitDataSetCalData( sc->unitData, i, &calData )) ) {
+				goto bail;
+			}
 		}
 	} else {
 		if ( unitDataGetNumChannels( sc->unitData ) != sc->numChannels ) {
@@ -717,7 +741,21 @@ int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
 		}
 	}
 
-	computeAttOffset( sc->calData, sc->numChannels, sc->unitData );
+	if ( wasInitialized ) {
+		/* when we apply new calibration data then the dac is read based on the assumption that
+		 * it had last been set with the 'current/old' calibration data. This is not
+		 * true, however, if the device had been initialized before; if this was the case
+		 * then we want the physical voltage to remain unchanged. Assume the same calibration
+		 * had already been in effect - a hack.
+		 */
+		for ( i = 0; i < sc->numChannels; ++i ) {
+			sc->calData[i].offsetVolt = unitDataGetOffsetVolt( sc->unitData, i );
+		}
+	}
+
+	if ( scope_set_cal_data( sc, unitDataGetCalDataArray( sc->unitData ), unitDataGetNumChannels( sc->unitData ) ) ) {
+		goto bail;
+	}
 
 	return sc;
 bail:
@@ -1342,7 +1380,6 @@ int
 pgaGetAttDb(ScopePvt *scp, unsigned channel, double *attp)
 {
 int st;
-double att;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
@@ -1459,7 +1496,7 @@ int   st;
 	if ( (st = dac47cxGetVolt( scp->fw, channel, &val )) < 0 ) {
 		return st;
 	}
-	*pvolt = (double)val;
+	*pvolt = (double)val + scp->calData[channel].offsetVolt;
 	return 0;
 }
 
@@ -1470,7 +1507,8 @@ float val;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	val = (float)volt;
+	printf("dacSetVolt: %g, offset %g\n", volt , scp->calData[channel].offsetVolt);
+	val = (float)(volt - scp->calData[channel].offsetVolt);
 	return dac47cxSetVolt( scp->fw, channel, val );
 }
 
@@ -1479,12 +1517,19 @@ dacGetVoltRange(ScopePvt *scp, double *pvoltMin, double *pvoltMax)
 {
 float  voltMin, voltMax;
 int    ch;
+double maxOff = 0.0;
+	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
+		if ( maxOff < fabs( scp->calData[ch].offsetVolt ) ) {
+			maxOff = fabs( scp->calData[ch].offsetVolt );
+		}
+	}
+
 	dac47cxGetRange( scp->fw, NULL, NULL, &voltMin, &voltMax );
 	if ( pvoltMin ) {
-		*pvoltMin = (double)voltMin;
+		*pvoltMin = (double)voltMin + maxOff;
 	}
 	if ( pvoltMax ) {
-		*pvoltMax = (double)voltMax;
+		*pvoltMax = (double)voltMax - maxOff;
 	}
 	return 0;
 }
@@ -1559,7 +1604,11 @@ scope_get_params(ScopePvt *scp, ScopeParams *p)
 			p->afeParams[ch].currentScaleVolt = 0.0;
 		}
 		if ( (st = scope_get_full_scale_volt( scp, ch, &p->afeParams[ch].fullScaleVolt )) ) {
-			fprintf(stderr, "scope_get_params() - Error %d: reading current full (channel %d) failed.\n", st, ch);
+			fprintf(stderr, "scope_get_params() - Error %d: reading current scale (channel %d) failed.\n", st, ch);
+			return st;
+		}
+		if ( (st = scope_get_post_gain_offset_tick( scp, ch, &p->afeParams[ch].postGainOffsetTick )) ) {
+			fprintf(stderr, "scope_get_params() - Error %d: reading post-gain offset (channel %d) failed.\n", st, ch);
 			return st;
 		}
 		if ( (st = pgaGetAttDb( scp, ch, &p->afeParams[ch].pgaAttDb )) ) {

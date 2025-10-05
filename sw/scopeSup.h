@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <time.h>
 
+#include "scopeCalData.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -63,16 +65,6 @@ scope_get_reference_freq(ScopePvt *scp);
 int
 scope_adc_pll_locked(ScopePvt *scp);
 
-/* volt = counts/maxCounts * scaleVolt * scaleRelat - offsetVolt
- * relative gain differences (scaleRelat) may be compensated/calibrated
- * by tuning the PGA.
- * 'scaleVolt' is controlled with scope_get/set_full_scale_volt.
- */
-typedef struct ScopeCalData {
-	double fullScaleVolt; // at max gain
-	double offsetVolt;    // at max gain
-} ScopeCalData;
-
 int
 scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
 
@@ -80,7 +72,7 @@ scope_get_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
  * all calibration to be reset (offsetVolt => 0.0, scaleRelat => 1.0)
  */
 int
-scope_set_cal_data(ScopePvt *scp, ScopeCalData *calDataArray, unsigned nelms);
+scope_set_cal_data(ScopePvt *scp, const ScopeCalData *calDataArray, unsigned nelms);
 
 /*
  * A NULL pointer may be passed for 'unitData' in which case
@@ -190,6 +182,7 @@ typedef struct AFEParams {
 	double        pgaAttDb;
 	double        fecAttDb;
 	double        fecTerminationOhm;
+	double        postGainOffsetTick;
 	int           fecCouplingAC;
 	double        dacVolt;
 	int           dacRangeHi;
