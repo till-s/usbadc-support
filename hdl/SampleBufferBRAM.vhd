@@ -111,6 +111,12 @@ architecture BRAM of SampleBufferBRAM is
 
 begin
 
+   -- EFINITY BUG (2025.1) the mere tie-off of wrRdy (above := '1') was not
+   -- propagated out, resulting wrEn to be permanently disabled which led
+   -- to the block ram not being inferred correctly!
+   wrRdy <= '1';
+   wrFul <= '0'; -- diagnostic signal (unused)
+
    U_WR_SYNC : entity work.SynchronizerBit
       port map (
          clk       => wrClk,
