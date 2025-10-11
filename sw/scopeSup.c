@@ -408,45 +408,74 @@ FWInfo         *fw = scp->fw;
 	return 0;
 }
 
+static int
+fw_adc_pll_locked(FWInfo *fw)
+{
+	uint8_t reg;
+	int st = fw_reg_read( fw, FW_CLK_CSR_OFF, &reg, 1, 0 );
+	if ( 1 == st ) {
+		st =  ! (reg & FW_CLK_CSR_ADC_PLL_LOCKED) ? -EBUSY : 0;
+	} else if ( -EIO == st || 0 == st || -EBUSY == st ) {
+		st = -ENOTSUP;
+	}
+	return st;
+}
+
 int
 scope_is_initialized(FWInfo *fw)
 {
 	uint8_t reg,tst;
-	int st = fw_reg_read( fw, FW_USR_CSR_REG, &reg, 1, 0 );
+	int st = fw_reg_read( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
 	if ( 0 > st ) {
+		printf("scope_is_initialized: unable to read USR_CSR_OFF, fallback to is_dll_locked\n");
 		/* fw registers not implemented; fall back on DLL status */
 		return (0 == max195xxDLLLocked( fw ));
 	}
+	/* Fast exit if flag is set */
+	if ( !!(reg & FW_USR_CSR_INIT_FLAG) ) {
+		return 1;
+	}
 	/* check if the init bit is writable */
 	tst = (reg ^ FW_USR_CSR_INIT_FLAG);
-	st = fw_reg_write( fw, FW_USR_CSR_REG, &tst, 1, 0 );
+	st = fw_reg_write( fw, FW_USR_CSR_OFF, &tst, 1, 0 );
 	tst = reg;
 	if ( 0 <= st ) {
-		if ( 0 > (st = fw_reg_read( fw, FW_USR_CSR_REG, &tst, 1, 0)) ) {
-			fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (POWER_CYCLE RECOMMENDED).\n");
+		if ( 0 > (st = fw_reg_read( fw, FW_USR_CSR_OFF, &tst, 1, 0)) ) {
+			fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (%d); POWER_CYCLE RECOMMENDED.\n", st);
 			/* best effort to restore */
-			fw_reg_write( fw, FW_USR_CSR_REG, &reg, 1, 0 );
+			fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
 			abort();
 		}
 		if ( FW_USR_CSR_INIT_FLAG == (( (tst ^ reg) & FW_USR_CSR_INIT_FLAG) ) )  {
 			/* appears to be writable; restore */
-			if ( (st = fw_reg_write( fw, FW_USR_CSR_REG, &reg, 1, 0)) ) {
+			if ( 0 > (st = fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, 0)) ) {
 				fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (POWER_CYCLE RECOMMENDED).\n");
 				abort();
 			}
+			printf("scope_is_initialized: INIT_FLAG could be changed, tst 0x%02x, reg 0x%02x\n", tst, reg);
 			return !! (reg & FW_USR_CSR_INIT_FLAG);
 		}
+		printf("scope_is_initialized: INIT_FLAG could not be changed, reg 0x%02x\n", reg);
 	}
+	printf("scope_is_initialized: fallback to ADC_PLL, reg 0x%02x\n", reg);
 	/* we get here if either the first reg_write failed or the write doesn't stick;
 	 * return the ADC PLL lock status
 	 */
-	return !! (reg & FW_USR_CSR_ADC_PLL_LOCKED);
+	st = fw_adc_pll_locked( fw );
+	if ( -EBUSY == st ) {
+		return 0;
+	} else if ( 0 == st ) {
+		return 1;
+	}
+	// fall back to DLL check
+	return (0 == max195xxDLLLocked( fw ));
 }
 
 int
 scope_init(ScopePvt *scp, int force)
 {
-int st;
+int      st;
+uint8_t  reg;
 
 unsigned boardVers = fw_get_board_version( scp->fw );
 
@@ -470,6 +499,12 @@ unsigned boardVers = fw_get_board_version( scp->fw );
 	if ( (st = adcInit( scp )) ) {
 		return st;
 	}
+	// mark as initialized (ignore error result)
+	if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 ) ) {
+		reg |= FW_USR_CSR_INIT_FLAG;
+		fw_reg_write( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	}
+
 	return 0;
 }
 
@@ -774,14 +809,7 @@ scope_close(ScopePvt *scp)
 int
 scope_adc_pll_locked(ScopePvt *scp)
 {
-	uint8_t reg;
-	int st = fw_reg_read( scp->fw, FW_USR_CSR_REG, &reg, 1, 0 );
-	if ( 1 == st ) {
-		st =  ! (reg & FW_USR_CSR_ADC_PLL_LOCKED) ? -EBUSY : 0;
-	} else if ( -EIO == st || 0 == st || -EBUSY == st ) {
-		st = -ENOTSUP;
-	}
-	return st;
+	return fw_adc_pll_locked( scp->fw );
 }
 
 unsigned long
