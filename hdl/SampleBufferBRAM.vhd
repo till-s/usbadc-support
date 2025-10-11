@@ -41,6 +41,7 @@ architecture BRAM of SampleBufferBRAM is
    attribute ASYNC_REG      : string;
    attribute KEEP           : string;
    attribute SYN_KEEP       : boolean;
+   attribute SYN_RAMDECOMP  : string; -- efinity; try to force 10 bit-width into 5k
 
    constant MEM_DEPTH_C     : natural := ite( MEM_DEPTH_G = 0, 2**A_WIDTH_G, MEM_DEPTH_G );
 
@@ -97,6 +98,14 @@ architecture BRAM of SampleBufferBRAM is
    attribute SYN_KEEP       of nsmplCC : signal is true;
 
    signal DPRAMD            : RamArray;
+   -- efinitiy: try to force using 10-bit wide 5k blocks (assuming 10-bit ADC);
+   -- according to the synthesis manual:
+   --   not-set : optimize for performance, data decomposition      (=> 1bit  wide blocks)
+   --  "area"   : optimize for area but favor data decomposition    (=> 5bit  wide blocks)
+   --  "power"  : optimize for area but favor address decomposition (=> 20bit wide blocks)
+   -- => this actually works :-)
+   attribute SYN_RAMDECOMP  of DPRAMD : signal is "area";
+
    signal rdata             : RamWord;
 
    signal memWriteEna       : std_logic;
