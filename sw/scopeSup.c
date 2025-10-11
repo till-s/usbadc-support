@@ -48,9 +48,6 @@
 
 #define BITS_FW_CMD_ACQ_DCM0_SHFT 20
 
-/* Use first (reserved) bit to indicate initialization status */
-#define FW_USR_CSR_INIT_FLAG      (1<<1)
-
 
 typedef struct ScopePvt {
 	FWInfo         *fw;
