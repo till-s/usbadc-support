@@ -388,6 +388,20 @@ int    dacGetVoltRange(ScopePvt *, double *pVoltMin, double *pVoltMax);
 int    dacGetVolt(ScopePvt *, unsigned channel, double *pvolt);
 int    dacSetVolt(ScopePvt *, unsigned channel, double volt);
 
+/* Firmware (board-level) registers; read access fails if not implemented */
+#define FW_LED_CR0_OFF               0
+#define FW_LED_CR1_OFF               1
+#define FW_USR_CSR_OFF               2
+#define FW_USR_CSR_TRIGGERED         (1<<0)
+/* Use first bit to indicate initialization status */
+#define FW_USR_CSR_INIT_FLAG         (1<<1)
+/* bits 3..2 in USR_CSR are RESERVED for internal use and must not be modifed */
+
+#define FW_CLK_CSR_OFF               4
+#define FW_CLK_CSR_ADC_PLL_LOCKED    (1<<0)  /* read-only bit that maps to the PLL status  */
+
+
+
 #ifdef __cplusplus
 }
 #endif
