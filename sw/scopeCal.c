@@ -183,7 +183,6 @@ int                     doErase        = 0;
 double                  dval;
 double                  pgaMinAtt;
 double                  pgaMaxAtt;
-double                  maxScale;
 int                     st;
 int                     ch;
 AcqParams               acqParams;
