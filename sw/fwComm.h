@@ -136,9 +136,14 @@ uint8_t
 fw_spireg_cmd_write(unsigned ch);
 
 /* Firmware registers; read access fails if not implemented */
-#define FW_USR_CSR_REG               4
-#define FW_USR_CSR_ADC_PLL_LOCKED    (1<<0)  /* read-only bit that maps to the PLL status  */
-/* other bits in USR_CSR are RESERVED for internal use and must not be modifed */
+#define FW_LED_CR0_OFF               0
+#define FW_LED_CR1_OFF               1
+#define FW_USR_CSR_OFF               2
+#define FW_USR_CSR_TRIGGERED         (1<<0)
+/* bits 3..1 in USR_CSR are RESERVED for internal use and must not be modifed */
+
+#define FW_CLK_CSR_OFF               4
+#define FW_CLK_CSR_ADC_PLL_LOCKED    (1<<0)  /* read-only bit that maps to the PLL status  */
 
 
 /* RETURN: number of bytes read or negative error code */
