@@ -62,7 +62,7 @@ static void usage(const char *nm)
 	printf("                         READ : <addr>:<len>\n");
 	printf("                         WRITE: <addr>=<val>{,<val>}\n");
 	printf("   -A                 : access ADC registers.\n");
-	printf("   -i i2c_addr        : access ADC registers.\n");
+	printf("   -i i2c_addr        : access registers of i2c device at slave-address i2c_addr.\n");
 	printf("\n");
 	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
 	printf("       ForceBB        : force using bit-bang, even if a SPI controller is available.\n");
