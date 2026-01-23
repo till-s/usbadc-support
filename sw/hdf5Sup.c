@@ -714,7 +714,7 @@ time_t      now = time( NULL );
 int         st;
 unsigned    u[p->numChannels];
 double      d[p->numChannels];
-double      fullScaleClicks = (double)(1<<(p->acdPrecisionBits - 1)); // signed full scale
+double      fullScaleClicks = (double)(1<<(p->adcPrecisionBits - 1)); // signed full scale
 
 	if ( CPY_DBL(d, p, currentScaleVolt) ) {
 		return -EINVAL;
