@@ -343,21 +343,23 @@ ScopeDataDimension *tmpDim             = NULL;
 			fprintf(stderr, "H5Pset_nbit failed\n");
 			goto cleanup;
 		}
-		/*
-		 * unfortunately, the scaleOffset filter had problems (data could not be restored
-		 * due to error if some of the samples were large!
-		 *
-		 * In any case - neither the nbit nor the scale-offset filter could restore the
-		 * bitShift and the space savings were not dramatic. I guess we forego
-		 * these filters for now and add a 'precision' attribute to communicate the
-		 * ADC full-scale range in ticks.
-		 *
-		if ( (hstat = H5Pset_scaleoffset( h5d->dset_prop_id, H5Z_SO_INT, H5Z_SO_INT_MINBITS_DEFAULT )) < 0 ) {
-			fprintf(stderr, "H5Pset_scaleoffset failed\n");
-			goto cleanup;
-		}
-		 */
 	}
+	/*
+	 * unfortunately, the scaleOffset filter had problems (data could not be restored
+	 * due to error if some of the samples were large!
+	 *
+	 * In any case - I think I now understand the scaleoffset filter better:
+	 * (https://davis.lbl.gov/Manuals/HDF5-1.8.7/UG/UG_frame10Datasets.html)
+	 * This filter can simply subtract a constant offset and map the remaining
+	 * range of values to a smaller scale. It is not appropriate for our use case
+	 * where we have equally spaced values (but no offset).
+	 *
+	 *
+	if ( (hstat = H5Pset_scaleoffset( h5d->dset_prop_id, H5Z_SO_INT, H5Z_SO_INT_MINBITS_DEFAULT )) < 0 ) {
+		fprintf(stderr, "H5Pset_scaleoffset failed\n");
+		goto cleanup;
+	}
+	 */
 
 	/* order of filter installment matters! */
 	if ( compression >= 0 ) {
@@ -712,9 +714,17 @@ time_t      now = time( NULL );
 int         st;
 unsigned    u[p->numChannels];
 double      d[p->numChannels];
+double      fullScaleClicks = (double)(1<<(p->acdPrecisionBits - 1)); // signed full scale
 
 	if ( CPY_DBL(d, p, currentScaleVolt) ) {
 		return -EINVAL;
+	}
+
+	/* normalize to full-scale count so that the user may just multiply clicks by the scale
+	 * and get Volts w/o having to worry about precision bits
+	 */
+	for ( st = 0; st < p->numChannels; ++st ) {
+		d[st] /= fullScaleClicks;
 	}
 
 	if ( (st = scope_h5_add_double_attr( h5d, SCOPE_KEY_CURSCL_VLT, d, p->numChannels )) < 0 ) {
