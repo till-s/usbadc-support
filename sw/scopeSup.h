@@ -200,6 +200,7 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 #define SCOPE_KEY_NUM_CHNLS  "numChannels"
 #define SCOPE_KEY_CLOCK_F_HZ "clockFrequencyHz"
 #define SCOPE_KEY_DATE       "date"
+#define SCOPE_KEY_ADC_BITS   "adcPrecisionBits"
 
 #define SCOPE_KEY_TRG_SRC    "triggerSource"
 #define SCOPE_KEY_TRG_OUT_EN "triggerOutEnable"
@@ -238,6 +239,7 @@ typedef struct ScopeParams {
 	AcqParams     acqParams;
 	double        samplingFreqHz;
 	unsigned      numChannels;
+	unsigned      adcPrecisionBits;
 	/* Trigger Mode - such as 'continuous, single-shot etc.' is
 	 * a software-feature, i.e., this field is provided for convenience;
 	 * the semantics are not defined by this library and the value

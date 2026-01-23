@@ -1566,10 +1566,11 @@ scope_sizeof_params(ScopePvt *scp) {
 
 void
 scope_init_params(ScopePvt *scp, ScopeParams *p) {
-	p->samplingFreqHz = buf_get_sampling_freq( scp );
-	p->numChannels    = scope_get_num_channels( scp );
-	p->acqParams.mask = 0;
-	p->trigMode       = -1;
+	p->samplingFreqHz   = buf_get_sampling_freq( scp );
+	p->numChannels      = scope_get_num_channels( scp );
+	p->adcPrecisionBits = buf_get_sample_size( scp );
+	p->acqParams.mask   =  0;
+	p->trigMode         = -1;
 }
 
 ScopeParams *
