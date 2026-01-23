@@ -253,7 +253,7 @@ int      val, st;
       case CASC_OUT:
         spreVal |=  spreBit;            /* enable  cascade  */
         mux1Val &= ~OUTP_CR1_EN_CLKBUF; /* FOD uses cascade; should not matter but perhaps lower power */
-        mux2Val |=  (ODIV_CR_SELB_NORM | ODIV_CR_SEL_EXT);
+        mux2Val |=  (ODIV_CR_SELB_NORM | ODIV_CR_SEL_EXT); /* FOD disabled; output driven by cascade */
         break;
       default: /* includes NORMAL */
 #ifdef USE_INT_MODE
@@ -294,6 +294,10 @@ unsigned fdivReg = divCReg  + 1;
 unsigned idivReg = fdivReg  + 0xb;
 int      val, st;
 uint8_t  divCVal;
+
+	if ( idiv > 4095 ) {
+		return -EINVAL;
+	}
 
 	if ( ( val = checkOut( "versaClkSetOutDiv()", outp ) ) < 0 ) return val;
 
