@@ -20,6 +20,14 @@ struct ScopeH5DSpace {
 	hsize_t             rank;
 };
 
+/* H5 API offers no easly way to check if a particular filter is present;
+ * just cache the info...
+ */
+#define SCOPE_H5_FILTER_NBIT (1<<0)
+#define SCOPE_H5_FILTER_SCLO (1<<1)
+#define SCOPE_H5_FILTER_SHUF (1<<2)
+#define SCOPE_H5_FILTER_DEFL (1<<3)
+
 struct ScopeH5Data {
 	hid_t               file_id;
 	hid_t               dset_prop_id;
@@ -29,6 +37,7 @@ struct ScopeH5Data {
 	ScopeH5SampleType   smpl_type;
 	H5T_order_t         native_order;
 	ScopeH5DSpace      *dspace;
+	unsigned            filters;
 };
 
 
@@ -135,7 +144,7 @@ scope_h5_space_create(ScopeH5SampleType typ, unsigned bitShift, unsigned precisi
 			spc->dims[i] = dims[i].maxlen;
 			spc->cnts[i] = dims[i].actlen;
 			spc->offs[i] = dims[i].offset;
-		}	
+		}
 		spc->type_id = map_type(typ, bitShift, precision);
 		if ( H5I_INVALID_HID == spc->type_id ) {
 			goto bail;
@@ -283,7 +292,7 @@ ScopeDataDimension *tmpDim             = NULL;
 		if ( ! (tmpDim = calloc( sizeof(*tmpDim), ndims )) ) {
 			goto cleanup;
 		}
-		
+
 		for ( i = 0; i < ndims; ++i ) {
 			tmpDim[i].maxlen = tmpDim[i].actlen = dims[i];
 		}
@@ -343,6 +352,7 @@ ScopeDataDimension *tmpDim             = NULL;
 			fprintf(stderr, "H5Pset_nbit failed\n");
 			goto cleanup;
 		}
+		h5d->filters |= SCOPE_H5_FILTER_NBIT;
 	}
 	/*
 	 * unfortunately, the scaleOffset filter had problems (data could not be restored
@@ -359,6 +369,7 @@ ScopeDataDimension *tmpDim             = NULL;
 		fprintf(stderr, "H5Pset_scaleoffset failed\n");
 		goto cleanup;
 	}
+	h5d->filters |= SCOPE_H5_FILTER_SCLO;
 	 */
 
 	/* order of filter installment matters! */
@@ -367,10 +378,12 @@ ScopeDataDimension *tmpDim             = NULL;
 			fprintf(stderr, "H5Pset_shuffle failed\n");
 			goto cleanup;
 		}
+		h5d->filters |= SCOPE_H5_FILTER_SHUF;
 		if ( (hstat = H5Pset_deflate( h5d->dset_prop_id, compression )) < 0 ) {
 			fprintf(stderr, "H5Pset_deflate failed\n");
 			goto cleanup;
 		}
+		h5d->filters |= SCOPE_H5_FILTER_DEFL;
 	}
 
 	h5d->dset_id = H5Dcreate( h5d->file_id, "/scopeData", h5d->dspace->type_id, h5d->dspace->dspace_id, H5P_DEFAULT, h5d->dset_prop_id, H5P_DEFAULT );
@@ -714,7 +727,15 @@ time_t      now = time( NULL );
 int         st;
 unsigned    u[p->numChannels];
 double      d[p->numChannels];
-double      fullScaleClicks = (double)(1<<(p->adcPrecisionBits - 1)); // signed full scale
+double      fullScaleClicks;
+
+	if ( !! (h5d->filters & SCOPE_H5_FILTER_NBIT) ) {
+		/* no n-bit filter applied */
+		fullScaleClicks = (double)(1<<15);
+	} else {
+		/* n-bit filter applied; only the 'precision' survives in the dataset; the offset does not */
+		fullScaleClicks = (double)(1<<(p->adcPrecisionBits - 1)); // signed full scale
+	}
 
 	if ( CPY_DBL(d, p, currentScaleVolt) ) {
 		return -EINVAL;
