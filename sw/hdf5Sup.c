@@ -716,6 +716,11 @@ double      d[p->numChannels];
 		return st;
 	}
 
+	u[0] = p->adcPrecisionBits;
+	if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_ADC_BITS, u, 1 )) < 0 ) {
+		return st;
+	}
+
 	u[0] = p->acqParams.npts;
 	if ( (st = scope_h5_add_uint_attr( h5d, SCOPE_KEY_NPTS, u, 1 )) < 0 ) {
 		return st;
