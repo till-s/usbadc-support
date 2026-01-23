@@ -332,16 +332,31 @@ ScopeDataDimension *tmpDim             = NULL;
 		 *
 		 * OTOH, if the DATASET is int16/shift=0/precision=16 and the MEM type is as above then
 		 * in the data set we still find the value 0x0004 (albeit with a precision of 16).
+		 *
+		 * In short: when using the nbit filter the user reading the dataset must use a memory
+		 * type that matches the original memory type in order to see the same numbers.
+		 *
+		 * Because we don't want the user to have to know our original layout we do not use
+		 * the nbit filter.
+		 */
 		if ( (hstat = H5Pset_nbit( h5d->dset_prop_id )) < 0 ) {
 			fprintf(stderr, "H5Pset_nbit failed\n");
 			goto cleanup;
 		}
-		 */
-		if ( (hstat = H5Pset_scaleoffset( h5d->dset_prop_id, H5Z_SO_INT, 0 )) < 0 ) {
+		/*
+		 * unfortunately, the scaleOffset filter had problems (data could not be restored
+		 * due to error if some of the samples were large!
+		 *
+		 * In any case - neither the nbit nor the scale-offset filter could restore the
+		 * bitShift and the space savings were not dramatic. I guess we forego
+		 * these filters for now and add a 'precision' attribute to communicate the
+		 * ADC full-scale range in ticks.
+		 *
+		if ( (hstat = H5Pset_scaleoffset( h5d->dset_prop_id, H5Z_SO_INT, H5Z_SO_INT_MINBITS_DEFAULT )) < 0 ) {
 			fprintf(stderr, "H5Pset_scaleoffset failed\n");
 			goto cleanup;
 		}
-printf("Applied scaleoffset (%d)\n", hstat);
+		 */
 	}
 
 	/* order of filter installment matters! */
