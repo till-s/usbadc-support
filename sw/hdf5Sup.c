@@ -266,7 +266,7 @@ ScopeH5Data        *h5d = NULL;
 ScopeH5Data        *ret = NULL;
 herr_t              hstat;
 size_t              i;
-int                 compression        = 4; /* compression level; 0..9; set to < to disable */
+int                 compression        = 7; /* compression level; 0..9; set to < to disable */
 hid_t               mem_type_id        = H5I_INVALID_HID;
 ScopeDataDimension *tmpDim             = NULL;
 
