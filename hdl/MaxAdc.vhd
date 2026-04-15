@@ -392,8 +392,8 @@ begin
    fdatB         <= adcDataB(ADC_BITS_G downto 1);
    fdorB         <= adcDataB(                  0);
 
-   rWrCC.ovrA    <= toSl(rWr.ovrA /= 0);
-   rWrCC.ovrB    <= toSl(rWr.ovrB /= 0);
+   rWrCC.ovrA    <= statusLoc(ACQ_STA_OVR_A_C);
+   rWrCC.ovrB    <= statusLoc(ACQ_STA_OVR_B_C);
    rWrCC.autTrg  <= rWr.autTrg;
 
    -- ise doesn't seem to properly handle nested records
