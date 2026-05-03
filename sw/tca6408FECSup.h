@@ -22,8 +22,11 @@ struct FECOps *tca6408FECSupCreate(
 	uint8_t        sla,
 	double         attMinDb,
 	double         attMaxDb,
-	/* returns bit mask for selected bit/channel or negative status if not supported */
-	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
+	/* returns bit mask for selected bit/channel or negative status if not supported
+	 */
+	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which),
+	/* bit-mask of properties that use negative logic */
+	unsigned       invert
 );
 
 #ifdef __cplusplus

@@ -16,6 +16,7 @@ typedef struct TCA6408FECSup {
 	double       attMinDb;
 	double       attMaxDb;
 	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which);
+	unsigned     invert;
 } TCA6408FECSup;
 
 static int
@@ -31,7 +32,7 @@ readBit(FECOps *ops, unsigned channel, I2CFECSupBitSelect which)
 	if ( (st = bb_i2c_read_reg( fec->fw, sla8, OUT_REG )) < 0 ) {
 		return st;
 	}
-	return !! (st & msk);
+	return !! ((st ^ fec->invert) & msk );
 }
 
 static int
@@ -47,7 +48,7 @@ writeBit(FECOps *ops, unsigned channel, I2CFECSupBitSelect which, unsigned on)
 	if ( (st = bb_i2c_read_reg( fec->fw, sla8, OUT_REG )) < 0 ) {
 		return st;
 	}
-	if ( on ) {
+	if ( !!on != !!(msk & fec->invert) ) {
 		st |= msk;
 	} else {
 		st &= ~msk;
@@ -146,7 +147,8 @@ struct FECOps *tca6408FECSupCreate(
 	double         attMinDb,
 	double         attMaxDb,
 	/* returns bit mask for selected bit/channel or negative status if not supported */
-	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
+	int          (*getBit)(struct FWInfo *fw, unsigned channel, I2CFECSupBitSelect which),
+	unsigned       invert
 )
 {
 TCA6408FECSup *fec  = 0;
@@ -175,6 +177,7 @@ int            dir;
 	fec->attMinDb           = attMinDb;
 	fec->attMaxDb           = attMaxDb;
 	fec->getBit             = getBit;
+	fec->invert             = invert;
 	fec->ops.getACMode      = opGetACMode;
 	fec->ops.setACMode      = opSetACMode;
 	fec->ops.getTermination = opGetTermination;
