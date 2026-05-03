@@ -30,7 +30,6 @@ entity CommandWrapper is
       ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
       DISABLE_DECIMATORS_G     : boolean := false;
       GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
-      BOARD_VERSION_G          : std_logic_vector( 7 downto 0) := x"00";
       -- may configure specific delays for individual SPI
       -- devices (indexed by BB subCmd)
       BB_DELAY_ARRAY_G         : NaturalArray := NATURAL_ARRAY_EMPTY_C;
@@ -73,6 +72,9 @@ entity CommandWrapper is
       regVld       : out std_logic := '0';
       regRdy       : in  std_logic := '1';
       regErr       : in  std_logic := '1';
+
+      -- board version
+      boardVersion : in  std_logic_vector(7 downto 0) := x"00";
 
 
       spiSClk      : out std_logic;
@@ -237,12 +239,13 @@ begin
 
    U_VERSION : entity work.CommandVersion
       generic map (
-         BOARD_VERSION_G => BOARD_VERSION_G,
          GIT_VERSION_G   => GIT_VERSION_G
       )
       port map (
          clk          => clk,
          rst          => rst,
+
+         hwVersion    => boardVersion,
 
          mIb          => bussesIb(CMD_VER_IDX_C),
          rIb          => readysIb(CMD_VER_IDX_C),

@@ -8,12 +8,13 @@ use work.CommandMuxPkg.all;
 
 entity CommandVersion is
    generic (
-      BOARD_VERSION_G : std_logic_vector( 7 downto 0);
       GIT_VERSION_G   : std_logic_vector(31 downto 0)
    );
    port (
       clk          : in  std_logic;
       rst          : in  std_logic;
+
+      hwVersion    : in  std_logic_vector(7 downto 0);
 
       mIb          : in  SimpleBusMstType;
       rIb          : out std_logic;
@@ -26,7 +27,7 @@ end entity CommandVersion;
 architecture rtl of CommandVersion is
 
    constant VERSION_C : Slv8Array := (
-      0 => BOARD_VERSION_G,
+      0 => x"00",
       1 => CMD_API_VERSION_C,
       2 => GIT_VERSION_G(31 downto 24),
       3 => GIT_VERSION_G(23 downto 16),
@@ -49,15 +50,20 @@ architecture rtl of CommandVersion is
    signal r               : RegType := REG_INIT_C;
    signal rin             : RegType;
 
+   signal version         : Slv8Array(VERSION_C'range);
+
 begin
 
-   P_COMB : process ( r, mIb, rOb ) is
+   P_COMB : process ( r, mIb, rOb, hwVersion ) is
       variable v       : RegType;
    begin
       v := r;
 
-      mOb     <= mIb;
-      rIb     <= rOb;
+      mOb        <= mIb;
+      rIb        <= rOb;
+
+      version    <= VERSION_C;
+      version(0) <= hwVersion;
 
       case ( r.state ) is
          when ECHO =>
@@ -82,7 +88,7 @@ begin
             rIb     <= '0';
             mOb.vld <= '1';
             mOb.lst <= '0';
-            mOb.dat <= VERSION_C(r.addr);
+            mOb.dat <= version(r.addr);
             if ( rOb = '1' ) then
                if ( r.addr = VERSION_C'high ) then
                   v.state := ECHO;
