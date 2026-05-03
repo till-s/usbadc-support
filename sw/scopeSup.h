@@ -397,7 +397,10 @@ int    dacSetVolt(ScopePvt *, unsigned channel, double volt);
 #define FW_USR_CSR_TRIGGERED         (1<<0)
 /* Use first bit to indicate initialization status */
 #define FW_USR_CSR_INIT_FLAG         (1<<1)
-/* bits 3..2 in USR_CSR are RESERVED for internal use and must not be modifed */
+#define FW_USR_CSR_DAC_RNG_MASK      (3<<2)
+#define FW_USR_CSR_DAC_RNG_8BIT      (0<<2)
+#define FW_USR_CSR_DAC_RNG_10BIT     (1<<2)
+#define FW_USR_CSR_DAC_RNG_12BIT     (3<<2)
 
 #define FW_CLK_CSR_OFF               4
 #define FW_CLK_CSR_ADC_PLL_LOCKED    (1<<0)  /* read-only bit that maps to the PLL status  */

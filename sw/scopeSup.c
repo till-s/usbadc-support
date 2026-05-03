@@ -332,12 +332,36 @@ int ch, st;
 static int
 dacInit(ScopePvt *scp)
 {
-int     st,ch;
+int     st,ch,dacMax;
+uint8_t reg, dacMaxSel;
 FWInfo *fw = scp->fw;
 
 	if ( (st = dac47cxReset( fw )) < 0 ) {
 		return st;
 	}
+	if ( (dacMax = dac47cxDetectMax( fw ) ) < 0 ) {
+		return dacMax;
+	}
+	if ( (st = dac47cxSetMax( fw, (unsigned)dacMax ) ) < 0 ) {
+		return st;
+	}
+	switch ( dacMax ) {
+		case 0xff:  dacMaxSel = FW_USR_CSR_DAC_RNG_8BIT; break;
+		case 0x3ff: dacMaxSel = FW_USR_CSR_DAC_RNG_10BIT; break;
+		case 0x7ff: dacMaxSel = FW_USR_CSR_DAC_RNG_12BIT; break;
+		default:    return -EINVAL;
+	}
+	st = fw_reg_read( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	if ( st < 0 ) {
+		return st;
+	}
+	reg &= ~FW_USR_CSR_DAC_RNG_MASK;
+	reg |= dacMaxSel;
+	st = fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	if ( st < 0 ) {
+		return st;
+	}
+
 	if ( (st = dac47cxSetRefSelection( fw, DAC47XX_VREF_INTERNAL_X1 )) < 0 ) {
 		return st;
 	}
@@ -509,7 +533,8 @@ int
 scope_init(ScopePvt *scp, int force)
 {
 int      st;
-uint8_t  reg;
+uint8_t  reg, dacMaxSel;
+unsigned dacMax;
 
 unsigned boardVers = fw_get_board_version( scp->fw );
 
@@ -519,6 +544,17 @@ unsigned boardVers = fw_get_board_version( scp->fw );
 	}
 
 	if ( ! force && scope_is_initialized( scp->fw ) ) {
+		if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &dacMaxSel, 1, 0 ) ) {
+			switch ( (dacMaxSel & FW_USR_CSR_DAC_RNG_MASK) ) {
+				case FW_USR_CSR_DAC_RNG_8BIT:  dacMax = 0xff;  break;
+				case FW_USR_CSR_DAC_RNG_10BIT: dacMax = 0x3ff; break;
+				case FW_USR_CSR_DAC_RNG_12BIT: dacMax = 0xfff; break;
+				default:                       return -EINVAL;
+			}
+			if ( (st = dac47cxSetMax( scp->fw, dacMax ) ) < 0 ) {
+				return st;
+			}
+		}
 		return 0;
 	}
 	if ( (st = boardClkInit( scp )) ) {
@@ -685,6 +721,7 @@ int       i,st;
 unsigned  boardVersion   = fw_get_board_version( fw );
 double    dfltScaleVolt  = getDfltScaleVolt( fw );
 int       forceInit      = !!getenv("BBCLI_FORCE_INIT");
+unsigned  invert         = 0;
 int       wasInitialized;
 
 	if ( ! ( fw_get_features( fw ) & FW_FEATURE_ADC ) ) {
@@ -747,11 +784,13 @@ int       wasInitialized;
 		break;
 
 		case 3:
-		case 2:
+			invert |= brdV1TCA6408Bits(fw, 0, TERMINATION);
+			invert |= brdV1TCA6408Bits(fw, 1, TERMINATION);
 			/* fall through */
+		case 2:
 		case 1:
 			sc->pga            = &ad8370PGAOps;
-			sc->fec            = tca6408FECSupCreate( fw, sc->numChannels, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits );
+			sc->fec            = tca6408FECSupCreate( fw, sc->numChannels, BRD_V1_TCA6408_SLA, 0.0, 20.0, brdV1TCA6408Bits, invert );
 		break;
 
 		case 255:
