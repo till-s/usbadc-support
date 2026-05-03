@@ -115,6 +115,7 @@ static int dacMax(FWInfo *fw)
 				_dacMax = 0xff;  break;
 			case 1:
 			case 2:
+			case 3:
 				_dacMax = 0xfff; break;
 			default:
 				fprintf(stderr, "Error -- dac47cxGetRange(): unknown board version\n");
@@ -171,6 +172,7 @@ static double tick2Volt(FWInfo *fw, int tick, int maxDac)
 		break;
 
 		case 2:
+		case 3:
 			{
 			volt = VOLT_REF*(BRD_V2_G_REF - ratio*BRD_V2_G_DAC);
 			}
@@ -196,6 +198,7 @@ static int volt2Tick(FWInfo *fw, double volt, int maxDac)
 		break;
 
 		case 2:
+		case 3:
 			ratio = (BRD_V2_G_REF - volt/VOLT_REF)/BRD_V2_G_DAC;
 		break;
 

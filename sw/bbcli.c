@@ -1169,7 +1169,7 @@ ScopeParams       *settings  = NULL;
 	}
 
 	if ( jsonOFnam ) {
-		if ( scope_json_supported( scope ) < 0 ) {
+		if ( scope_json_supported() < 0 ) {
 			fprintf(stderr, "ERROR: JSON support not compiled in.\n");
 			goto bail;
 		}

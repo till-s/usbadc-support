@@ -81,13 +81,27 @@ typedef ClkOutConfig ClkOutConfigArray[NUM_CLK_OUTPUTS + 1];
 static int
 brdV1TCA6408Bits(FWInfo *fw, unsigned channel, I2CFECSupBitSelect which)
 {
-	switch ( which ) {
-		case ATTENUATOR:   return channel ? (1<<2) : (1<<6);
-		case TERMINATION:  return channel ? (1<<4) : (1<<5);
-		case ACMODE:       return channel ? (1<<3) : (1<<7);
-		case DACRANGE:     return channel ? (1<<0) : (1<<1);
+	switch ( fw_get_board_version( fw ) ) {
+		case 2:
+			switch ( which ) {
+				case ATTENUATOR:   return channel ? (1<<2) : (1<<6);
+				case TERMINATION:  return channel ? (1<<4) : (1<<5);
+				case ACMODE:       return channel ? (1<<3) : (1<<7);
+				case DACRANGE:     return channel ? (1<<0) : (1<<1);
+				default:
+					return -ENOTSUP;
+			}
+		case 3:
+			switch ( which ) {
+				case ATTENUATOR:   return channel ? (1<<2) : (1<<4);
+				case TERMINATION:  return channel ? (1<<6) : (1<<7);
+				case ACMODE:       return channel ? (1<<3) : (1<<5);
+				case DACRANGE:     return channel ? (1<<0) : (1<<1);
+				default:
+					return -ENOTSUP;
+			}
 		default:
-		return -ENOTSUP;
+			return -ENOTSUP;
 	}
 }
 
@@ -136,7 +150,8 @@ double            fVCO, outDiv;
 			mkCfg( outCfg, OUT_EXT,  OUT_CMOS, SLEW_100, LEVEL_18 );
 			mkCfg( outCfg, OUT_ADC,  OUT_LVDS, SLEW_100, LEVEL_18 );
 			break;
-		case 2:
+		case 2: /* fall through */
+		case 3:
 			OUT_EXT   = 2;
 			OUT_ADC   = 3;
 			OUT_FOD1  = 1;
@@ -203,7 +218,8 @@ double dfltScaleVolt;
 			 */
 			dfltScaleVolt  = 0.75 / (0.5 * 1.98/(1 + 98.0/200.0)) / 100.0;
 			break;
-		case 2:
+		case 2: /* fall through */
+		case 3:
 			/* diff. load on this HW is 301 Ohm and there is a divider
 			 * (for establishing the correct common-mode voltage).
 			 */
@@ -391,7 +407,8 @@ FWInfo         *fw = scp->fw;
 				return st;
 			}
 			break;
-		case 2:
+		case 2: /* fall through */
+		case 3:
             /* Default timing seems fine */
 			if ( (st = max195xxSetMuxMode( fw, MUX_PORT_A )) < 0 ) {
 				return st;
@@ -591,6 +608,7 @@ scope_get_reference_freq(ScopePvt *scp)
 	switch ( fw_get_board_version( scp->fw ) ) {
 		case 0:
 		case 2:
+		case 3:
 			return 25.0E6;
 		break;
 		case 1:
@@ -687,7 +705,7 @@ int       wasInitialized;
 	} else {
 		if ( 0 == boardVersion ) {
 			sc->samplingFreq = 130.0E6;
-		} else if ( 1 == fw_get_board_version( fw ) ) {
+		} else if ( 1 == boardVersion ) {
 			sc->samplingFreq = 120.0E6;
 		}
 	}
@@ -720,6 +738,7 @@ int       wasInitialized;
 			sc->pga            = &lmh6882PGAOps;
 		break;
 
+		case 3:
 		case 2:
 			/* fall through */
 		case 1:

@@ -84,6 +84,7 @@ unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
 			sup |= (1<<SPI_PGA) | (1<<SPI_FEG); break;
 		case 1:
 		case 2:
+        case 3:
 			sup |= (1<<SPI_PGA);                break;
 		default:
 			fprintf(stderr, "spi_get_subcmd(): unsupported board/hw version %i\n", fw->brdVers);
