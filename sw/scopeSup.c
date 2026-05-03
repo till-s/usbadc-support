@@ -290,6 +290,23 @@ scope_write_unit_data_nonvolatile(ScopePvt *scp, UnitData *unitData)
 }
 
 static int
+pgaInit(ScopePvt *scp)
+{
+int ch, st;
+double maxAtt;
+	if ( ( st = pgaGetAttRangeDb(scp, NULL, &maxAtt) ) < 0 ) {
+		return st;
+	}
+	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
+		st = pgaSetAttDb( scp, ch, maxAtt );
+		if ( st < 0 ) {
+			return st;
+		}
+	}
+	return 0;
+}
+
+static int
 fecInit(ScopePvt *scp)
 {
 int ch, st;
@@ -507,6 +524,9 @@ unsigned boardVers = fw_get_board_version( scp->fw );
 	if ( (st = boardClkInit( scp )) ) {
 		return st;
 	}
+	if ( (st = pgaInit( scp )) ) {
+		return st;
+	}
 	if ( (st = fecInit( scp )) ) {
 		return st;
 	}
@@ -721,18 +741,6 @@ int       wasInitialized;
 		}
 	}
 
-	wasInitialized = ! forceInit && scope_is_initialized( fw );
-
-	if ( (st = scope_init( sc, forceInit )) ) {
-		fprintf(stderr, "Error %d: scope_init() failed; ADC clock not configured\n", st);
-		goto bail;
-	}
-
-
-	if ( (st = acq_set_params( sc, NULL, &sc->acqParams )) ) {
-		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
-	}
-
 	switch ( boardVersion ) {
 		case 0:
 			sc->pga            = &lmh6882PGAOps;
@@ -752,6 +760,18 @@ int       wasInitialized;
 
 		default:
 		break;
+	}
+
+	wasInitialized = ! forceInit && scope_is_initialized( fw );
+
+	if ( (st = scope_init( sc, forceInit )) ) {
+		fprintf(stderr, "Error %d: scope_init() failed; ADC clock not configured\n", st);
+		goto bail;
+	}
+
+
+	if ( (st = acq_set_params( sc, NULL, &sc->acqParams )) ) {
+		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
 	}
 
 	for ( i = 0; i < sc->numChannels; ++i ) {
