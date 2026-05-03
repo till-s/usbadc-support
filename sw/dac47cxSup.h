@@ -45,6 +45,12 @@ dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val);
 int
 dac47cxDetectMax(FWInfo *fw);
 
+/* Set the max. range supported (in case it can
+ * be obtained from some other place).
+ */
+int
+dac47cxSetMax(FWInfo *fw, unsigned max);
+
 #ifdef __cplusplus
 }
 #endif

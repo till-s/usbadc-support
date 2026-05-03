@@ -139,6 +139,13 @@ int      st;
 	return _dacMax;
 }
 
+int
+dac47cxSetMax(FWInfo *fw, unsigned max) {
+	printf("Dac max set to 0x%x\n", max);
+	_dacMax = max;
+	return 0;
+}
+
 /* Analog circuit:
  *  Board version 0:
  *   Vamp = - Vref/2 + Vdac
@@ -284,7 +291,6 @@ float voltMin, voltMax;
 		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", voltMax);
 		val = voltMax;
 	}
-
 
 	ival = volt2Tick( fw, val, maxDac );
 
