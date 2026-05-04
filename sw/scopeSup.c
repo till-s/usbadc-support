@@ -784,8 +784,10 @@ int       wasInitialized;
 		break;
 
 		case 3:
-			invert |= brdV1TCA6408Bits(fw, 0, TERMINATION);
-			invert |= brdV1TCA6408Bits(fw, 1, TERMINATION);
+			for ( i = 0; i < sc->numChannels; ++i ) {
+				invert |= brdV1TCA6408Bits(fw, i, TERMINATION);
+				invert |= brdV1TCA6408Bits(fw, i, ATTENUATOR);
+			}
 			/* fall through */
 		case 2:
 		case 1:
