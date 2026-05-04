@@ -48,6 +48,11 @@
 
 #define BITS_FW_CMD_ACQ_DCM0_SHFT 20
 
+typedef struct DACData {
+	unsigned maxTicks;
+	double   offset;
+	double   scale;
+} DACData;
 
 typedef struct ScopePvt {
 	FWInfo         *fw;
@@ -61,6 +66,7 @@ typedef struct ScopePvt {
 	PGAOps         *pga;
 	FECOps         *fec;
 	const UnitData *unitData;
+	DACData         dacData;
 } ScopePvt;
 
 
@@ -330,47 +336,71 @@ int ch, st;
 }
 
 static int
-dacInit(ScopePvt *scp)
+saveDacMax(ScopePvt *scp, unsigned dacMax)
 {
-int     st,ch,dacMax;
+int     st;
 uint8_t reg, dacMaxSel;
-FWInfo *fw = scp->fw;
-
-	if ( (st = dac47cxReset( fw )) < 0 ) {
-		return st;
-	}
-	if ( (dacMax = dac47cxDetectMax( fw ) ) < 0 ) {
-		return dacMax;
-	}
-	if ( (st = dac47cxSetMax( fw, (unsigned)dacMax ) ) < 0 ) {
-		return st;
-	}
+	/* Store encoded value of dacMax in firmware register
+	 * so that we don't have to reset the DAC again
+	 * (and cause glitches) when we restart the software
+	 * w/o power-cycling the hardware.
+	 */
 	switch ( dacMax ) {
 		case 0xff:  dacMaxSel = FW_USR_CSR_DAC_RNG_8BIT; break;
 		case 0x3ff: dacMaxSel = FW_USR_CSR_DAC_RNG_10BIT; break;
 		case 0xfff: dacMaxSel = FW_USR_CSR_DAC_RNG_12BIT; break;
 		default:    return -EINVAL;
 	}
-	st = fw_reg_read( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	st = fw_reg_read( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 );
 	if ( st < 0 ) {
 		return st;
 	}
 	reg &= ~FW_USR_CSR_DAC_RNG_MASK;
 	reg |= dacMaxSel;
-	st = fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
-	if ( st < 0 ) {
+	st = fw_reg_write( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	return st;
+}
+
+static int
+loadDacMax(ScopePvt *scp)
+{
+uint8_t dacMaxSel;
+
+		if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &dacMaxSel, 1, 0 ) ) {
+			switch ( (dacMaxSel & FW_USR_CSR_DAC_RNG_MASK) ) {
+				case FW_USR_CSR_DAC_RNG_8BIT:  return 0xff;
+				case FW_USR_CSR_DAC_RNG_10BIT: return 0x3ff;
+				case FW_USR_CSR_DAC_RNG_12BIT: return 0xfff;
+				default:                       return -EINVAL;
+			}
+		}
+		return -EIO;
+}
+
+static int
+dacInit(ScopePvt *scp)
+{
+int     st,ch,dacMax;
+uint8_t reg;
+FWInfo *fw = scp->fw;
+
+	if ( (st = dac47cxReset( fw )) < 0 ) {
+		return st;
+	}
+	/* dac47cxDetectMax leaves the dac at its reset value (1/2 FS)
+	 * which is just fine for producing ~0V output (on all board
+	 * version supported so far).
+	 */
+	if ( (dacMax = dac47cxDetectMax( fw ) ) < 0 ) {
+		return dacMax;
+	}
+	if ( (st = saveDacMax( scp, dacMax )) < 0 ) {
 		return st;
 	}
 
 	if ( (st = dac47cxSetRefSelection( fw, DAC47XX_VREF_INTERNAL_X1 )) < 0 ) {
 		return st;
 	}
-	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
-		if ( (st = dac47cxSetVolt( fw, ch, 0.0 )) < 0 ) {
-			return st;
-		}
-	}
-
 	return 0;
 }
 
@@ -479,6 +509,79 @@ fw_adc_pll_locked(FWInfo *fw)
 	return st;
 }
 
+static double
+dacTick2Volt(ScopePvt *scp, int tick)
+{
+	double ratio = ((double)tick)/((double)(scp->dacData.maxTicks + 1));
+	return ratio*scp->dacData.scale + scp->dacData.offset;
+}
+
+static int
+dacVolt2Tick(ScopePvt *scp, double volt)
+{
+	int tick = round((volt - scp->dacData.offset)/scp->dacData.scale * (double)(scp->dacData.maxTicks + 1));
+
+	if ( tick < 0 ) {
+		tick = 0;
+	}
+	if ( tick > scp->dacData.maxTicks ) {
+		tick = scp->dacData.maxTicks;
+	}
+	return tick;
+}
+
+/* Before this is called the DAC's max ticks must be available in the firmware register */
+static int
+dacDataInit(ScopePvt *scp)
+{
+int st;
+
+	if ( (st = loadDacMax( scp )) < 0 ) {
+		return st;
+	}
+	scp->dacData.maxTicks = st;
+
+/* Analog circuit:
+ *  Board version 0:
+ *   Vamp = - Vref/2 + Vdac
+ *  Board version 1,2 (hi-range):
+ *   Vamp = ( Vref/2 - Vdac ) / 2
+ */
+
+/* Board V1 */
+#define VOLT_REF   1.214
+#define VOLT_MIN   (-VOLT_REF/2.0)
+
+#define BRD_V2_G_REF (40.3/(40.3+59.0+18.0)*(80.6+18.0+18.0)/(18.0+18.0))
+#define BRD_V2_G_DAC (80.6/(18.0+18.0))
+
+
+	switch ( fw_get_board_version( scp->fw ) ) {
+		case 0:
+			scp->dacData.offset = VOLT_MIN;
+			scp->dacData.scale  = VOLT_REF;
+		break;
+
+		case 1:
+			scp->dacData.offset = -0.5*VOLT_MIN;
+			scp->dacData.scale  = -0.5*VOLT_REF;
+		break;
+
+		case 2:
+		case 3:
+			{
+			scp->dacData.offset = VOLT_REF*BRD_V2_G_REF;
+			scp->dacData.scale  = -VOLT_REF*BRD_V2_G_DAC;
+			}
+		break;
+
+		default:
+			fprintf(stderr, "dacDataInit: unsupported board version\n");
+			abort();
+	}
+	return 0;
+}
+
 int
 scope_is_initialized(FWInfo *fw)
 {
@@ -544,17 +647,6 @@ unsigned boardVers = fw_get_board_version( scp->fw );
 	}
 
 	if ( ! force && scope_is_initialized( scp->fw ) ) {
-		if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &dacMaxSel, 1, 0 ) ) {
-			switch ( (dacMaxSel & FW_USR_CSR_DAC_RNG_MASK) ) {
-				case FW_USR_CSR_DAC_RNG_8BIT:  dacMax = 0xff;  break;
-				case FW_USR_CSR_DAC_RNG_10BIT: dacMax = 0x3ff; break;
-				case FW_USR_CSR_DAC_RNG_12BIT: dacMax = 0xfff; break;
-				default:                       return -EINVAL;
-			}
-			if ( (st = dac47cxSetMax( scp->fw, dacMax ) ) < 0 ) {
-				return st;
-			}
-		}
 		return 0;
 	}
 	if ( (st = boardClkInit( scp )) ) {
@@ -810,6 +902,11 @@ int       wasInitialized;
 		goto bail;
 	}
 
+	/* scope_init must have stored the DAC maxTicks before we can initialize the DACData */
+	if ( (st = dacDataInit( sc )) ) {
+		fprintf(stderr, "Error %d: scope_init() failed; DACData could not be initialized\n", st);
+		goto bail;
+	}
 
 	if ( (st = acq_set_params( sc, NULL, &sc->acqParams )) ) {
 		fprintf(stderr, "Error %d: unable to read initial acquisition parameters\n", st);
@@ -1593,28 +1690,44 @@ fecClose(ScopePvt *scp)
 int
 dacGetVolt(ScopePvt *scp, unsigned channel, double *pvolt)
 {
-float val;
-int   st;
+uint16_t val;
+double   volt;
+int      st;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	if ( (st = dac47cxGetVolt( scp->fw, channel, &val )) < 0 ) {
-		return st;
-	}
-	*pvolt = (double)val + scp->calData[channel].offsetVolt;
+	if ( (st = dac47cxGet( scp->fw, channel, &val )) < 0 ) return st;
+
+	volt = dacTick2Volt( scp, val );
+	*pvolt = (double)volt + scp->calData[channel].offsetVolt;
 	return 0;
 }
 
 int
 dacSetVolt(ScopePvt *scp, unsigned channel, double volt)
 {
-float val;
+double val, voltMin, voltMax;
+int    st;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
+	if ( (st = dacGetVoltRange( scp, &voltMin, &voltMax ) ) < 0 ) {
+		return st;
+	}
+
+	if ( volt < voltMin ) {
+		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", voltMin);
+		volt = voltMin;
+	}
+	if ( volt > voltMax ) {
+		fprintf(stderr, "dac47cxSetVolt(): value out of range; clipping to %f\n", voltMax);
+		volt = voltMax;
+	}
+
 	printf("dacSetVolt: %g, offset %g\n", volt , scp->calData[channel].offsetVolt);
-	val = (float)(volt - scp->calData[channel].offsetVolt);
-	return dac47cxSetVolt( scp->fw, channel, val );
+	val = (volt - scp->calData[channel].offsetVolt);
+
+	return dac47cxSet( scp->fw, channel, dacVolt2Tick( scp, val ) );
 }
 
 int
@@ -1622,20 +1735,21 @@ dacGetVoltRange(ScopePvt *scp, double *pvoltMin, double *pvoltMax)
 {
 float  voltMin, voltMax;
 int    ch;
+double voltLo, voltHi;
 double maxOff = 0.0;
+
 	for ( ch = 0; ch < scope_get_num_channels( scp ); ++ch ) {
 		if ( maxOff < fabs( scp->calData[ch].offsetVolt ) ) {
 			maxOff = fabs( scp->calData[ch].offsetVolt );
 		}
 	}
 
-	dac47cxGetRange( scp->fw, NULL, NULL, &voltMin, &voltMax );
-	if ( pvoltMin ) {
-		*pvoltMin = (double)voltMin + maxOff;
-	}
-	if ( pvoltMax ) {
-		*pvoltMax = (double)voltMax - maxOff;
-	}
+	voltLo = dacTick2Volt( scp, 0                     );
+	voltHi = dacTick2Volt( scp, scp->dacData.maxTicks );
+
+	if ( pvoltMin ) *pvoltMin = (voltLo < voltHi ? voltLo : voltHi) + maxOff;
+	if ( pvoltMax ) *pvoltMax = (voltHi > voltLo ? voltHi : voltLo) - maxOff;
+
 	return 0;
 }
 
@@ -1917,3 +2031,4 @@ scope_trig_hysteresis_volt(const ScopeParams *p)
 {
 	return level2Volt( p, p->acqParams.hysteresis );
 }
+
