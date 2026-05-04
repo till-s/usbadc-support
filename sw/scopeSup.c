@@ -348,7 +348,7 @@ FWInfo *fw = scp->fw;
 	switch ( dacMax ) {
 		case 0xff:  dacMaxSel = FW_USR_CSR_DAC_RNG_8BIT; break;
 		case 0x3ff: dacMaxSel = FW_USR_CSR_DAC_RNG_10BIT; break;
-		case 0x7ff: dacMaxSel = FW_USR_CSR_DAC_RNG_12BIT; break;
+		case 0xfff: dacMaxSel = FW_USR_CSR_DAC_RNG_12BIT; break;
 		default:    return -EINVAL;
 	}
 	st = fw_reg_read( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
