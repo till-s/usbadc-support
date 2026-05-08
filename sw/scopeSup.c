@@ -193,15 +193,14 @@ double            fVCO, outDiv;
 			return st;
 		}
 	}
-//TSILL	outDiv = 1000.0/2.0;
-    outDiv = fVCO / 25.0E6 / 2.0;
+	outDiv = 1000.0/2.0;
 	if ( (st = versaClkSetOutDivFlt( fw, OUT_EXT, outDiv ) ) < 0 ) {
 		return st;
 	}
 	if ( (st = versaClkSetFODRoute( fw, OUT_ADC, NORMAL )) < 0 ) {
 		return st;
 	}
-	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, NORMAL /*CASC_FOD*/ )) < 0 ) {
+	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, CASC_FOD )) < 0 ) {
 		return st;
 	}
 	return 0;
