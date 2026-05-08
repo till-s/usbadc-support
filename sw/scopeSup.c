@@ -193,13 +193,15 @@ double            fVCO, outDiv;
 			return st;
 		}
 	}
-	if ( (st = versaClkSetOutDivFlt( fw, OUT_EXT, 1000.0/2.0 )) < 0 ) {
+//TSILL	outDiv = 1000.0/2.0;
+    outDiv = fVCO / 25.0E6 / 2.0;
+	if ( (st = versaClkSetOutDivFlt( fw, OUT_EXT, outDiv ) ) < 0 ) {
 		return st;
 	}
 	if ( (st = versaClkSetFODRoute( fw, OUT_ADC, NORMAL )) < 0 ) {
 		return st;
 	}
-	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, CASC_FOD )) < 0 ) {
+	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, NORMAL /*CASC_FOD*/ )) < 0 ) {
 		return st;
 	}
 	return 0;
@@ -380,8 +382,7 @@ uint8_t dacMaxSel;
 static int
 dacInit(ScopePvt *scp)
 {
-int     st,ch,dacMax;
-uint8_t reg;
+int     st,dacMax;
 FWInfo *fw = scp->fw;
 
 	if ( (st = dac47cxReset( fw )) < 0 ) {
@@ -636,8 +637,7 @@ int
 scope_init(ScopePvt *scp, int force)
 {
 int      st;
-uint8_t  reg, dacMaxSel;
-unsigned dacMax;
+uint8_t  reg;
 
 unsigned boardVers = fw_get_board_version( scp->fw );
 
@@ -1733,7 +1733,6 @@ int    st;
 int
 dacGetVoltRange(ScopePvt *scp, double *pvoltMin, double *pvoltMax)
 {
-float  voltMin, voltMax;
 int    ch;
 double voltLo, voltHi;
 double maxOff = 0.0;
