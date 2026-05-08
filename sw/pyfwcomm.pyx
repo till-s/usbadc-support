@@ -419,12 +419,6 @@ cdef class DAC47CX(FwDev):
     if ( st < 0 ):
       raise IOError("DAC47CX.reset()")
 
-  def getRange(self):
-    cdef float vmin, vmax
-    with self._mgr as fw, nogil:
-      dac47cxGetRange( fw, NULL, NULL, &vmin, &vmax )
-    return (vmin, vmax)
-
   def setTicks(self, int channel, int ticks):
     cdef int rv
     with self._mgr as fw, nogil:
@@ -446,29 +440,6 @@ cdef class DAC47CX(FwDev):
       else:
         raise IOError("DAC47CX.getTicks()")
     return ticks
-
-
-  def setVolt(self, int channel, float volt):
-    cdef int rv
-    with self._mgr as fw, nogil:
-      rv = dac47cxSetVolt( fw, channel, volt )
-    if ( rv < 0 ):
-      if ( -2 == rv ):
-        raise ValueError("DAC47CX.setVolt(): Invalid Channel")
-      else:
-        raise IOError("DAC47CX.setVolt()")
-
-  def getVolt(self, int channel):
-    cdef int    rv
-    cdef float  volt
-    with self._mgr as fw, nogil:
-      rv = dac47cxGetVolt( fw, channel, &volt )
-    if ( rv < 0 ):
-      if ( -1 > rv ):
-        raise ValueError("DAC47CX.getVolt(): Invalid Channel")
-      else:
-        raise IOError("DAC47CX.getVolt()")
-    return volt
 
   def setRefInternalX1(self):
     cdef int rv

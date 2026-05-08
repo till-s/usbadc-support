@@ -75,9 +75,6 @@ cpdef enum DAC47CXRefSelection:
 
 cdef extern from "dac47cxSup.h":
   int            dac47cxReset(FWInfo *) nogil
-  void           dac47cxGetRange(FWInfo *, int *tickMin, int *tickMax, float *voltMin, float *voltMax) nogil
-  int            dac47cxSetVolt(FWInfo *fw, unsigned channel, float val) nogil
-  int            dac47cxGetVolt(FWInfo *fw, unsigned channel, float *val) nogil
   int            dac47cxSet(FWInfo *fw, unsigned channel, int val) nogil
   int            dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val) nogil
   int            dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel) nogil
