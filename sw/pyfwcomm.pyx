@@ -1171,3 +1171,13 @@ cdef class FwCommExprt(FwComm):
 
   def eepromWrite(self, unsigned off, pb):
     return self.eepromRW( False, off, pb )
+
+  def readReg(self, unsigned off):
+    cdef uint8_t val
+    with self._mgr as fw, nogil:
+      fw_reg_read( fw, off, &val, sizeof(val), 0 );
+    return val
+
+  def writeReg(self, unsigned off, uint8_t val):
+    with self._mgr as fw, nogil:
+      fw_reg_write( fw, off, &val, sizeof(val), 0 );
