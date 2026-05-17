@@ -107,7 +107,7 @@ unsigned cmd;
 	if ( *udp ) {
 		cmd |=  AT25_EXEC_PROG | AT25_CHECK_VERIFY;
 	}
-	if ( (st = at25_prog( flash, flashAddr, buf, serializedSize, cmd )) < 0 ) {
+	if ( (st = at25_prog( flash, flashAddr, buf, serializedSize, cmd, NULL, NULL )) < 0 ) {
 		fprintf(stderr, "at25_prog() failed\n");
 		goto bail;
 	}
