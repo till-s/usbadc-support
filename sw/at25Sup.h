@@ -65,12 +65,27 @@ at25_status_poll(AT25Flash *flash);
 int
 at25_block_erase(AT25Flash *flash, unsigned addr, size_t sz);
 
+/* 'check' flags for at25_prog */
 #define AT25_CHECK_ERASED 1
 #define AT25_CHECK_VERIFY 2
 #define AT25_EXEC_PROG    4
+/* 'erase' is set by at25_area_erase when executing the AT25Progress callback */
+#define AT25_ERASE        8
+
+/* Return nonzero to abort operation.
+ * The 'progress' call back is called
+ * once before each operation and then
+ * after successfully processing each 
+ * block.
+ */
+
+typedef int (*AT25Progress)(AT25Flash *flash, void *closure, int flag, unsigned addr, unsigned remain);
 
 int
-at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int check);
+at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, AT25Progress progress, void *userData);
+
+int
+at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int flags, AT25Progress progress, void *userData);
 
 /* Send soft reset sequence */
 int

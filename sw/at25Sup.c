@@ -10,8 +10,6 @@
 #include "fwComm.h"
 #include "at25Sup.h"
 
-#define VERIFY_AFTER_WRITE 0
-
 #define AT25_PAGE          256
 #define AT25_OP_ID         0x9f
 #define AT25_OP_FAST_READ  0x0b
@@ -55,7 +53,7 @@ struct AT25Flash {
 };
 
 static int
-verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len, int addnl);
+verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  AT25Progress progress, void *userData);
 
 static int
 do_xfer(AT25Flash *flash, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
@@ -385,15 +383,20 @@ size_t  deviceBlockSize = at25_get_block_size( flash );
 
 }
 
-static int verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len, int addnl)
+static int verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  AT25Progress progress, void *userData)
 {
 uint8_t   buf[2048];
 int       mismatch = 0;
 unsigned  wrkAddr;
 size_t    wrk, x;
-int       got,i;
+int       got,i,st;
+int       flag = cmp ? AT25_CHECK_VERIFY : AT25_CHECK_ERASED;
 
-		for ( wrk = len, wrkAddr = addr; wrk > 0; wrk -= got, wrkAddr += got ) {
+		if ( progress && (st = progress(flash, userData, flag, addr, len)) < 0 ) {
+			return st;
+		}
+
+		for ( wrk = len, wrkAddr = addr; wrk > 0; ) {
 			x =  wrk > sizeof(buf) ? sizeof(buf) : wrk;
 			got = at25_spi_read( flash, wrkAddr, buf, x );
 			if ( got <= 0 ) {
@@ -416,16 +419,17 @@ int       got,i;
 			if ( cmp ) {
 				cmp += got;
 			}
-			printf("%c", cmp ? 'v' : 'z'); fflush(stdout);
-		}
-		if ( addnl ) {
-			printf("\n");
+			wrkAddr += got;
+			wrk     -= got;
+			if ( progress && (st = progress(flash, userData, flag, addr, len)) < 0 ) {
+				return st;
+			}
 		}
 		return mismatch ? -EPROTO : 0;
 }
 
 int
-at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int check)
+at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int check, AT25Progress progress, void *userData)
 {
 uint8_t        buf[2048];
 unsigned       wrkAddr;
@@ -437,7 +441,7 @@ const uint8_t *src;
 uint8_t        junk[AT25_PAGE];
 
 	if ( (check & AT25_CHECK_ERASED) ) {
-		if ( (st = verify( flash, addr, 0, len, 1 )) < 0 )
+		if ( (st = verify( flash, addr, 0, len, progress, userData )) < 0 )
 			return st;
 	}
 
@@ -450,6 +454,11 @@ uint8_t        junk[AT25_PAGE];
 		wrk      = len;
 		wrkAddr  = addr;
 		src      = data;
+
+		if ( progress && (st = progress( flash, userData, AT25_EXEC_PROG, wrkAddr, wrk )) < 0 ) {
+			rval = st;
+			goto bail;
+		}
 
 		while ( wrk > 0 ) {
 
@@ -494,27 +503,23 @@ uint8_t        junk[AT25_PAGE];
 				goto bail;
 			}
 
-			if ( (check & AT25_CHECK_VERIFY) && VERIFY_AFTER_WRITE ) {
-				if ( (st = verify( flash, wrkAddr, src, x, 0 )) < 0 ) {
-					return st;
-				}
-			}
-
 			/* programming apparently disables writing */
 			at25_write_ena  ( flash ); /* just in case... */
-
-			printf("%c", '.'); fflush(stdout);
 
 			src     += x;
 			wrk     -= x;
 			wrkAddr += x;
+
+			if ( progress && (st = progress( flash, userData, AT25_EXEC_PROG, wrkAddr, wrk )) < 0 ) {
+				rval = st;
+				goto bail;
+			}
 		}
-		printf("\n");
 
 	}
 
 	if ( (check & AT25_CHECK_VERIFY) ) {
-		if ( (rval = verify( flash, addr, data, len, 1 )) < 0 ) {
+		if ( (rval = verify( flash, addr, data, len, progress, userData )) < 0 ) {
 			goto bail;
 		}
 	}
@@ -625,4 +630,92 @@ size_t   nelms = 0;
 bail:
 		return rv;
 	}
+}
+
+static const size_t blocks [] = {
+	4*1024,
+	32*1024,
+	64*1024
+};
+
+/* largest block smaller than 'sz' */
+static size_t sz2bsz(size_t sz)
+{
+int i;
+	for ( i = sizeof(blocks)/sizeof(blocks[0]) - 1; i >= 0; i-- ) {
+		if ( blocks[i] <= sz ) {
+			return blocks[i];
+		}
+	}
+	return blocks[0];
+}
+
+static unsigned algnblk(unsigned addr)
+{
+int i;
+	for ( i = sizeof(blocks)/sizeof(blocks[0]) - 1; i >= 0; i-- ) {
+		if ( (addr & (blocks[i] - 1)) == 0 ) {
+			return blocks[i];
+		}
+	}
+	return blocks[0];
+}
+
+int
+at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, AT25Progress progress, void *userData)
+
+{
+
+unsigned aligned;
+unsigned bsz;
+int      st;
+
+	/* biggest block that aligns to flashAddr */
+	bsz     = algnblk( flashAddr );
+   	if ( flashSize < bsz ) {
+		/* if we need to erase less try to find a smaller block */
+		bsz = sz2bsz( flashSize );
+	}
+	/* up-align end */
+	flashSize = ( flashAddr + flashSize + bsz - 1) & ~ (bsz - 1);
+	/* down-align start */
+	aligned = flashAddr & ~ (bsz - 1);
+
+	if ( progress && (st = progress(flash, userData, AT25_ERASE, aligned, flashSize - aligned)) < 0 ) {
+		goto bail;
+	}
+
+	if ( (st = at25_status( flash )) < 0 ) {
+		fprintf(stderr, "at25_status() failed\n");
+		goto bail;
+	}
+
+	if ( 0 == ( st & AT25_ST_WEL ) ) {
+		fprintf(stderr, "Unable to erase; write-protection still engaged (use Wena?)\n");
+		goto bail;
+	}
+
+	while ( aligned < flashSize ) {
+
+		if ( (st = at25_global_unlock( flash )) ) {
+			fprintf(stderr, "at25_global_unlock() failed\n");
+			goto bail;
+		}
+
+		if ( (st = at25_block_erase( flash, aligned, bsz )) < 0 ) {
+			fprintf(stderr, "at25_block_erase(%zd) failed\n", flashSize);
+			goto bail;
+		}
+
+		aligned += bsz;
+
+		if ( progress && (st = progress(flash, userData, AT25_ERASE, aligned, flashSize - aligned)) < 0 ) {
+			goto bail;
+		}
+
+	}
+
+	st = 0;
+bail:
+	return st;
 }

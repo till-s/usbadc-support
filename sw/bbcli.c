@@ -83,35 +83,6 @@ static void usage(const char *nm)
     printf("   %s -a 0x00000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
 }
 
-static const int blocks [] = {
-	4*1024,
-	32*1024,
-	64*1024
-};
-
-/* largest block smaller than 'sz' */
-static int sz2bsz(int sz)
-{
-int i;
-	for ( i = sizeof(blocks)/sizeof(blocks[0]) - 1; i >= 0; i-- ) {
-		if ( blocks[i] <= sz ) {
-			return blocks[i];
-		}
-	}
-	return blocks[0];
-}
-
-static int algnblk(unsigned addr)
-{
-int i;
-	for ( i = sizeof(blocks)/sizeof(blocks[0]) - 1; i >= 0; i-- ) {
-		if ( (addr & (blocks[i] - 1)) == 0 ) {
-			return blocks[i];
-		}
-	}
-	return blocks[0];
-}
-
 #define TEST_I2C 1
 #define TEST_ADC 3
 #define TEST_FEG 4
@@ -587,6 +558,46 @@ const char *  xt = "";
 	fprintf(f, "ADC Buffer size: %ld (%d-bit%s) samples/channel.\n", sz, bs, xt);
 }
 
+typedef struct {
+	int    iter;
+} AT25ProgressData;
+
+static int
+at25Progress(AT25Flash *flash, void *closure, int flag, unsigned addr, unsigned remain)
+{
+	AT25ProgressData *pd = closure;
+	if ( !! (flag & AT25_ERASE ) ) {
+		if ( pd->iter < 0 ) {
+			printf("Erasing 0x%x/%d bytes from address 0x%x\n", remain, remain, addr);
+			if ( pd->iter < -1 ) {
+				return -EACCES;
+			}
+		} else {
+			printf("e"); fflush(stdout);
+		}
+	} else {
+		if ( pd->iter >= 0 ) {
+			if ( !! (flag & AT25_CHECK_ERASED) ) {
+				printf("z"); fflush(stdout);
+			}
+			if ( !! (flag & AT25_EXEC_PROG) ) {
+				printf("."); fflush(stdout);
+			}
+			if ( !! (flag & AT25_CHECK_VERIFY) ) {
+				printf("v"); fflush(stdout);
+			}
+		}
+	}
+	pd->iter++;
+	if ( 0 == remain || (pd->iter > 0 && (0 == pd->iter % 64))) {
+		printf("\n");
+	}
+	if ( 0 == remain ) {
+		pd->iter = -1;
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 const char        *devn;
@@ -631,6 +642,7 @@ const char        *h5comment = NULL;
 const char        *jsonIFnam = NULL;
 const char        *jsonOFnam = NULL;
 ScopeParams       *settings  = NULL;
+AT25ProgressData   pd;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
@@ -1006,15 +1018,13 @@ ScopeParams       *settings  = NULL;
 					goto bail;
 				}
 
-				if ( at25_prog( flash, flashAddr, progMap, progSize, cmd ) < 0 ) {
+				pd.iter = -1;
+				if ( at25_prog( flash, flashAddr, progMap, progSize, cmd, at25Progress, &pd ) < 0 ) {
 					fprintf(stderr, "Programming flash failed\n");
 					goto bail;
 				}
 			} else if ( strstr(op, "Erase") ) {
-
-				unsigned aligned;
-                unsigned bsz;
-				int      st;
+				int              st;
 
 				if ( doit < 0 ) {
 					printf("Erase: skipping during verify (-?)\n");
@@ -1032,51 +1042,18 @@ ScopeParams       *settings  = NULL;
 					continue;
 				}
 
-				/* biggest block that aligns to flashAddr */
-                bsz     = algnblk( flashAddr );
-                if ( i < bsz ) {
-					/* if we need to erase less try to find a smaller block */
-					bsz = sz2bsz( i );
-				}
-				/* up-align end */
-                i = ( flashAddr + i + bsz - 1) & ~ (bsz - 1);
-				/* down-align start */
-                aligned = flashAddr & ~ (bsz - 1);
+				pd.iter = doit > 0 ? -1 : -2;
+printf("doit %d, iter %d\n", doit, pd.iter);
+				st = at25_area_erase(flash, flashAddr, i, at25Progress, &pd);
+				if ( st < 0 ) {
+					if ( -EACCES == st ) {
+                        fprintf(stderr, "... bailing out -- please use -! to proceed or -? to just verify the flash\n");
 
-				printf("Erasing 0x%x/%d bytes from address 0x%x\n", i - aligned, i - aligned, aligned);
-
-				if ( doit <= 0 ) {
-					printf("... bailing out -- please use -! to proceed or -? to just verify the flash\n");
-					continue;
-				}
-
-				if ( (st = at25_status( flash )) < 0 ) {
-					fprintf(stderr, "at25_status() failed\n");
+						continue;
+					}
 					goto bail;
 				}
 
-				if ( 0 == ( st & AT25_ST_WEL ) ) {
-					fprintf(stderr, "Unable to erase; write-protection still engaged (use Wena?)\n");
-					goto bail;
-				}
-
-				while ( aligned < i ) {
-
-					if ( at25_global_unlock( flash ) ) {
-						fprintf(stderr, "at25_global_unlock() failed\n");
-						goto bail;
-					}
-
-					if ( at25_block_erase( flash, aligned, bsz ) < 0 ) {
-						fprintf(stderr, "at25_block_erase(%d) failed\n", i);
-						goto bail;
-					}
-					printf("."); fflush(stdout);
-
-					aligned += bsz;
-
-				}
-				printf("\n");
 			} else {
 				fprintf(stderr, "Skipping unrecognized SPI command '%s'\n", op);
 			}
