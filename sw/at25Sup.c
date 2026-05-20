@@ -421,7 +421,7 @@ int       flag = cmp ? AT25_CHECK_VERIFY : AT25_CHECK_ERASED;
 			}
 			wrkAddr += got;
 			wrk     -= got;
-			if ( progress && (st = progress(flash, userData, flag, addr, len)) < 0 ) {
+			if ( progress && (st = progress(flash, userData, flag, wrkAddr, wrk)) < 0 ) {
 				return st;
 			}
 		}
@@ -663,7 +663,6 @@ int i;
 
 int
 at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, AT25Progress progress, void *userData)
-
 {
 
 unsigned aligned;
