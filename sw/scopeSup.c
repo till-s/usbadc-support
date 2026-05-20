@@ -210,7 +210,10 @@ static double
 getDfltScaleVolt( FWInfo *fw )
 {
 double dfltScaleVolt;
-	switch ( fw_get_board_version( fw ) ) {
+unsigned version;
+	switch ( (version = fw_get_board_version( fw )) ) {
+		case 255: /* simulator */
+			return 0.75;
 		case 0:
 			/* at full attenuation the gain is 6dB; final division by 10
 			 * yields gain at 0dB.
@@ -233,7 +236,7 @@ double dfltScaleVolt;
 			dfltScaleVolt  = 0.75 / (0.5 * 1.98/(1 + 98.0/301.0) * (226.0/301.0) ) / 100.0;
 			break;
 		default:
-			fprintf(stderr, "FATAL ERROR: getDfltScaleVolt(): unsupported board version\n");
+			fprintf(stderr, "FATAL ERROR: getDfltScaleVolt(): unsupported board version %u\n", version);
 			abort();
 		break;
 	}
@@ -572,6 +575,13 @@ int st;
 			{
 			scp->dacData.offset = VOLT_REF*BRD_V2_G_REF;
 			scp->dacData.scale  = -VOLT_REF*BRD_V2_G_DAC;
+			}
+		break;
+
+		case 255: /* simulator */
+			{
+			scp->dacData.offset = 0.0;
+			scp->dacData.scale  = VOLT_REF;
 			}
 		break;
 
