@@ -125,7 +125,8 @@ architecture sim of CommandWrapperSim is
       );
    end component RamEmul;
 
-   signal regs : Slv8Array(0 to NUM_REGS_C - 1) := (others => (others => '0'));
+   signal regs      : Slv8Array(0 to NUM_REGS_C - 1) := (others => (others => '0'));
+   signal scopeRegs : Slv8Array(0 to 2) := (others => (others => '0'));
 
 begin
 
@@ -395,10 +396,14 @@ begin
          viol   => open
       );
 
-   P_REG_RD : process ( regAddr, regRdnw, regs ) is
+   P_REG_RD : process ( regAddr, regRdnw, regs, scopeRegs ) is
+      variable regIdx : integer;
    begin
       regErr  <= '0';
-      case ( to_integer( regAddr ) ) is
+      regIdx  := to_integer(regAddr);
+      case ( regIdx ) is
+         when 0 | 1 | 2 => -- USR CSR
+            regRdat <= scopeRegs(regIdx);
          when 4 | 24  =>
             regRDat <= x"14";
             regErr  <= not regRdnw;
@@ -440,7 +445,9 @@ begin
          if ( regVld = '1' ) then
             if ( rdy = '1' ) then
                if ( regRdnw = '0' ) then
-                  if    ( regAddr = 10 or regAddr = 30 ) then
+                  if ( regAddr >= scopeRegs'low and regAddr <= scopeRegs'high ) then
+                     scopeRegs(to_integer(regAddr)) <= regWDat;
+                  elsif    ( regAddr = 10 or regAddr = 30 ) then
                      adcLoad <= '1';
                      regs(0) <= regWDat;
                   elsif ( regAddr = 11 or regAddr = 31 ) then
