@@ -30,8 +30,8 @@ static void usage(const char *nm)
 	printf("usage: %s [-hvDI!?] [-d usb-dev] [-S SPI_flashCmd] [-a flash_addr] [-f flash_file] [-j|J json_file] [register] [values...]\n", nm);
 	printf("   -S cmd{,cmd}       : commands to execute on 25DF041 SPI flash (see below).\n");
 	printf("   -f flash-file      : file to write/verify when operating on SPI flash.\n");
-    printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
-    printf("   -?                 : instead of programming the flash verify its contents against a file (-f also required).\n");
+	printf("   -!                 : must be given in addition to flash-write/program command. This is a 'safety' feature.\n");
+	printf("   -?                 : instead of programming the flash verify its contents against a file (-f also required).\n");
 	printf("   -a address         : start-address for SPI flash operations [0x%x].\n", FLASHADDR_DFLT);
 	printf("   -I                 : address I2C clock (5P49V5925). Supply register address and values (when writing).\n");
 	printf("   -D                 : address I2C DAC (47CVB02). Supply register address and values (when writing).\n");
@@ -42,20 +42,20 @@ static void usage(const char *nm)
 	printf("   -B                 : dump ADC buffer (raw).\n");
 	printf("   -5 hdf5_filename   : dump ADC buffer (HDF5).\n");
 	printf("   -C <comment>       : add <comment> to the HDF5 data.\n");
-    printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor', 'extTrgOE').\n");
-    printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", ACQ_LD_SCALE_ONE);
-    printf("                              and may be appended with ':hysteresis'\n");
-    printf("                              (hysteresis always positive)\n");
+	printf("   -T [op=value]      : set acquisition parameter and trigger (op: 'level', 'autoMS', 'decim', 'src', 'edge', 'npts', 'nsmpl', 'factor', 'extTrgOE').\n");
+	printf("                        NOTE: 'level' is normalized to int16 range; 'factor' to 2^%d!\n", ACQ_LD_SCALE_ONE);
+	printf("                              and may be appended with ':hysteresis'\n");
+	printf("                              (hysteresis always positive)\n");
 	printf("   -p                 : dump acquisition parameters.\n");
 	printf("   -F                 : flush ADC buffer.\n");
 	printf("   -P                 : Program Front-end -- comma-separated list of '<parm>[channel]=<value>'.\n");
 	printf("                        If no channel index is specified the all channels are set.\n");
-    printf("                           Coupling=AC|DC\n");
-    printf("                           Termination=On|Off\n");
-    printf("                           FECAttenuator=On|Off\n");
-    printf("                           DACRangeHigh=On|Off\n");
-    printf("                           PGAAttenuation=<value_in_dB>\n");
-    printf("                         Example: -PTerm[0]=On,Term[1]=Off,Coupling=AC\n");
+	printf("                           Coupling=AC|DC\n");
+	printf("                           Termination=On|Off\n");
+	printf("                           FECAttenuator=On|Off\n");
+	printf("                           DACRangeHigh=On|Off\n");
+	printf("                           PGAAttenuation=<value_in_dB>\n");
+	printf("                         Example: -PTerm[0]=On,Term[1]=Off,Coupling=AC\n");
 	printf("   -J <json_file>     : save current settings to <json_file>.\n");
 	printf("   -j <json_file>     : load settings from <json_file>.\n");
 	printf("   -R <reg_op>        : register read/write operation:\n");
@@ -71,16 +71,16 @@ static void usage(const char *nm)
 	printf("       Reset          : reset the flash device.\n");
 	printf("       Resume         : resume from (ultra-) power down\n");
 	printf("       Rd<size>       : read and print <size> bytes [100] (starting at -a <addr>)\n");
-    printf("       Wena           : enable write/erase -- needed for erasing; the programming operation does this implicitly\n");
-    printf("       Wdis           : disable write/erase (programming operation still implicitly enables writing).\n");
-    printf("       Prog           : program flash.\n");
-    printf("       Erase<size>    : erase a block of <size> bytes. Starting address (-a) is down-aligned to block\n");
-    printf("                        size and <size> is up-aligned to block size: 4k, 32k, 64k or entire chip.\n");
-    printf("                        <size> may be omitted if '-f' is given. The file size will be used...\n");
+	printf("       Wena           : enable write/erase -- needed for erasing; the programming operation does this implicitly\n");
+	printf("       Wdis           : disable write/erase (programming operation still implicitly enables writing).\n");
+	printf("       Prog           : program flash.\n");
+	printf("       Erase<size>    : erase a block of <size> bytes. Starting address (-a) is down-aligned to block\n");
+	printf("                        size and <size> is up-aligned to block size: 4k, 32k, 64k or entire chip.\n");
+	printf("                        <size> may be omitted if '-f' is given. The file size will be used...\n");
 	printf("\n");
-    printf("Example: erase and write 'foo.bin' starting at address 0x00000:\n");
+	printf("Example: erase and write 'foo.bin' starting at address 0x00000:\n");
 	printf("\n");
-    printf("   %s -a 0x00000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
+	printf("   %s -a 0x00000 -f foo.bin -SWena,Erase,Prog -!\n", nm);
 }
 
 #define TEST_I2C 1
@@ -115,7 +115,7 @@ double s;
 		fprintf(stderr, "Error -- parseAcqParam: unable to scan value in '%s'\n", tok);
 		return -1;
 	}
-    if ( s > 2.0 ) {
+	if ( s > 2.0 ) {
 		*d2p = (long)s;
 	} else {
 		*d2p = (long)round(exp2(ACQ_LD_SCALE_ONE) * s);
@@ -788,9 +788,9 @@ AT25ProgressData   pd;
 			}
 		printf("Decimation         : %" PRIu8 " x %" PRIu32 "\n", p.cic0Decimation, p.cic1Decimation);
 		printf("Scale\n");
-        printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
-        printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
-        printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/exp2(ACQ_LD_SCALE_ONE));
+		printf("    Cic0 Shift     : %" PRIu8 "\n", p.cic0Shift);
+		printf("    Cic1 Shift     : %" PRIu8 "\n", p.cic1Shift);
+		printf("    Scale          : %" PRIi32 " (%f)\n", p.scale, (double)p.scale/exp2(ACQ_LD_SCALE_ONE));
 		printBufInfo( stdout, scope );
 	}
 
@@ -1043,11 +1043,10 @@ AT25ProgressData   pd;
 				}
 
 				pd.iter = doit > 0 ? -1 : -2;
-printf("doit %d, iter %d\n", doit, pd.iter);
 				st = at25_area_erase(flash, flashAddr, i, at25Progress, &pd);
 				if ( st < 0 ) {
 					if ( -EACCES == st ) {
-                        fprintf(stderr, "... bailing out -- please use -! to proceed or -? to just verify the flash\n");
+						fprintf(stderr, "... bailing out -- please use -! to proceed or -? to just verify the flash\n");
 
 						continue;
 					}
@@ -1062,7 +1061,7 @@ printf("doit %d, iter %d\n", doit, pd.iter);
 
 	}
 
-    if ( regOp ) {
+	if ( regOp ) {
 		if ( opReg( fw, regOp ) ) {
 			goto bail;
 		}
