@@ -622,7 +622,7 @@ char              *test_spi  = 0;
 unsigned           flashAddr = FLASHADDR_DFLT;
 unsigned          *u_p;
 char              *progFile  = 0;
-uint8_t           *progMap   = (uint8_t*)MAP_FAILED;
+uint8_t           *progMap   = NULL;
 off_t              progSize  = 0;
 int                progRdonly= 1;
 int                doit      = 0;
@@ -929,14 +929,14 @@ AT25ProgressData   pd;
 
 				if ( progFile ) {
 					if ( progRdonly ) {
-						if ( (progMap != (uint8_t*)MAP_FAILED) ) {
+						if ( progMap ) {
 							munmap( (void*) progMap, progSize );
-							progMap  = (uint8_t*)MAP_FAILED;
+							progMap  = NULL;
 							progSize = 0;
 						}
 						progRdonly = 0;	
 					}
-					if ( fileMap(progFile,  &progMap, &progSize, i, progRdonly) ) {
+					if ( ! progMap && fileMap(progFile,  &progMap, &progSize, i, progRdonly) ) {
 						goto bail;
 					}
 					maddr = progMap;
@@ -1014,7 +1014,7 @@ AT25ProgressData   pd;
 					cmd = AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY;
 				}
 
-				if ( fileMap(progFile,  &progMap, &progSize, 0, progRdonly) ) {
+				if ( ! progMap && fileMap(progFile,  &progMap, &progSize, 0, progRdonly) ) {
 					goto bail;
 				}
 
@@ -1033,7 +1033,7 @@ AT25ProgressData   pd;
 
 
 				if ( progFile ) {
-					if ( fileMap(progFile,  &progMap, &progSize, 0, progRdonly) ) {
+					if ( ! progMap && fileMap(progFile,  &progMap, &progSize, 0, progRdonly) ) {
 						goto bail;
 					}
 					i = progSize;
@@ -1181,7 +1181,7 @@ bail:
 	if ( fw ) {
 		fw_close( fw );
 	}
-	if ( (void*)progMap != MAP_FAILED ) {
+	if ( progMap ) {
 		munmap( (void*)progMap, progSize );
 	}
 	if ( buf ) {
