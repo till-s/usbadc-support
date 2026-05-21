@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <string.h>
 #include <inttypes.h>
+#include <errno.h>
 
 #include "cmdXfer.h"
 #include "fwComm.h"
@@ -64,9 +65,14 @@ do_xfer_bb(AT25Flash *flash, const uint8_t *hdr, unsigned hlen, const uint8_t *t
 static int
 do_xfer_spi(AT25Flash *flash, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
 
-
 AT25Flash *
-at25_open(FWInfo *fw, unsigned instance)
+at25_open(FWInfo *fw, unsigned instance) {
+  AT25Flash *rv;
+  return at25_open1(fw, &rv, instance) ? NULL : rv;
+}
+
+int
+at25_open1(FWInfo *fw, AT25Flash **flashp, unsigned instance)
 {
 AT25Flash      *rv, *ok = 0;
 int             st;
@@ -77,7 +83,7 @@ int             i;
 
 	if ( ! (rv = calloc( sizeof(*rv), 1 ) ) ) {
 		fprintf(stderr, "at25FlashOpen(): no memory\n");
-		return 0;
+		return -ENOMEM;
 	}
 	rv->fw = fw;
 
@@ -92,6 +98,7 @@ int             i;
 	clock_nanosleep( CLOCK_REALTIME, 0, &wai, 0 );
 
 	if ( (id = at25_id( rv )) < 0 ) {
+		st = id;
 		fprintf(stderr, "at25FlashOpen: reading ID failed: %s\n", strerror(-id));
 		goto bail;
 	}
@@ -108,17 +115,19 @@ int             i;
 		} else {
 			fprintf(stderr, "Flash Device (JEDEC IS 0x%010" PRIx64 ") not recognized; update knownDevices\n", id);
 		}
+		st = -ENOTSUP;
 		goto bail;
 	}
 
-	ok = rv;
-	rv = 0;
+	*flashp = rv;
+	rv      = 0;
+	st      = 0;
 bail:
 	if ( rv ) {
 		free (rv);
 	}
 
-	return ok;
+	return st;
 }
 
 size_t
@@ -380,7 +389,6 @@ size_t  deviceBlockSize = at25_get_block_size( flash );
 	}
 
 	return 0;
-
 }
 
 static int verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  AT25Progress progress, void *userData)
@@ -392,40 +400,40 @@ size_t    wrk, x;
 int       got,i,st;
 int       flag = cmp ? AT25_CHECK_VERIFY : AT25_CHECK_ERASED;
 
-		if ( progress && (st = progress(flash, userData, flag, addr, len)) < 0 ) {
+	if ( progress && (st = progress(flash, userData, flag, addr, len)) < 0 ) {
+		return st;
+	}
+
+	for ( wrk = len, wrkAddr = addr; wrk > 0; ) {
+		x =  wrk > sizeof(buf) ? sizeof(buf) : wrk;
+		got = at25_spi_read( flash, wrkAddr, buf, x );
+		if ( got <= 0 ) {
+			fprintf(stderr, "at25_prog() verification failed -- unable to read back\n");
+			if ( 0 == got ) {
+				got = -EIO;
+			}
+			return got;
+		}
+		for ( i = 0; i < got; i++ ) {
+			if ( buf[i] != (cmp ? cmp[i] : 0xff) ) {
+				if ( cmp ) {
+					fprintf(stderr, "Flash @ 0x%x mismatch : 0x%02x (expected 0x%02x)\n", wrkAddr + i, buf[i], cmp[i]);
+				} else {
+					fprintf(stderr, "Flash @ 0x%x not empty: 0x%02x\n", wrkAddr + i, buf[i]);
+				}
+				mismatch++;
+			}
+		}
+		if ( cmp ) {
+			cmp += got;
+		}
+		wrkAddr += got;
+		wrk     -= got;
+		if ( progress && (st = progress(flash, userData, flag, wrkAddr, wrk)) < 0 ) {
 			return st;
 		}
-
-		for ( wrk = len, wrkAddr = addr; wrk > 0; ) {
-			x =  wrk > sizeof(buf) ? sizeof(buf) : wrk;
-			got = at25_spi_read( flash, wrkAddr, buf, x );
-			if ( got <= 0 ) {
-				fprintf(stderr, "at25_prog() verification failed -- unable to read back\n");
-				if ( 0 == got ) {
-					got = -EIO;
-				}
-				return got;
-			}
-			for ( i = 0; i < got; i++ ) {
-				if ( buf[i] != (cmp ? cmp[i] : 0xff) ) {
-					if ( cmp ) {
-						fprintf(stderr, "Flash @ 0x%x mismatch : 0x%02x (expected 0x%02x)\n", wrkAddr + i, buf[i], cmp[i]);
-					} else {
-						fprintf(stderr, "Flash @ 0x%x not empty: 0x%02x\n", wrkAddr + i, buf[i]);
-					}
-					mismatch++;
-				}
-			}
-			if ( cmp ) {
-				cmp += got;
-			}
-			wrkAddr += got;
-			wrk     -= got;
-			if ( progress && (st = progress(flash, userData, flag, wrkAddr, wrk)) < 0 ) {
-				return st;
-			}
-		}
-		return mismatch ? -EPROTO : 0;
+	}
+	return mismatch ? -EPROTO : 0;
 }
 
 int

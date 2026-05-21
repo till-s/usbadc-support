@@ -16,6 +16,12 @@ typedef struct FWInfo    FWInfo;
 AT25Flash *
 at25_open(FWInfo *fw, unsigned instance);
 
+/* Alternative 'open' method which returns 0 on success and
+ * negative errno-status on error.
+ */
+int
+at25_open1(FWInfo *fw, AT25Flash **flashp, unsigned instance);
+
 void
 at25_close(AT25Flash *flash);
 
