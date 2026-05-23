@@ -93,7 +93,7 @@ unsigned      idiv = 0;
 unsigned long fdiv = 0;
 
 	if ( (val = readReg( fw, idivReg + 0 )) < 0 ) return val;
-	idiv = ((uint8_t) val) & 0xf;
+	idiv = ((uint8_t) (val & 0xff));
 	if ( (val = readReg( fw, idivReg + 1 )) < 0 ) return val;
 	idiv = (idiv << 4) | ((((uint8_t)val) & 0xf0) >> 4);
 	if ( (val = readReg( fw, fdivReg + 0 )) < 0 ) return val;
@@ -102,8 +102,10 @@ unsigned long fdiv = 0;
 	fdiv = (fdiv << 8) | (uint8_t)val;
 	if ( (val = readReg( fw, fdivReg + 2 )) < 0 ) return val;
 	fdiv = (fdiv << 8) | (uint8_t)val;
-	if ( (val = readReg( fw, fdivReg + 3 )) < 0 ) return val;
-	fdiv = (fdiv << lstShft) | ((uint8_t)val >> (8 - lstShft));
+	if ( lstShft ) {
+		if ( (val = readReg( fw, fdivReg + 3 )) < 0 ) return val;
+		fdiv = (fdiv << lstShft) | ((uint8_t)val >> (8 - lstShft));
+	}
 
 	*div = (double)idiv + (double)fdiv / exp2(24.0);
 
@@ -114,7 +116,7 @@ unsigned long fdiv = 0;
 int
 versaClkGetFBDivFlt(FWInfo *fw, double *div)
 {
-	return getFltDiv( fw, 0x17, 0x19, 8, div );
+	return getFltDiv( fw, 0x17, 0x19, 0, div );
 }
 
 int
