@@ -259,10 +259,14 @@ int      val, st;
     spreVal = (uint8_t)val;
 
     /* switch mux2 off (enable select bits as required below) */
-    mux2Val &= ~(ODIV_CR_SELB_NORM | ODIV_CR_SEL_EXT | ODIV_CR_INT_MODE | ODIV_CR_EN_FOD);
-	/* assert resetb (deassert reset) */
-    mux2Val |=  ODIV_CR_RSTB;
+    mux2Val &= ~ MUX2_MODE_MASK;
+	/* assert reset; if the FOD is enabled then 'SetOutDiv' shall
+	 * be used to program the dividers and deassert reset
+	 */
+    mux2Val &= ~ ODIV_CR_RSTB;
 
+	/* NOTE: WHEN CHANGING BITS IN mux2 MODIFY versaClkGetFODRoute ACCORDINGLY */
+	/* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
     switch ( rte ) {
       case OFF:
         spreVal &= ~spreBit;            /* disable cascade  */
@@ -361,7 +365,7 @@ unsigned divCReg = ODIV1_CR + ((outp - 1) * 0x10);
 unsigned fdivReg = divCReg  + 1;
 unsigned idivReg = fdivReg  + 0xb;
 int      val, st;
-uint8_t  divCVal;
+uint8_t  divCVal, regVal;
 
 	if ( idiv > 4095 ) {
 		return -EINVAL;
@@ -372,18 +376,7 @@ uint8_t  divCVal;
 	if ( ( val = readReg( fw, divCReg ) ) < 0 )    return val;
     divCVal = (uint8_t)val;
 
-	if ( 0 == idiv && 0 == fdiv ) {
-        divCVal &= ~ ODIV_CR_RSTB;
-		return writeReg( fw, divCReg, 0x01 );
-	}
-
-	divCVal |= ODIV_CR_RSTB;
-
     if ( (divCVal & ODIV_CR_SEL_EXT) ) {
-		if ( ! (divCVal & ODIV_CR_EN_FOD) ) {
-			fprintf(stderr, "versaClkSetOutDiv: WARNING: output %d is chained and not using FOD\n", outp);
-			return -EFAULT;
-		}
 		if ( fdiv != 0 ) {
 			fprintf(stderr, "versaClkSetOutDiv: WARNING: output %d is chained; truncating fractional part\n", outp);
 			if ( fdiv >= (1<<29) && idiv < 0xfff ) {
@@ -394,11 +387,15 @@ uint8_t  divCVal;
 	}
 
 	if ( (st = writeReg( fw, idivReg + 0, (idiv >> 4 )        )) < 0 ) return st;
-	if ( (st = writeReg( fw, idivReg + 1, (idiv << 4 ) & 0xf0 )) < 0 ) return st;
+	if ( (st = readReg ( fw, idivReg + 1                      )) < 0 ) return st;
+	regVal = (st & 0x0f) | ( (idiv<<4) & 0xf0 );
+	if ( (st = writeReg( fw, idivReg + 1, regVal              )) < 0 ) return st;
 	if ( (st = writeReg( fw, fdivReg + 0, (fdiv >> 22)        )) < 0 ) return st;
 	if ( (st = writeReg( fw, fdivReg + 1, (fdiv >> 14)        )) < 0 ) return st;
 	if ( (st = writeReg( fw, fdivReg + 2, (fdiv >>  6)        )) < 0 ) return st;
-	if ( (st = writeReg( fw, fdivReg + 3, (fdiv <<  2) & 0xfc )) < 0 ) return st;
+	if ( (st = readReg ( fw, fdivReg + 3                      )) < 0 ) return st;
+	regVal = (st & 0x03) | ((fdiv << 2) & 0xfc);
+	if ( (st = writeReg( fw, fdivReg + 3, regVal              )) < 0 ) return st;
 
 #ifdef USE_INT_MODE
 	if ( 0 == fdiv ) {
@@ -406,11 +403,14 @@ uint8_t  divCVal;
 		divCVal |= ODIV_CR_INT_MODE;
 	}
 #endif
-    /* In non-chained mode we explicitly enable the FOD */
-    divCVal |= ODIV_CR_EN_FOD;
+
+	/* SetFODRoute enabled the FOD; take it out of reset */
+	if ( !! (divCVal & ODIV_CR_EN_FOD) ) {
+		divCVal |= ODIV_CR_RSTB;
+	}
 
 	if ( (st = writeReg( fw, divCReg, divCVal )) < 0 ) return st;
-	
+
 	return 0;
 }
 
@@ -423,8 +423,6 @@ unsigned idivReg = fdivReg  + 0xb;
 int      st;
 
 	if ( (st = checkOut( "versaClkGetOutDiv()", outp )) < 0 ) return st;
-
-	/* FIXME - deal with routing ? */
 
 	return getFltDiv( fw, idivReg, fdivReg, 6, div );
 }
