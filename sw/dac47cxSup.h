@@ -25,7 +25,7 @@ dac47cxSet(FWInfo *fw, unsigned channel, int val);
 int
 dac47cxGet(FWInfo *fw, unsigned channel, uint16_t *val);
 
-typedef enum { DAC47XX_VREF_INTERNAL_X1 } DAC47CXRefSelection;
+typedef enum DAC47CXRefSelection { DAC47XX_VREF_INTERNAL_X1 } DAC47CXRefSelection;
 
 int
 dac47cxSetRefSelection(FWInfo *fw, DAC47CXRefSelection sel);

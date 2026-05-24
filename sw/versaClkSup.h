@@ -34,7 +34,7 @@ versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div);
 int
 versaClkVCOCal(FWInfo *fw);
 
-typedef enum {
+typedef enum VersaClkFODRoute {
   NORMAL   = 0, /* PLL          -> FOD -> OUT */
   CASC_FOD = 1, /* PREVIOUS_OUT -> FOD -> OUT */
   CASC_OUT = 2, /* PREVIOUS_OUT --------> OUT */
@@ -50,19 +50,19 @@ versaClkWriteReg(FWInfo *fw, unsigned reg, uint8_t val);
 int
 versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 
-typedef enum {
+typedef enum VersaClkOutMode {
 	OUT_CMOS = 1,
 	OUT_LVDS = 3
 } VersaClkOutMode;
 
-typedef enum {
+typedef enum VersaClkOutSlew {
 	SLEW_080 = 0,
 	SLEW_085 = 1,
 	SLEW_090 = 2,
 	SLEW_100 = 3
 } VersaClkOutSlew;
 
-typedef enum {
+typedef enum VersaClkOutLevel {
 	LEVEL_18 = 0,
 	LEVEL_25 = 2,
 	LEVEL_33 = 3
