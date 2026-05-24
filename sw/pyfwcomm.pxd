@@ -127,6 +127,7 @@ cdef extern from "versaClkSup.h":
   int            versaClkGetOutDivFlt(FWInfo *fw, unsigned outp, double *div) nogil
   int            versaClkSetOutCfg(FWInfo *fw, unsigned outp, VersaClkOutMode mode, VersaClkOutSlew slew, VersaClkOutLevel level) nogil
   int            versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte) nogil
+  int            versaClkGetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute *rte) nogil
   int            versaClkReadReg(FWInfo *fw, unsigned reg) nogil
   int            versaClkWriteReg(FWInfo *fw, unsigned reg, uint8_t val) nogil
 

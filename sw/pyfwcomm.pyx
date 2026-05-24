@@ -294,6 +294,18 @@ cdef class VersaClk(FwDev):
       else:
         raise IOError("VersaClk.setFODRoute()")
 
+  def getFODRoute(self, int out):
+    cdef int rv
+    cdef VersaClkFODRoute rte
+    with self._mgr as fw, nogil:
+      rv = versaClkGetFODRoute(fw, out, &rte)
+    if ( rv < 0 ):
+      if ( -3 == rv ):
+        raise ValueError("VersaClk.getFODRoute() -- invalid output")
+      else:
+        raise IOError("VersaClk.getFODRoute()")
+    return rte
+
   def setOutCfg(self, int out, VersaClkOutMode mode, VersaClkOutSlew slew, VersaClkOutLevel level):
     cdef int rv
     cdef VersaClkOutMode cmode
@@ -747,7 +759,7 @@ cdef class FwComm:
     cdef int st,forceVal
     forceVal = force
     with self._scp as scp, nogil:
-      st = scope_init( scp, forceVal ) 
+      st = scope_init( scp, forceVal )
     if ( st < 0 ):
       raise RuntimeError("scopeInit failed")
 
@@ -1121,6 +1133,9 @@ cdef class FwCommExprt(FwComm):
 
   def clkSetFODRoute(self, int out, VersaClkFODRoute rte):
     self._clk.setFODRoute( out, rte )
+
+  def clkGetFODRoute(self, int out):
+    return self._clk.getFODRoute( out )
 
   def clkReadReg(self, int reg):
     return self._clk.readReg(reg)

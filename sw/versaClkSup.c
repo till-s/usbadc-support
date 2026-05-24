@@ -183,7 +183,7 @@ int      st;
  * this connection with the previous output's 'aux_en' or 'en_refmode'
  * for output 1, respectively.
  *
- *                     
+ *
  *  REF  -[SI1]-o----------------------\
  *               \----\             MO1| -o---> OUT1
  *                 MI1| --> FOD1 -> ---/  |
@@ -217,12 +217,33 @@ int      st;
  *  in the output control register (0x21, 0x31, ...)
  */
 
+#define MUX2_MODE_MASK (ODIV_CR_SELB_NORM | ODIV_CR_SEL_EXT | ODIV_CR_INT_MODE | ODIV_CR_EN_FOD)
+
+static unsigned
+mux1RegOff(unsigned outp)
+{
+	return ( OUTP1_CR + ((outp - 1) * 2) + 1 );
+}
+
+static unsigned
+mux2RegOff(unsigned outp)
+{
+	return ( ODIV1_CR + ((outp - 1) * 0x10) );
+}
+
+static unsigned
+spreRegOff(unsigned outp)
+{
+	return ( ( outp == 1 ) ? PSRC_CR            : SKEW_INT_CR1 + ((outp - 2) * 0x10) );
+}
+
 int
 versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte)
 {
-unsigned mux1Reg = OUTP1_CR + ((outp - 1) * 2) + 1;
-unsigned mux2Reg = ODIV1_CR + ((outp - 1) * 0x10);
-unsigned spreReg = ( outp == 1 ) ? PSRC_CR            : SKEW_INT_CR1 + ((outp - 2) * 0x10);
+unsigned mux1Reg = mux1RegOff( outp );
+unsigned mux2Reg = mux2RegOff( outp );
+unsigned spreReg = spreRegOff( outp );
+
 uint8_t  spreBit = ( outp == 1 ) ? PSRC_CR_EN_REFMODE : SKEW_INT_CR_EN_AUX;
 
 uint8_t  mux1Val, mux2Val, spreVal;
@@ -285,6 +306,51 @@ int      val, st;
     if ( (st = writeReg( fw, mux1Reg, mux1Val )) < 0 ) return st;
     if ( (st = writeReg( fw, mux2Reg, mux2Val )) < 0 ) return st;
 
+	return 0;
+}
+
+int
+versaClkGetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute *rte)
+{
+unsigned mux2Reg = mux2RegOff( outp );
+uint8_t  mux2Val;
+int      val;
+
+	if ( (val = checkOut( "versaClkSetFODRoute()", outp )) < 0 ) {
+		return val;
+	}
+
+	if ( ! rte ) {
+		return -EINVAL;
+	}
+
+	if ( (val = readReg( fw, mux2Reg )) < 0 ) {
+		return val;
+	}
+
+	mux2Val = ( val & MUX2_MODE_MASK );
+
+	switch ( mux2Val ) {
+		case   0:
+			*rte = OFF;
+		break;
+        case  (ODIV_CR_SELB_NORM | ODIV_CR_SEL_EXT | ODIV_CR_INT_MODE | ODIV_CR_EN_FOD):
+			*rte = CASC_FOD;
+		break;
+        case  (ODIV_CR_SELB_NORM | ODIV_CR_SEL_EXT):
+			*rte = CASC_OUT;
+		break;
+		case  ( ODIV_CR_EN_FOD
+#ifdef USE_INT_MODE
+				| ODIV_CR_INT_MODE
+#endif
+		      ):
+			*rte = NORMAL;
+		break;
+
+		default:
+			return -ENOSYS;
+	}
 	return 0;
 }
 

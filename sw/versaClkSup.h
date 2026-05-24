@@ -50,6 +50,9 @@ versaClkWriteReg(FWInfo *fw, unsigned reg, uint8_t val);
 int
 versaClkSetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute rte);
 
+int
+versaClkGetFODRoute(FWInfo *fw, unsigned outp, VersaClkFODRoute *rte);
+
 typedef enum VersaClkOutMode {
 	OUT_CMOS = 1,
 	OUT_LVDS = 3
