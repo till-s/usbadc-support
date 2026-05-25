@@ -325,7 +325,7 @@ int ch, st;
 		if ( (st = fecSetTermination( scp, ch, 0 )) && -ENOTSUP != st ) {
 			return st;
 		}
-		if ( (st = fecSetAttDb( scp, ch, 0 )) && -ENOTSUP != st ) {
+		if ( (st = fecSetAttDb( scp, ch, 20 )) && -ENOTSUP != st ) {
 			return st;
 		}
 		if ( (st = fecSetACMode( scp, ch, 0 )) && -ENOTSUP != st ) {
@@ -1594,7 +1594,7 @@ int st;
 	if ( channel >= scope_get_num_channels( scp ) ) {
 		return -EINVAL;
 	}
-	
+
 	st = scp && scp->pga && scp->pga->getAttDb ? scp->pga->getAttDb(scp->fw, channel, attp) : -ENOTSUP;
 	return st;
 }
@@ -1909,7 +1909,7 @@ ch_set_dbl(ch_set_s *a, int (*f)(ScopePvt *, unsigned, double), double *off, con
 {
 	int    st;
 	double v;
-      
+
 	v = *(double*)((uintptr_t)&a->p->afeParams[a->ch] + (uintptr_t)off);
 	if ( isnan( v ) ) {
 		/* not parameter available; ignore */
@@ -1931,7 +1931,7 @@ ch_set_uns(ch_set_s *a, int (*f)(ScopePvt *, unsigned, unsigned), int *off, cons
 {
 	int    st;
 	int    v;
-      
+
 	v = *(int*)((uintptr_t)&a->p->afeParams[a->ch] + (uintptr_t)off);
 	if ( v < 0 ) {
 		/* no parameter available; ignore */
