@@ -157,6 +157,12 @@ cdef extern from "scopeSup.h":
   ScopePvt      *scope_open(FWInfo *fw) nogil
   void           scope_close(ScopePvt *) nogil
 
+  double         scope_get_reference_freq(ScopePvt *) nogil
+  int            scope_get_clock_out_freq(ScopePvt *scp, double *pfreq, int *pisReference) nogil
+  int            scope_set_clock_out_freq(ScopePvt *scp, double freq) nogil
+  int            scope_set_clock_out_to_ref(ScopePvt *scp) nogil
+
+
   int            scope_init(ScopePvt *, int force) nogil
   unsigned long  buf_get_size(ScopePvt *) nogil
   double         buf_get_sampling_freq(ScopePvt *) nogil

@@ -2101,3 +2101,284 @@ scope_trig_hysteresis_volt(const ScopeParams *p)
 	return level2Volt( p, p->acqParams.hysteresis );
 }
 
+static int
+get_fdiv_rte(ScopePvt *scp, unsigned out, double *pdiv, VersaClkFODRoute *prte)
+{
+int status;
+	if ( (status = versaClkGetFODRoute( scp->fw, out, prte )) ) {
+		return status;
+	}
+	switch ( *prte ) {
+		case OFF:
+			*pdiv = 1.0/0.0;
+		break;
+
+		case NORMAL: /* fall through */
+		case CASC_FOD:
+			if ( (status = versaClkGetOutDivFlt( scp->fw, out, pdiv )) ) {
+				return status;
+			}
+			*pdiv *= 2.0;
+		break;
+
+		case CASC_OUT:
+			*pdiv = 1.0;
+		break;
+
+		default:
+			return -EINVAL;
+	}
+	return 0;
+}
+
+static int
+check_clock_out_board_version(ScopePvt *scp)
+{
+	switch ( fw_get_board_version( scp->fw ) ) {
+		case 1:
+		case 2:
+		case 3:
+			/* All these use output 2 and can cascade FOD1 */
+			break;
+
+		default:
+			/* Other configurations not supported */
+			return -ENOTSUP;
+	}
+	return 0;
+}
+
+int
+scope_get_clock_out_freq(ScopePvt *scp, double *pfreq, int *pisReference)
+{
+unsigned         out1 = 1, out2 = 2;
+int              status;
+VersaClkFODRoute rte1, rte2;
+double           freq = 0.0;
+double           fod1 = 1.0, fod2 = 1.0, fbdiv = 1.0;
+double           fref;
+int              isReference = 0;
+
+	if ( (status = check_clock_out_board_version( scp )) ) {
+		return status;
+	}
+
+	fref = scope_get_reference_freq( scp );
+
+	if ( isnan( fref ) ) {
+		return -ENOTSUP;
+	}
+
+	if ( (status = get_fdiv_rte( scp, out2, &fod2, &rte2 )) ) {
+		return status;
+	}
+
+	if ( CASC_FOD == rte2 || CASC_OUT == rte2 ) {
+		if ( (status = get_fdiv_rte( scp, out1, &fod1, &rte1 )) ) {
+			return status;
+		}
+		/* if both outputs are cascaded then the source is
+		 * the reference!
+		 */
+		isReference = (CASC_FOD == rte1 || CASC_OUT == rte1);
+	}
+
+	if ( isReference ) {
+		/* until here 'isReference' indicates the clock source;
+		 * to the user we communicate if the output is the
+		 * *undivided* reference!
+		 */
+		if ( CASC_OUT != rte1 || CASC_OUT != rte2 ) {
+			/* a FOD is involved */
+			isReference = 0;
+		}
+	} else {
+		if ( (status = versaClkGetFBDivFlt( scp->fw, &fbdiv )) ) {
+			return status;
+		}
+	}
+
+	freq = fref * fbdiv / fod1 / fod2;
+
+	if ( pfreq ) {
+		*pfreq = freq;
+	}
+	if ( pisReference ) {
+		*pisReference = isReference;
+	}
+
+	return 0;
+}
+
+static void
+brute_force_find_dividers(unsigned idiv, unsigned idivMax, unsigned *div1, unsigned *div2) {
+unsigned tdiv, idivPost, idivErr, tdivOpt, idivOpt, idivErrMin;
+		idivErrMin = (unsigned)-1;
+		tdivOpt    = 0;
+		idivOpt    = 0;
+		if ( (tdiv = idiv/idivMax) < 1 ) {
+			tdiv = 1;
+		}
+		while ( tdiv <= idivMax ) {
+			if ( (idivPost = idiv / tdiv) <= idivMax ) {
+				idivErr = idiv - idivPost * tdiv;
+				if ( idivErr > (tdiv>>1) && idivPost < idivMax ) {
+					idivErr  = tdiv - idivErr;
+					idivPost   += 1;
+				}
+				if ( idivErr < idivErrMin ) {
+					tdivOpt    = tdiv;
+					idivOpt    = idivPost;
+					idivErrMin = idivErr;
+					if ( 0 == idivErr ) {
+						/* no further optimization possible */
+						break;
+					}
+				}
+				if ( 0 == idivPost ) {
+					/* can't further increase tdiv */
+					break;
+				}
+			}
+			++tdiv;
+		}
+		*div1 = tdivOpt;
+		*div2 = idivOpt;
+}
+
+/* Set board output clock frequency; set to 0.0 to switch off */
+int
+scope_set_clock_out_freq(ScopePvt *scp, double freq)
+{
+int      status;
+double   fref;
+double   fbdiv;
+unsigned idivMax = 4095;
+unsigned idivPost, idivPre;
+unsigned idiv, idivTmp;
+double   fdivTmp,fdivPre;
+double   fdivMax = 4096.0 - exp2( - 24.0 );
+double   div;
+unsigned out1 = 1, out2 = 2;
+double   frac,fracMin;
+double   dummyInt;
+
+	if ( (status = check_clock_out_board_version( scp )) ) {
+		return status;
+	}
+
+	if ( freq < 0.0 ) {
+		return -EINVAL;
+	} else if ( 0.0 == freq ) {
+		if ( (status = versaClkSetFODRoute( scp->fw, out2, OFF )) ) {
+			return status;
+		}
+		if ( (status = versaClkSetFODRoute( scp->fw, out1, OFF )) ) {
+			return status;
+		}
+		return 0;
+	}
+
+	fref = scope_get_reference_freq( scp );
+
+	if ( isnan( fref ) ) {
+		return -ENOTSUP;
+	}
+
+	if ( (status = versaClkGetFBDivFlt( scp->fw, &fbdiv )) < 0 ) {
+		return status;
+	}
+
+	div = fref * fbdiv / freq;
+	if ( div < 2.0 ) {
+		/* too high... */
+		return -EINVAL;
+	}
+
+	if ( div > idivMax * 2.0 * fdivMax * 2.0 ) {
+		idiv = ceil( fref / freq / 4.0 );
+		if ( idiv > idivMax*idivMax ) {
+			return -EINVAL;
+		}
+
+		/* find best combination of integer dividers (no fractional
+		 * part if not sourced from PLL)
+		 */
+		brute_force_find_dividers( idiv, idivMax, &idivPre, &idivPost );
+		if ( (status = versaClkSetFODRoute( scp->fw, out2, CASC_FOD )) ) {
+			return status;
+		}
+		if ( (status = versaClkSetFODRoute( scp->fw, out1, CASC_FOD )) ) {
+			return status;
+		}
+		if ( (status = versaClkSetOutDiv( scp->fw, out2, idivPost, 0 )) ) {
+			return status;
+		}
+		if ( (status = versaClkSetOutDiv( scp->fw, out1, idivPre, 0 )) ) {
+			return status;
+		}
+	} else {
+		idivPost = 1;
+		/* FOD stage has implicit division by two */
+		div /= 2.0;
+		if ( div > fdivMax ) {
+			/* must engage cascade */
+			div /= 2.0; /* account for implicity by-2 FOD division */
+			/* brute-force find numbers that yield minimal fractional part */
+			fracMin = 1.0/0.0;
+			fdivPre = 0.0; /* keep compiler happy */
+            for ( idivTmp = ceil(div/fdivMax); idivTmp <= idivMax; ++idivTmp ) {
+				fdivTmp = div/(double)idivTmp;
+				if ( (frac = modf( fdivTmp, &dummyInt )) < fracMin ) {
+					fracMin  = frac;
+                    fdivPre  = fdivTmp;
+					idivPost = idivTmp;
+				}
+			}
+			if ( (status = versaClkSetFODRoute( scp->fw, out2, CASC_FOD )) ) {
+				return status;
+			}
+			if ( (status = versaClkSetFODRoute( scp->fw, out1, NORMAL   )) ) {
+				return status;
+			}
+			if ( (status = versaClkSetOutDiv( scp->fw, out2, idivPost, 0 )) ) {
+				return status;
+			}
+			if ( (status = versaClkSetOutDivFlt( scp->fw, out1, fdivPre )) ) {
+				return status;
+			}
+		} else {
+			/* Single stage; just use fractional FOD */
+			fdivPre  = div;
+			if ( (status = versaClkSetFODRoute( scp->fw, out2, NORMAL )) ) {
+				return status;
+			}
+			if ( (status = versaClkSetOutDivFlt( scp->fw, out2, fdivPre )) ) {
+				return status;
+			}
+		}
+	}
+	return 0;
+}
+
+/* Route reference clock to board output clock */
+int
+scope_set_clock_out_to_ref(ScopePvt *scp)
+{
+unsigned out1 = 1, out2 = 2;
+int      status;
+
+	if ( (status = check_clock_out_board_version( scp )) ) {
+		return status;
+	}
+
+
+	if ( (status = versaClkSetFODRoute( scp->fw, out2, CASC_OUT )) ) {
+		return status;
+	}
+
+	if ( (status = versaClkSetFODRoute( scp->fw, out1, CASC_OUT )) ) {
+		return status;
+	}
+	return 0;
+}

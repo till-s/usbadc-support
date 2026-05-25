@@ -55,6 +55,26 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
 double
 scope_get_reference_freq(ScopePvt *scp);
 
+/* Read board output clock frequency; '*pisReference' is set to 1
+ * if the reference is muxed/routed to the output and 0 otherwise;
+ * pisReference may be NULL if this information is not of interest.
+ * Likewise, pfreq may be NULL.
+ *
+ * If the returned frequency is zero then the output is off.
+ *
+ * RETURNS: 0 on success, negative error code on failure.
+ */
+int
+scope_get_clock_out_freq(ScopePvt *scp, double *pfreq, int *pisReference);
+
+/* Set board output clock frequency; set to 0.0 to switch off */
+int
+scope_set_clock_out_freq(ScopePvt *scp, double freq);
+
+/* Route reference clock to board output clock */
+int
+scope_set_clock_out_to_ref(ScopePvt *scp);
+
 /* Return
  * 0        if the ADC PLL is locked,
  * -EBUSY   if not locked

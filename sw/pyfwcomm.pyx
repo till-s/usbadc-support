@@ -769,6 +769,36 @@ cdef class FwComm:
       f = buf_get_sampling_freq( scp )
     return f
 
+  def getReferenceFreq(self):
+    cdef double f
+    with self._scp as scp, nogil:
+      f = scope_get_reference_freq( scp )
+    return f
+
+  def getClkOutFreq(self):
+    cdef double freq
+    cdef int    st,isReference
+    with self._scp as scp, nogil:
+      st = scope_get_clock_out_freq( scp, &freq, &isReference )
+    if ( st < 0 ):
+      raise RuntimeError("scope_get_clock_out_freq failed")
+    return freq, isReference
+
+  def setClkOutFreq(self, freq):
+    cdef int st
+    cdef double cfreq = freq
+    with self._scp as scp, nogil:
+      st = scope_set_clock_out_freq( scp, cfreq )
+    if ( st < 0 ):
+      raise RuntimeError("scope_set_clock_out_freq failed")
+
+  def setClkOutToRef(self):
+    cdef int st
+    with self._scp as scp, nogil:
+      st = scope_set_clock_out_to_ref( scp )
+    if ( st < 0 ):
+      raise RuntimeError("scope_set_clock_out_to_ref failed")
+
   def dacSetVolt( self, ch, v):
     self._dac.setVolt( ch, v )
 
