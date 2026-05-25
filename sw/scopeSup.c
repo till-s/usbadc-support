@@ -132,8 +132,11 @@ FWInfo           *fw       = scp->fw;
 uint8_t           brdVers  = fw_get_board_version( fw );
 double            fADC     = buf_get_sampling_freq( scp );
 double            fRef     = scope_get_reference_freq( scp );
+double            fVCOMin  = 2.5E9;
+double            fVCOMax  = 3.0E9;
 int               st, i;
 double            fVCO, outDiv;
+double            fbInt;
 
 	if ( isnan( fADC ) || isnan( fRef ) ) {
 		return -ENOTSUP;
@@ -178,29 +181,87 @@ double            fVCO, outDiv;
 		}
 	}
 
+	if ( (st = versaClkSetFODRoute( fw, OUT_ADC, NORMAL )) < 0 ) {
+		return st;
+	}
+
+	/* If OUT_EXT is cascaded set the route on the downstream
+	 * divider first; keeps its FOD in reset until the divider
+	 * is programmed
+	 */
+	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, CASC_FOD )) < 0 ) {
+		return st;
+	}
+
+	if ( OUT_FOD1 ) {
+		if ( (st = versaClkSetFODRoute( fw, OUT_FOD1, NORMAL )) < 0 ) {
+			return st;
+		}
+
+	}
+
 	if ( (st = versaClkGetFBDivFlt( fw, &fVCO )) < 0 ) {
 		return st;
 	}
 
 	fVCO  *= fRef;
-	outDiv = fVCO / fADC / 2.0; 
+	outDiv = fVCO / fADC / 2.0;
+	if ( modf( outDiv, &fbInt ) != 0.0 ) {
+		/* outDiv is not integer; see if we can find an integer
+		 * feed-back divider which yields an integer outDiv for
+		 * the ADC clock
+		 */
+		unsigned long long fRefL = round( fRef     );
+		/* account for implicit FOD div/2 */
+		unsigned long long fADCL = round( fADC*2.0 );
+		unsigned long long fbDivL;
+		unsigned long long a, b, gcd;
+		unsigned long long fRefMul;
+		unsigned long long fbDivFactLo;
+		unsigned long long fbDivFactHi;
+		/* Find GCD of fRef and fADC */
+		for ( a = fRefL, b = fADCL; a && b; ) {
+			if ( a > b ) {
+				a = a % b;
+			} else {
+				b = b % a;
+			}
+		}
+		gcd = a ? a : b;
+		fRefMul = fADCL/gcd;
+		fbDivFactLo = ceil (fVCOMin/(fRefMul*fRef));
+		fbDivFactHi = floor(fVCOMax/(fRefMul*fRef));
+		if ( fbDivFactLo <= fbDivFactHi ) {
+			/* we found a solution */
+			fbDivFactLo = (fbDivFactLo + fbDivFactHi)/2;
+			fbDivL      = fbDivFactLo * fRefMul;
+			if ( (st = versaClkSetFBDiv( fw, fbDivL, 0 )) ) {
+				return st;
+			}
+			outDiv = fbDivFactLo * fRefL / gcd;
+			fVCO = fRefL * fbDivL;
+		}
+		/* else: proceed with fractional setting;
+		 * could alternatively look for a setting with minimal
+		 * fractional part...
+		 */
+	}
+
 	if ( (st = versaClkSetOutDivFlt( fw, OUT_ADC, outDiv )) < 0 ) {
 		return st;
 	}
+
 	if ( OUT_FOD1 ) {
+		/* Set divider and deassert reset (1st stage) */
 		outDiv = fVCO / 1.0E6 / 2.0;
 		if ( (st = versaClkSetOutDivFlt( fw, OUT_FOD1, outDiv )) < 0 ) {
 			return st;
 		}
 	}
+
+	/* Program second stage taking it out of reset */
 	outDiv = 1000.0/2.0;
 	if ( (st = versaClkSetOutDivFlt( fw, OUT_EXT, outDiv ) ) < 0 ) {
-		return st;
-	}
-	if ( (st = versaClkSetFODRoute( fw, OUT_ADC, NORMAL )) < 0 ) {
-		return st;
-	}
-	if ( (st = versaClkSetFODRoute( fw, OUT_EXT, CASC_FOD )) < 0 ) {
 		return st;
 	}
 	return 0;
