@@ -8,6 +8,16 @@
 
 #include "hdf5Sup.h"
 
+int
+scope_h5_supported()
+{
+#ifdef CONFIG_WITH_HDF5
+	return 0;
+#else
+	return -ENOTSUP;
+#endif
+}
+
 #ifdef CONFIG_WITH_HDF5
 #include <hdf5.h>
 
@@ -487,6 +497,9 @@ bail:
 ScopeH5Data *
 scope_h5_create(const char *fnam, ScopeH5SampleType dtype, unsigned bitShift, const size_t *dims, size_t ndims, const void *data)
 {
+#ifndef CONFIG_WITH_HDF5
+	return NULL;
+#else
 ScopeH5SampleType dsetType = dtype;
 
 	if ( DOUBLE_T == dtype || FLOAT_T == dtype ) {
@@ -500,6 +513,7 @@ ScopeH5SampleType dsetType = dtype;
 		}
 	}
 	return scope_h5_do_create( fnam, dsetType, 0, bitShift, dtype, dims, NULL, ndims, data );
+#endif
 }
 
 ScopeH5Data *
@@ -510,7 +524,12 @@ scope_h5_create_from_hslab(const char *fnam, ScopeH5SampleType dset_type, unsign
 
 ScopeH5Data *
 scope_h5_create_only(const char *fnam, ScopeH5SampleType dset_type, unsigned precision, unsigned bitShift, const ScopeDataDimension *hdims, size_t ndims) {
+#ifndef CONFIG_WITH_HDF5
+	fprintf(stderr, "scope_h5_create_only -- HDF5 support not compiled in, sorry\n");
+	return NULL;
+#else
 	return scope_h5_do_create( fnam, dset_type, precision, bitShift, H5I_INVALID_HID, NULL, hdims, ndims, NULL );
+#endif
 }
 
 void

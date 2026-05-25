@@ -9,6 +9,13 @@
 extern "C" {
 #endif
 
+/* Check if HDF5 support is available
+ * RETURN: 0 if supported, -ENOTSUP if
+ *         unsupported.
+ */
+int
+scope_h5_supported();
+
 typedef struct ScopeH5Data   ScopeH5Data;
 typedef struct ScopeH5DSpace ScopeH5DSpace;
 
