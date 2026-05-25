@@ -8,7 +8,7 @@
 #endif
 
 /* Check if JSON support is available
- * RETURN: 0 if supported, -ENOTSUP if 
+ * RETURN: 0 if supported, -ENOTSUP if
  *         unsupported.
  */
 int
