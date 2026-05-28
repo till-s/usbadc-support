@@ -1834,6 +1834,8 @@ scope_init_params(ScopePvt *scp, ScopeParams *p) {
 	p->adcPrecisionBits = buf_get_sample_size( scp );
 	p->acqParams.mask   =  0;
 	p->trigMode         = -1;
+	p->clockOutFreqHz   = 0.0/0.0;
+	p->clockOutIsRef    = -1;
 }
 
 ScopeParams *
@@ -1955,6 +1957,11 @@ scope_get_params(ScopePvt *scp, ScopeParams *p)
 		}
 	}
 
+	st = scope_get_clock_out_freq( scp, &p->clockOutFreqHz, &p->clockOutIsRef );
+	if ( st && -ENOTSUP != st ) {
+		return st;
+	}
+
 	return 0;
 }
 
@@ -2074,7 +2081,20 @@ scope_set_params(ScopePvt *scp, ScopeParams *p)
 		st = CH_SET_DBL( &h, dacSetVolt, dacVolt, "DAC" );
 	}
 
-	return acq_set_params( scp, &p->acqParams, NULL );
+	st = acq_set_params( scp, &p->acqParams, NULL );
+	if ( st ) {
+		return st;
+	}
+	if ( p->clockOutIsRef >= 0 ) {
+		if ( p->clockOutIsRef ) {
+			st = scope_set_clock_out_to_ref( scp );
+		} else {
+			st = scope_set_clock_out_freq( scp, p->clockOutFreqHz );
+		}
+		return st;
+	}
+
+	return 0;
 }
 
 static double level2Volt(const ScopeParams *p, int l)
@@ -2246,6 +2266,26 @@ unsigned tdiv, idivPost, idivErr, tdivOpt, idivOpt, idivErrMin;
 		*div2 = idivOpt;
 }
 
+static const unsigned idivMax = 4095;
+
+double
+scope_get_clock_out_min_freq(ScopePvt *scp)
+{
+	if ( 0 != check_clock_out_board_version( scp ) ) {
+		return 0.0/0.0;
+	}
+	return scope_get_reference_freq( scp ) / (double)idivMax / (double) idivMax;
+}
+
+double
+scope_get_clock_out_max_freq(ScopePvt *scp)
+{
+	if ( 0 != check_clock_out_board_version( scp ) ) {
+		return 0.0/0.0;
+	}
+	return 500.0E6; /* arbitrary value for now */
+}
+
 /* Set board output clock frequency; set to 0.0 to switch off */
 int
 scope_set_clock_out_freq(ScopePvt *scp, double freq)
@@ -2253,7 +2293,6 @@ scope_set_clock_out_freq(ScopePvt *scp, double freq)
 int      status;
 double   fref;
 double   fbdiv;
-unsigned idivMax = 4095;
 unsigned idivPost, idivPre;
 unsigned idiv, idivTmp;
 double   fdivTmp,fdivPre;

@@ -55,6 +55,14 @@ scope_get_current_scale(ScopePvt *scp, unsigned channel, double *scl);
 double
 scope_get_reference_freq(ScopePvt *scp);
 
+/* may return NaN if clock out not supported by board revision */
+double
+scope_get_clock_out_min_freq(ScopePvt *scp);
+
+/* may return NaN if clock out not supported by board revision */
+double
+scope_get_clock_out_max_freq(ScopePvt *scp);
+
 /* Read board output clock frequency; '*pisReference' is set to 1
  * if the reference is muxed/routed to the output and 0 otherwise;
  * pisReference may be NULL if this information is not of interest.
@@ -236,6 +244,9 @@ scope_copy_params(struct ScopeParams *to, const struct ScopeParams *from);
 #define SCOPE_KEY_AUTOTRG_MS "autoTriggerMilliSeconds"
 #define SCOPE_KEY_DECIMATION "decimation"
 
+#define SCOPE_KEY_OUT_F_HZ   "clockOutFrequencyHz"
+#define SCOPE_KEY_OUT_REF    "clockOutIsReference"
+
 #define SCOPE_KEY_FULSCL_VLT "fullScaleVolt"
 #define SCOPE_KEY_CURSCL_VLT "scaleVolt"
 #define SCOPE_KEY_PGA_ATT_DB "pgaAttenuationDB"
@@ -266,6 +277,8 @@ typedef struct ScopeParams {
 	 * is not updated (initialized to -1).
 	 */
 	int           trigMode;
+	double        clockOutFreqHz;
+	int           clockOutIsRef;
 	/* 'numChannels' AFE params attached */
 	AFEParams     afeParams[];
 } ScopeParams;

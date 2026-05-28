@@ -191,6 +191,20 @@ scope_json_save(ScopePvt *scp, const char * filename, const ScopeParams *setting
 		}
 	}
 
+	if ( ! isnan( settings->clockOutFreqHz ) ) {
+		if ( json_object_set_new( top, SCOPE_KEY_OUT_F_HZ, json_real( settings->clockOutFreqHz ) ) ) {
+			st = -ENOMEM;
+			goto bail;
+		}
+	}
+
+	if ( settings->clockOutIsRef >= 0 ) {
+		if ( json_object_set_new( top, SCOPE_KEY_OUT_REF, json_integer( settings->clockOutIsRef ) ) ) {
+			st = -ENOMEM;
+			goto bail;
+		}
+	}
+
 	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_FULSCL_VLT, fullScaleVolt  );
 
 	SAVE_PERCH_DBL( top, settings, SCOPE_KEY_CURSCL_VLT, currentScaleVolt  );
@@ -298,7 +312,7 @@ jget_real_or_nan(json_t *dict, const char *key, double *d, unsigned nelms)
 		for ( ch = 0; ch < (SCLR != nelms ? nelms : 1); ++ch ) {
 			d[ch] = 0.0/0.0;
 		}
-		st = 0;	
+		st = 0;
 	}
 	return st;
 }
@@ -312,7 +326,7 @@ jget_int_or_neg(json_t *dict, const char *key, int *i, unsigned nelms)
 		for ( ch = 0; ch < (SCLR != nelms ? nelms : 1); ++ch ) {
 			i[ch] = -1;
 		}
-		st = 0;	
+		st = 0;
 	}
 	return st;
 }
@@ -583,6 +597,35 @@ scope_json_load(ScopePvt *scp, const char * filename, ScopeParams *settings)
 		}
 		settings->acqParams.mask |= ACQ_PARAM_MSK_DCM;
 	}
+
+	st = jget_real( top, SCOPE_KEY_OUT_F_HZ, &dval, SCLR, QUIET );
+	if ( -ENOKEY != st ) {
+		if ( st ) {
+			goto bail;
+		}
+		if ( dval < 0.0 ) {
+			st = -EINVAL;
+			goto bail;
+		}
+		settings->clockOutFreqHz = dval;
+	} else {
+		settings->clockOutFreqHz = 0.0/0.0;
+	}
+
+	st = jget_int( top, SCOPE_KEY_OUT_REF, &ival, SCLR, QUIET );
+	if ( -ENOKEY != st ) {
+		if ( st ) {
+			goto bail;
+		}
+		if ( ival < 0 ) {
+			st = -EINVAL;
+			goto bail;
+		}
+		settings->clockOutIsRef = !!ival;
+	} else {
+		settings->clockOutIsRef = -1;
+	}
+
 
 	st = 0;
 bail:
