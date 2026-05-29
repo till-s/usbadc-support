@@ -2274,7 +2274,7 @@ scope_get_clock_out_min_freq(ScopePvt *scp)
 	if ( 0 != check_clock_out_board_version( scp ) ) {
 		return 0.0/0.0;
 	}
-	return scope_get_reference_freq( scp ) / (double)idivMax / (double) idivMax;
+	return scope_get_reference_freq( scp ) / (double)(2.0*idivMax) / (double) (2.0*idivMax);
 }
 
 double
@@ -2297,6 +2297,15 @@ unsigned idivPost, idivPre;
 unsigned idiv, idivTmp;
 double   fdivTmp,fdivPre;
 double   fdivMax = 4096.0 - exp2( - 24.0 );
+// For unknown reasons the output becomes really unstable
+// when using the PLL in a cascade when the first divider
+// has a ratio > ~3700 (no well-defined limit). This only
+// happens if a second stage is cascaded; if the output
+// of the first FOD is used directly then everything works
+// fine but if an integer 2nd stage is cascaded than that
+// stage is unstable. Very strange!
+//
+double   fdivMaxCasc = 3700.0;
 double   div;
 unsigned out1 = 1, out2 = 2;
 double   frac,fracMin;
@@ -2334,7 +2343,7 @@ double   dummyInt;
 		return -EINVAL;
 	}
 
-	if ( div > idivMax * 2.0 * fdivMax * 2.0 ) {
+	if ( div > idivMax * 2.0 * fdivMaxCasc * 2.0 ) {
 		idiv = ceil( fref / freq / 4.0 );
 		if ( idiv > idivMax*idivMax ) {
 			return -EINVAL;
@@ -2366,7 +2375,7 @@ double   dummyInt;
 			/* brute-force find numbers that yield minimal fractional part */
 			fracMin = 1.0/0.0;
 			fdivPre = 0.0; /* keep compiler happy */
-            for ( idivTmp = ceil(div/fdivMax); idivTmp <= idivMax; ++idivTmp ) {
+            for ( idivTmp = ceil(div/fdivMaxCasc); idivTmp <= idivMax; ++idivTmp ) {
 				fdivTmp = div/(double)idivTmp;
 				if ( (frac = modf( fdivTmp, &dummyInt )) < fracMin ) {
 					fracMin  = frac;
