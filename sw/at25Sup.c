@@ -74,7 +74,7 @@ at25_open(FWInfo *fw, unsigned instance) {
 int
 at25_open1(FWInfo *fw, AT25Flash **flashp, unsigned instance)
 {
-AT25Flash      *rv, *ok = 0;
+AT25Flash      *rv;
 int             st;
 struct timespec wai;
 uint64_t        idMask = 0x00ffffff0000;
