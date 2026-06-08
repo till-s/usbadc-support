@@ -140,6 +140,7 @@ fw_get_cmd(FWInfo *fw, FWCmd aCmd)
 		case FW_CMD_VERSION    : return BITS_FW_CMD_VER;
 		case FW_CMD_ADC_BUF    : return BITS_FW_CMD_ADCBUF;
 		case FW_CMD_ADC_FLUSH  : return BITS_FW_CMD_ADCBUF | BITS_FW_CMD_ADCFLUSH;
+		case FW_CMD_BB_OFF     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_NONE;
 		case FW_CMD_BB_SPI     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
 		case FW_CMD_BB_I2C     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
 		case FW_CMD_ACQ_PARMS  : return BITS_FW_CMD_ACQPRM;
@@ -152,6 +153,13 @@ fw_get_cmd(FWInfo *fw, FWCmd aCmd)
 	}
 }
 
+#undef BITS_FW_CMD_VER
+#undef BITS_FW_CMD_ADCBUF
+#undef BITS_FW_CMD_BB
+#undef BITS_FW_CMD_ACQPRM
+#undef BITS_FW_CMD_SPI
+#undef BITS_FW_CMD_REG
+	
 uint64_t
 fw_get_features(FWInfo *fw)
 {
@@ -324,8 +332,7 @@ uint8_t subcmd;
 static int
 fw_xfer_bb(FWInfo *fw, uint8_t subCmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
-uint8_t cmdLoc = BITS_FW_CMD_BB | subCmd;
-#warning "FIX here"
+uint8_t cmdLoc = (fw_get_cmd( fw, FW_CMD_BB_OFF ) | subCmd);
 int     st;
 
     st = fw_xfer( fw, cmdLoc, tbuf, rbuf, len );
