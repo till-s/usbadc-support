@@ -46,7 +46,7 @@ extern "C" {
 #endif
 
 uint8_t
-fw_get_cmd(FWCmd abstractCmd);
+fw_get_cmd(FWInfo *fw, FWCmd abstractCmd);
 
 void
 fw_set_debug(FWInfo *fw, int level);

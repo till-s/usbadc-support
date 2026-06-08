@@ -77,7 +77,6 @@
 
 struct FWInfo {
 	int             fd;
-	uint8_t         cmd;
 	int             debug;
 	int             ownFd;
 	uint32_t        gitHash;
@@ -135,7 +134,7 @@ unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
 }
 
 uint8_t
-fw_get_cmd(FWCmd aCmd)
+fw_get_cmd(FWInfo *fw, FWCmd aCmd)
 {
 	switch ( aCmd ) {
 		case FW_CMD_VERSION    : return BITS_FW_CMD_VER;
@@ -170,7 +169,7 @@ __fw_get_version(FWInfo *fw)
 {
 uint8_t buf[sizeof(int64_t)];
 int     got, i;
-uint8_t cmd = fw_get_cmd( FW_CMD_VERSION );
+uint8_t cmd = fw_get_cmd( fw, FW_CMD_VERSION );
 int64_t rval;
 
 	got = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
@@ -220,7 +219,6 @@ int64_t  vers;
 	}
 
 	fw->fd             = fd;
-	fw->cmd            = BITS_FW_CMD_BB;
 	fw->debug          = 0;
 	fw->ownFd          = 0;
 	fw->features       = 0;
@@ -247,7 +245,7 @@ int64_t  vers;
     fw->brdVers = ( (vers >> 40) & 0xff );
 
 	/* avoid a timeout on old fw */
-	if ( fw->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( fw, BITS_FW_CMD_SPI, 0, 0, 0 ) ) {
+	if ( fw->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( fw, fw_get_cmd(fw, FW_CMD_SPI), 0, 0, 0 ) ) {
 		fw->features |= FW_FEATURE_SPI_CONTROLLER;
 	}
 
@@ -326,7 +324,8 @@ uint8_t subcmd;
 static int
 fw_xfer_bb(FWInfo *fw, uint8_t subCmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 {
-uint8_t cmdLoc = fw->cmd | subCmd;
+uint8_t cmdLoc = BITS_FW_CMD_BB | subCmd;
+#warning "FIX here"
 int     st;
 
     st = fw_xfer( fw, cmdLoc, tbuf, rbuf, len );
@@ -765,7 +764,7 @@ __fw_has_buf(FWInfo *fw, size_t *psz, unsigned *pflg)
 uint8_t  buf[4];
 long     rval;
 int      ret = BUF_SIZE_FAILED;
-uint8_t  cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
+uint8_t  cmd = fw_get_cmd(fw, FW_CMD_ADC_BUF ) | BITS_FW_CMD_MEMSIZE;
 size_t   sz  = 0;
 unsigned flg = 0;
 
@@ -812,7 +811,7 @@ int
 __fw_get_sampling_freq_mhz(FWInfo *fw)
 {
 uint8_t buf[1];
-uint8_t cmd = fw_get_cmd( FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
+uint8_t cmd = fw_get_cmd(fw, FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
 long    rval;
 	if ( fw->apiVers < FW_API_VERSION_3 ) {
 		return -ENOTSUP;
@@ -861,7 +860,7 @@ fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 	rbufvec rvec[2];
 	uint8_t pbuf[2];
 	uint8_t status;
-	uint8_t cmd      = fw_get_cmd( FW_CMD_REG_RD8 );
+	uint8_t cmd      = fw_get_cmd(fw, FW_CMD_REG_RD8 );
 	int     st;
 
 	if ( addr >= 256 || (addr + len) > 256 ) {
@@ -893,7 +892,7 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 	rbufvec rvec[1];
 	uint8_t byteAddr = addr;
 	uint8_t status;
-	uint8_t cmd      = fw_get_cmd( FW_CMD_REG_WR8 );
+	uint8_t cmd      = fw_get_cmd(fw, FW_CMD_REG_WR8 );
 	int     st;
 
 	if ( addr >= 256 || (addr + len) > 256 ) {

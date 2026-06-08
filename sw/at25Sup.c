@@ -589,7 +589,7 @@ int st;
 static int
 do_xfer_spi(AT25Flash *flash, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen)
 {
-uint8_t cmd = fw_get_cmd( FW_CMD_SPI );
+uint8_t cmd = fw_get_cmd( flash->fw, FW_CMD_SPI );
 tbufvec tv[2];
 rbufvec rv[2];
 size_t  nt = 0;

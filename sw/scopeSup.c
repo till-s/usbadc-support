@@ -1141,7 +1141,7 @@ const union {
 
 	rcnt = (! hdr && 0 == len ? 0 : 2);
 
-	uint8_t cmd = fw_get_cmd( 0 == len ? FW_CMD_ADC_FLUSH : FW_CMD_ADC_BUF );
+	uint8_t cmd = fw_get_cmd( scp->fw, 0 == len ? FW_CMD_ADC_FLUSH : FW_CMD_ADC_BUF );
 	rv = fw_xfer_vec( scp->fw, cmd, 0, 0, v, rcnt );
 	if ( hdr ) {
 		*hdr = (h[1]<<8) | h[0];
@@ -1242,7 +1242,7 @@ uint32_t rv = 0;
 int
 acq_set_params(ScopePvt *scp, AcqParams *set, AcqParams *get)
 {
-uint8_t   cmd = fw_get_cmd( FW_CMD_ACQ_PARMS );
+uint8_t   cmd = fw_get_cmd( scp->fw, FW_CMD_ACQ_PARMS );
 uint8_t   buf[BITS_FW_CMD_ACQ_TOT_LEN_V2];
 uint8_t  *bufp;
 uint8_t   v8;
