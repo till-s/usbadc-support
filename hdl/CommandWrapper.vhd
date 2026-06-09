@@ -129,21 +129,49 @@ end entity CommandWrapper;
 
 architecture rtl of CommandWrapper is
 
-   constant CMD_VER_IDX_C     : natural := 0;
-   constant CMD_BB_IDX_C      : natural := 1;
-   constant CMD_ADC_MEM_IDX_C : natural := 2;
-   constant CMD_ACQ_PRM_IDX_C : natural := 3;
-   constant CMD_SPI_IDX_C     : natural := 4;
-   constant CMD_REG_IDX_C     : natural := 5;
+   constant CMD_VER_IDX_C     : natural := to_integer(unsigned(CMD_VERSION_C   ));
+   constant CMD_BB_IDX_C      : natural := to_integer(unsigned(CMD_BITBANG_C   ));
+   constant CMD_ADC_MEM_IDX_C : natural := to_integer(unsigned(CMD_ADC_MEMORY_C));
+   constant CMD_ACQ_PRM_IDX_C : natural := to_integer(unsigned(CMD_ACQ_PARAMS_C));
+   constant CMD_SPI_IDX_C     : natural := to_integer(unsigned(CMD_SPI_C       ));
+   constant CMD_REG_IDX_C     : natural := to_integer(unsigned(CMD_APP_REGS_C  ));
 
-   constant CMDS_SUPPORTED_C  : CmdsSupportedType := (
-      CMD_VER_IDX_C           => true,
-      CMD_BB_IDX_C            => HAVE_BB_CMD_G,
-      CMD_ADC_MEM_IDX_C       => HAVE_ADC_CMD_G,
-      CMD_ACQ_PRM_IDX_C       => HAVE_ADC_CMD_G,
-      CMD_SPI_IDX_C           => HAVE_SPI_CMD_G,
-      CMD_REG_IDX_C           => HAVE_REG_CMD_G
+   type CmdListType is array(natural range <>) of CmdIdxRangeType;
+
+   constant CMD_LIST_C : CmdListType := (
+         CMD_VER_IDX_C,
+         CMD_BB_IDX_C,
+         CMD_ADC_MEM_IDX_C,
+         CMD_ACQ_PRM_IDX_C,
+         CMD_SPI_IDX_C,
+         CMD_REG_IDX_C
    );
+
+   function max(constant x: CmdListType) return CmdIdxRangeType is
+      variable v : CmdIdxRangeType;
+   begin
+      v := 0;
+      for i in x'range loop
+         if ( x(i) > v ) then
+            v := x(i);
+         end if;
+      end loop;
+      return v;
+    end function max;
+
+   function CMDS_SUPPORTED_F return CmdsSupportedType is
+      variable v : CmdsSupportedType(0 to max(CMD_LIST_C)) := (others => false);
+   begin
+      v(CMD_VER_IDX_C    )      := true;
+      v(CMD_BB_IDX_C     )      := HAVE_BB_CMD_G;
+      v(CMD_ADC_MEM_IDX_C)      := HAVE_ADC_CMD_G;
+      v(CMD_ACQ_PRM_IDX_C)      := HAVE_ADC_CMD_G;
+      v(CMD_SPI_IDX_C    )      := HAVE_SPI_CMD_G;
+      v(CMD_REG_IDX_C    )      := HAVE_REG_CMD_G;
+      return v;
+   end function CMDS_SUPPORTED_F;
+
+   constant CMDS_SUPPORTED_C  : CmdsSupportedType := CMDS_SUPPORTED_F;
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
 
@@ -423,5 +451,5 @@ begin
             err          => regErr
          );
     end generate G_REGS;
- 
+
 end architecture rtl;

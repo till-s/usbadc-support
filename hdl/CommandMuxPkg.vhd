@@ -35,6 +35,19 @@ package CommandMuxPkg is
 
    constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"03";
 
+   -- Version(s)
+   constant CMD_VERSION_C     : std_logic_vector(7 downto 0) := x"00";
+   -- Bit-bang serial peripherals (i2c, spi)
+   constant CMD_BITBANG_C     : std_logic_vector(7 downto 0) := x"01";
+   -- ADC memory
+   constant CMD_ADC_MEMORY_C  : std_logic_vector(7 downto 0) := x"02";
+   -- Scope parameters
+   constant CMD_ACQ_PARAMS_C  : std_logic_vector(7 downto 0) := x"03";
+   -- SPI controller (flash)
+   constant CMD_SPI_C         : std_logic_vector(7 downto 0) := x"04";
+   -- Scope/Applicatoin registers
+   constant CMD_APP_REGS_C    : std_logic_vector(7 downto 0) := x"05";
+
    type SimpleBusMstType is record
       vld : std_logic;
       lst : std_logic;
