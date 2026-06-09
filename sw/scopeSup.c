@@ -442,13 +442,13 @@ uint8_t reg, dacMaxSel;
 		case 0xfff: dacMaxSel = FW_USR_CSR_DAC_RNG_12BIT; break;
 		default:    return -EINVAL;
 	}
-	st = fw_reg_read( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	st = fw_reg_read( scp->fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP );
 	if ( st < 0 ) {
 		return st;
 	}
 	reg &= ~FW_USR_CSR_DAC_RNG_MASK;
 	reg |= dacMaxSel;
-	st = fw_reg_write( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	st = fw_reg_write( scp->fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP );
 	return st;
 }
 
@@ -457,7 +457,7 @@ loadDacMax(ScopePvt *scp)
 {
 uint8_t dacMaxSel;
 
-		if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &dacMaxSel, 1, 0 ) ) {
+		if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &dacMaxSel, 1, REG_FLG_APP ) ) {
 			switch ( (dacMaxSel & FW_USR_CSR_DAC_RNG_MASK) ) {
 				case FW_USR_CSR_DAC_RNG_8BIT:  return 0xff;
 				case FW_USR_CSR_DAC_RNG_10BIT: return 0x3ff;
@@ -590,7 +590,7 @@ static int
 fw_adc_pll_locked(FWInfo *fw)
 {
 	uint8_t reg;
-	int st = fw_reg_read( fw, FW_CLK_CSR_OFF, &reg, 1, 0 );
+	int st = fw_reg_read( fw, FW_CLK_CSR_OFF, &reg, 1, REG_FLG_APP );
 	if ( 1 == st ) {
 		st =  ! (reg & FW_CLK_CSR_ADC_PLL_LOCKED) ? -EBUSY : 0;
 	} else if ( -EIO == st || 0 == st || -EBUSY == st ) {
@@ -683,7 +683,7 @@ int
 scope_is_initialized(FWInfo *fw)
 {
 	uint8_t reg,tst;
-	int st = fw_reg_read( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+	int st = fw_reg_read( fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP );
 	if ( 0 > st ) {
 		printf("scope_is_initialized: unable to read USR_CSR_OFF, fallback to is_dll_locked\n");
 		/* fw registers not implemented; fall back on DLL status */
@@ -695,18 +695,18 @@ scope_is_initialized(FWInfo *fw)
 	}
 	/* check if the init bit is writable */
 	tst = (reg ^ FW_USR_CSR_INIT_FLAG);
-	st = fw_reg_write( fw, FW_USR_CSR_OFF, &tst, 1, 0 );
+	st = fw_reg_write( fw, FW_USR_CSR_OFF, &tst, 1, REG_FLG_APP );
 	tst = reg;
 	if ( 0 <= st ) {
-		if ( 0 > (st = fw_reg_read( fw, FW_USR_CSR_OFF, &tst, 1, 0)) ) {
+		if ( 0 > (st = fw_reg_read( fw, FW_USR_CSR_OFF, &tst, 1, REG_FLG_APP)) ) {
 			fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (%d); POWER_CYCLE RECOMMENDED.\n", st);
 			/* best effort to restore */
-			fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+			fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP );
 			abort();
 		}
 		if ( FW_USR_CSR_INIT_FLAG == (( (tst ^ reg) & FW_USR_CSR_INIT_FLAG) ) )  {
 			/* appears to be writable; restore */
-			if ( 0 > (st = fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, 0)) ) {
+			if ( 0 > (st = fw_reg_write( fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP)) ) {
 				fprintf(stderr, "FATAL ERROR: Reading USR CSR for a second time failed (POWER_CYCLE RECOMMENDED).\n");
 				abort();
 			}
@@ -761,9 +761,9 @@ unsigned boardVers = fw_get_board_version( scp->fw );
 		return st;
 	}
 	// mark as initialized (ignore error result)
-	if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 ) ) {
+	if ( 1 == fw_reg_read( scp->fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP ) ) {
 		reg |= FW_USR_CSR_INIT_FLAG;
-		fw_reg_write( scp->fw, FW_USR_CSR_OFF, &reg, 1, 0 );
+		fw_reg_write( scp->fw, FW_USR_CSR_OFF, &reg, 1, REG_FLG_APP );
 	}
 
 	return 0;

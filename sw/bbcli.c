@@ -85,8 +85,10 @@ static void usage(const char *nm)
 	printf("   -J <json_file>     : save current settings to <json_file>.\n");
 	printf("   -j <json_file>     : load settings from <json_file>.\n");
 	printf("   -R <reg_op>        : register read/write operation:\n");
-	printf("                         READ : <addr>:<len>\n");
-	printf("                         WRITE: <addr>=<val>{,<val>}\n");
+	printf("                         READ : [GA]?<addr>:<len>\n");
+	printf("                         WRITE: [GA]?<addr>=<val>{,<val>}\n");
+	printf("                        with A: application register space (default when omitted)\n");
+	printf("                             G: general     register space.\n");
 	printf("   -A                 : access ADC registers.\n");
 	printf("   -i i2c_addr        : access registers of i2c device at slave-address i2c_addr.\n");
 	printf("\n");
@@ -522,12 +524,21 @@ unsigned    addr, len, val;
 uint8_t     buf[256];
 int         st;
 const char *p;
+unsigned    flags = REG_FLG_APP;
+    switch ( toupper(*op) ) {
+		case 'G' : flags = REG_FLG_GEN;
+			/* fall through */
+		case 'A' : op++;
+			break;
+		default:
+			break;
+	}
 	if        ( 2 == sscanf(op, "%i:%i", &addr, &len) ) {
 		if ( addr >= 256 || len > sizeof(buf) || (addr + len) > 256 ) {
 			fprintf(stderr, "Error: invalid register read address or/and length.\n");
 			return -1;
 		}
-		if ( (st = fw_reg_read(fw, addr, buf, len, 0)) < 0 ) {
+		if ( (st = fw_reg_read(fw, addr, buf, len, flags)) < 0 ) {
 			fprintf(stderr, "Error: fw_reg_read() failed (%d)\n", st);
 			return -1;
 		}
@@ -558,7 +569,7 @@ const char *p;
 			fprintf(stderr, "Error: invalid register write address or/and too many values.\n");
 			return -1;
 		}
-		if ( (st = fw_reg_write( fw, addr, buf, len, 0 )) < 0 ) {
+		if ( (st = fw_reg_write(fw, addr, buf, len, flags)) < 0 ) {
 			fprintf(stderr, "Error: fw_reg_write() failed (%d)\n", st);
 			return -1;
 		}

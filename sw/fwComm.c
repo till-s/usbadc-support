@@ -52,8 +52,81 @@
 #define I2C_NAK   1
 
 /* Must match firmware */
-#define BITS_FW_CMD_VER         0x00
-#define BITS_FW_CMD_BB          0x01
+
+/* All versions must use the same BITS_FW_CMD_VER and BIT_FW_CMD_UNSUPPORTED */
+#define BITS_FW_CMD_VER             0x00
+#define BITS_FW_CMD_UNSUPPORTED     0xff /* even if subcommands are ORed the CMD remains UNSUPPORTED */
+
+#define BITS_FW_CMD_BB_API_3        0x01
+#define BITS_FW_CMD_ADCBUF_API_3    0x02
+#define BITS_FW_CMD_ACQPRM_API_3    0x03
+#define BITS_FW_CMD_SPI_API_3       0x04
+#define BITS_FW_CMD_APP_REG_API_3   0x05
+
+#define BITS_FW_CMD_SPI_API_4       0x01
+#define BITS_FW_CMD_GEN_REG_API_4   0x02
+#define BITS_FW_CMD_APP_REG_API_4   0x03
+#define BITS_FW_CMD_BB_API_4        0x04
+#define BITS_FW_CMD_ADCBUF_API_4    0x05
+#define BITS_FW_CMD_ACQPRM_API_4    0x06
+
+/* All versions must use the same BITS_FW_CMD_VER */
+static uint8_t mapCmdGeneric(FWCmd aCmd)
+{
+	switch ( aCmd ) {
+		case FW_CMD_VERSION    : return BITS_FW_CMD_VER;
+		default:
+			fprintf(stderr, "mapCmdGeneric() -- internal error - failed to install mapCmd for API version\n");
+			abort();
+	}
+}
+
+static uint8_t mapCmdApiV3(FWCmd aCmd)
+{
+	switch ( aCmd ) {
+		case FW_CMD_VERSION        : return BITS_FW_CMD_VER;
+		case FW_CMD_ADC_BUF        : return BITS_FW_CMD_ADCBUF_API_3;
+		case FW_CMD_ADC_FLUSH      : return BITS_FW_CMD_ADCBUF_API_3;
+		case FW_CMD_BB_OFF         : return BITS_FW_CMD_BB_API_3;
+		case FW_CMD_BB_SPI         : return BITS_FW_CMD_BB_API_3;
+		case FW_CMD_BB_I2C         : return BITS_FW_CMD_BB_API_3;
+		case FW_CMD_ACQ_PARMS      : return BITS_FW_CMD_ACQPRM_API_3;
+		case FW_CMD_SPI            : return BITS_FW_CMD_SPI_API_3;
+        case FW_CMD_APP_REG_RD8    : return BITS_FW_CMD_APP_REG_API_3;
+        case FW_CMD_APP_REG_WR8    : return BITS_FW_CMD_APP_REG_API_3;
+        case FW_CMD_GEN_REG_RD8    : return BITS_FW_CMD_UNSUPPORTED;
+        case FW_CMD_GEN_REG_WR8    : return BITS_FW_CMD_UNSUPPORTED;
+		default:
+			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			abort();
+	}
+}
+
+static uint8_t mapCmdApiV4(FWCmd aCmd)
+{
+	switch ( aCmd ) {
+		case FW_CMD_VERSION        : return BITS_FW_CMD_VER;
+		case FW_CMD_ADC_BUF        : return BITS_FW_CMD_ADCBUF_API_4;
+		case FW_CMD_ADC_FLUSH      : return BITS_FW_CMD_ADCBUF_API_4;
+		case FW_CMD_BB_OFF         : return BITS_FW_CMD_BB_API_4;
+		case FW_CMD_BB_SPI         : return BITS_FW_CMD_BB_API_4;
+		case FW_CMD_BB_I2C         : return BITS_FW_CMD_BB_API_4;
+		case FW_CMD_ACQ_PARMS      : return BITS_FW_CMD_ACQPRM_API_4;
+		case FW_CMD_SPI            : return BITS_FW_CMD_SPI_API_4;
+        case FW_CMD_APP_REG_RD8    : return BITS_FW_CMD_APP_REG_API_4;
+        case FW_CMD_APP_REG_WR8    : return BITS_FW_CMD_APP_REG_API_4;
+        case FW_CMD_GEN_REG_RD8    : return BITS_FW_CMD_GEN_REG_API_4;
+        case FW_CMD_GEN_REG_WR8    : return BITS_FW_CMD_GEN_REG_API_4;
+		default:
+			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			abort();
+	}
+}
+
+
+/* Subcommands - so far not API dependent (support for may be
+ * but actual bit values are not).
+ */
 #define BITS_FW_CMD_BB_NONE     (0<<4)
 #define BITS_FW_CMD_BB_FLASH    (1<<4)
 #define BITS_FW_CMD_BB_ADC      (2<<4)
@@ -62,18 +135,13 @@
 #define BITS_FW_CMD_BB_FEG      (5<<4)
 #define BITS_FW_CMD_BB_VGA      (6<<4)
 #define BITS_FW_CMD_BB_VGB      (7<<4)
-#define BITS_FW_CMD_ADCBUF      0x02
+
 #define BITS_FW_CMD_ADCFLUSH    (1<<4)
 #define BITS_FW_CMD_MEMSIZE     (2<<4)
 #define BITS_FW_CMD_SMPLFREQ    (3<<4) /* API vers 3 */
-#define BITS_FW_CMD_ACQPRM      0x03
-#define BITS_FW_CMD_SPI         0x04
 
-#define BITS_FW_CMD_REG         0x05
 #define BITS_FW_CMD_REG_RD8     (0<<4)
 #define BITS_FW_CMD_REG_WR8     (1<<4)
-
-#define BITS_FW_CMD_UNSUPPORTED   0xff
 
 struct FWInfo {
 	int             fd;
@@ -84,6 +152,7 @@ struct FWInfo {
 	uint8_t         apiVers;
 	uint64_t        features;
 	AT24EEPROM     *eeprom;
+	uint8_t       (*mapCmd)(FWCmd);
 };
 
 static int
@@ -136,30 +205,26 @@ unsigned long sup = (1<<SPI_NONE) | (1<<SPI_FLASH) | (1<<SPI_ADC);
 uint8_t
 fw_get_cmd(FWInfo *fw, FWCmd aCmd)
 {
+	uint8_t cmd = fw->mapCmd(aCmd);
 	switch ( aCmd ) {
-		case FW_CMD_VERSION    : return BITS_FW_CMD_VER;
-		case FW_CMD_ADC_BUF    : return BITS_FW_CMD_ADCBUF;
-		case FW_CMD_ADC_FLUSH  : return BITS_FW_CMD_ADCBUF | BITS_FW_CMD_ADCFLUSH;
-		case FW_CMD_BB_OFF     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_NONE;
-		case FW_CMD_BB_SPI     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_FLASH;
-		case FW_CMD_BB_I2C     : return BITS_FW_CMD_BB | BITS_FW_CMD_BB_I2C;
-		case FW_CMD_ACQ_PARMS  : return BITS_FW_CMD_ACQPRM;
-		case FW_CMD_SPI        : return BITS_FW_CMD_SPI;
-        case FW_CMD_REG_RD8    : return BITS_FW_CMD_REG | BITS_FW_CMD_REG_RD8;
-        case FW_CMD_REG_WR8    : return BITS_FW_CMD_REG | BITS_FW_CMD_REG_WR8;
+		case FW_CMD_VERSION      : return cmd;
+		case FW_CMD_ADC_BUF      : return cmd;
+		case FW_CMD_ADC_FLUSH    : return cmd | BITS_FW_CMD_ADCFLUSH;
+		case FW_CMD_BB_OFF       : return cmd | BITS_FW_CMD_BB_NONE;
+		case FW_CMD_BB_SPI       : return cmd | BITS_FW_CMD_BB_FLASH;
+		case FW_CMD_BB_I2C       : return cmd | BITS_FW_CMD_BB_I2C;
+		case FW_CMD_ACQ_PARMS    : return cmd;
+		case FW_CMD_SPI          : return cmd;
+        case FW_CMD_GEN_REG_RD8  : return cmd | BITS_FW_CMD_REG_RD8;
+        case FW_CMD_GEN_REG_WR8  : return cmd | BITS_FW_CMD_REG_WR8;
+        case FW_CMD_APP_REG_RD8  : return cmd | BITS_FW_CMD_REG_RD8;
+        case FW_CMD_APP_REG_WR8  : return cmd | BITS_FW_CMD_REG_WR8;
 		default:
-			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			fprintf(stderr, "fw_get_cmd() -- illegal switch case\n");
 			abort();
 	}
 }
 
-#undef BITS_FW_CMD_VER
-#undef BITS_FW_CMD_ADCBUF
-#undef BITS_FW_CMD_BB
-#undef BITS_FW_CMD_ACQPRM
-#undef BITS_FW_CMD_SPI
-#undef BITS_FW_CMD_REG
-	
 uint64_t
 fw_get_features(FWInfo *fw)
 {
@@ -230,6 +295,23 @@ int64_t  vers;
 	fw->debug          = 0;
 	fw->ownFd          = 0;
 	fw->features       = 0;
+	fw->mapCmd         = mapCmdGeneric;
+
+	if ( ( vers = __fw_get_version( fw ) ) < 0 ) {
+		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
+		goto bail;
+	}
+
+	fw->gitHash = ( vers & 0xffffffff );
+	fw->apiVers = ( (vers >> 32) & 0xff );
+    fw->brdVers = ( (vers >> 40) & 0xff );
+
+	if ( fw->apiVers >= FW_API_VERSION_4 ) {
+		fw->mapCmd = mapCmdApiV4;
+	} else {
+		fw->mapCmd = mapCmdApiV3;
+	}
+
 
 	switch ( __fw_has_buf( fw, NULL, NULL ) ) {
 		case BUF_SIZE_FAILED:
@@ -242,15 +324,6 @@ int64_t  vers;
 			break;
 
 	}
-
-	if ( ( vers = __fw_get_version( fw ) ) < 0 ) {
-		fprintf(stderr, "Error: fw_open_fd unable to retrieve firmware version\n");
-		goto bail;
-	}
-
-	fw->gitHash = ( vers & 0xffffffff );
-	fw->apiVers = ( (vers >> 32) & 0xff );
-    fw->brdVers = ( (vers >> 40) & 0xff );
 
 	/* avoid a timeout on old fw */
 	if ( fw->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( fw, fw_get_cmd(fw, FW_CMD_SPI), 0, 0, 0 ) ) {
@@ -348,6 +421,11 @@ fw_xfer(FWInfo *fw, uint8_t cmd, const uint8_t *tbuf, uint8_t *rbuf, size_t len)
 uint8_t cmdLoc = cmd;
 int     st;
 
+	/* if fw_get_cmd() resolves to an unsupported command this get caught here */
+	if ( BITS_FW_CMD_UNSUPPORTED == cmd ) {
+		return -ENOTSUP;
+	}
+
 	st = fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
 	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
 		st = -ENOTSUP;
@@ -360,6 +438,12 @@ fw_xfer_vec(FWInfo *fw, uint8_t cmd, const tbufvec *tbuf, size_t tcnt, const rbu
 {
 uint8_t cmdLoc = cmd;
 int     st;
+
+	/* if fw_get_cmd() resolves to an unsupported command this get caught here */
+	if ( BITS_FW_CMD_UNSUPPORTED == cmd ) {
+		return -ENOTSUP;
+	}
+
 	st = fifoXferFrameVec( fw->fd, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
 	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
 		st = -ENOTSUP;
@@ -860,6 +944,8 @@ fw_spireg_cmd_write(unsigned ch)
 	return 0x00 | (ch & 0x1f);
 }
 
+#define REG_FLG_ASPC_MSK (1)
+
 int
 fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 {
@@ -867,7 +953,8 @@ fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 	rbufvec rvec[2];
 	uint8_t pbuf[2];
 	uint8_t status;
-	uint8_t cmd      = fw_get_cmd(fw, FW_CMD_REG_RD8 );
+    FWCmd   aCmd     = ( ((flags & REG_FLG_ASPC_MSK) == REG_FLG_APP ) ? FW_CMD_APP_REG_RD8 : FW_CMD_GEN_REG_RD8 );
+	uint8_t cmd      = fw_get_cmd(fw, aCmd);
 	int     st;
 
 	if ( addr >= 256 || (addr + len) > 256 ) {
@@ -899,7 +986,8 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 	rbufvec rvec[1];
 	uint8_t byteAddr = addr;
 	uint8_t status;
-	uint8_t cmd      = fw_get_cmd(fw, FW_CMD_REG_WR8 );
+    FWCmd   aCmd     = ( ((flags & REG_FLG_ASPC_MSK) == REG_FLG_APP ) ? FW_CMD_APP_REG_WR8 : FW_CMD_GEN_REG_WR8 );
+	uint8_t cmd      = fw_get_cmd(fw, aCmd );
 	int     st;
 
 	if ( addr >= 256 || (addr + len) > 256 ) {

@@ -219,7 +219,7 @@ cdef class LEDv1(LED):
     super().__init__()
     addr = self.ledBase
     with self._mgr as fw, nogil:
-      fw_reg_read( fw, addr, self._led, sizeof(self._led), 0 );
+      fw_reg_read( fw, addr, self._led, sizeof(self._led), REG_FLG_APP );
 
   ledMap = {
     "FrontRight_R":  8,
@@ -267,7 +267,7 @@ cdef class LEDv1(LED):
     buf[0] = self._led[adr]
     adr   += self.ledBase
     with self._mgr as fw, nogil:
-      fw_reg_write( fw, adr, buf, 1, 0 )
+      fw_reg_write( fw, adr, buf, 1, REG_FLG_APP )
 
 
 cdef class VersaClk(FwDev):
@@ -1243,12 +1243,12 @@ cdef class FwCommExprt(FwComm):
   def eepromWrite(self, unsigned off, pb):
     return self.eepromRW( False, off, pb )
 
-  def readReg(self, unsigned off):
+  def readReg(self, unsigned off, unsigned flags = REG_FLG_APP):
     cdef uint8_t val
     with self._mgr as fw, nogil:
-      fw_reg_read( fw, off, &val, sizeof(val), 0 );
+      fw_reg_read( fw, off, &val, sizeof(val), flags );
     return val
 
-  def writeReg(self, unsigned off, uint8_t val):
+  def writeReg(self, unsigned off, uint8_t val, unsigned flags = REG_FLG_APP):
     with self._mgr as fw, nogil:
-      fw_reg_write( fw, off, &val, sizeof(val), 0 );
+      fw_reg_write( fw, off, &val, sizeof(val), flags );

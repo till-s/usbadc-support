@@ -64,6 +64,8 @@ cdef extern from "fwComm.h":
   uint64_t       fw_get_features(FWInfo *) nogil
   uint8_t        fw_get_api_version(FWInfo *) nogil
   uint8_t        fw_get_board_version(FWInfo *) nogil
+  unsigned       REG_FLG_APP
+  unsigned       REG_FLG_GEN
   int            fw_reg_read(FWInfo *, uint32_t, uint8_t *, size_t, unsigned) nogil
   int            fw_reg_write(FWInfo *, uint32_t, uint8_t *, size_t, unsigned) nogil
 

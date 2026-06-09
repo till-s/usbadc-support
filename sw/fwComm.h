@@ -35,7 +35,9 @@ struct FWInfo;
 
 typedef struct FWInfo FWInfo;
 
-typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_ADC_FLUSH, FW_CMD_BB_OFF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS, FW_CMD_SPI, FW_CMD_REG_RD8, FW_CMD_REG_WR8 } FWCmd;
+/* FW_CMD_APP_REG_xx addresses application-register space */
+/* FW_CMD_GEN_REG_xx addresses generic-register space */
+typedef enum   FWCmd  { FW_CMD_VERSION, FW_CMD_ADC_BUF, FW_CMD_ADC_FLUSH, FW_CMD_BB_OFF, FW_CMD_BB_I2C, FW_CMD_BB_SPI, FW_CMD_ACQ_PARMS, FW_CMD_SPI, FW_CMD_APP_REG_RD8, FW_CMD_APP_REG_WR8, FW_CMD_GEN_REG_RD8, FW_CMD_GEN_REG_WR8 } FWCmd;
 
 typedef enum   SPIDev { SPI_NONE, SPI_FLASH, SPI_ADC, SPI_PGA, SPI_FEG, SPI_VGA, SPI_VGB } SPIDev;
 
@@ -69,6 +71,7 @@ fw_get_board_version(FWInfo *fw);
 #define FW_API_VERSION_1 (1)
 #define FW_API_VERSION_2 (2)
 #define FW_API_VERSION_3 (3)
+#define FW_API_VERSION_4 (4)
 
 uint8_t
 fw_get_api_version(FWInfo *fw);
@@ -162,6 +165,9 @@ uint8_t
 fw_spireg_cmd_write(unsigned ch);
 
 /* RETURN: number of bytes read or negative error code */
+/* Flags: */
+#define REG_FLG_APP      0  /* application register space */
+#define REG_FLG_GEN  (1<<0) /* generic register     space */
 int
 fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags);
 
