@@ -143,6 +143,13 @@ static uint8_t mapCmdApiV4(FWCmd aCmd)
 #define BITS_FW_CMD_REG_RD8     (0<<4)
 #define BITS_FW_CMD_REG_WR8     (1<<4)
 
+#define GEN_REG_VERSION_OFF         0
+#define GEN_REG_VERSION_1           0x01
+#define GEN_REG_RECONF_FEATURES_OFF 3
+#define GEN_REG_RECONF_FEATURE_SUPPORTED (1<<0)
+#define GEN_REG_RECONF_REQUEST_OFF  4
+#define GEN_REG_RECONF_MAGIC        0x3a
+
 struct FWInfo {
 	int             fd;
 	int             debug;
@@ -153,6 +160,7 @@ struct FWInfo {
 	uint64_t        features;
 	AT24EEPROM     *eeprom;
 	uint8_t       (*mapCmd)(FWCmd);
+    uint8_t         reconfig;
 };
 
 static int
@@ -350,9 +358,18 @@ bail:
 void
 fw_close(FWInfo *fw)
 {
+int     st;
 uint8_t v = SPI_MASK | I2C_MASK;
 	if ( fw ) {
 		fw_xfer_bb(fw, BITS_FW_CMD_BB_NONE, &v, &v, sizeof(v) );
+		if ( fw->reconfig ) {
+			if ( (st = fw_reg_write(fw, GEN_REG_RECONF_REQUEST_OFF, &fw->reconfig, 1, REG_FLG_GEN)) < 0 ) {
+				/* ignore IO errors; the firmware may be down already and uncleanly connecting; */
+				if ( -EIO != st ) {
+					fprintf(stderr, "WARNING: fw_close: sending FPGA reconfiguration request failed: %s\n", strerror(-st));
+				}
+			}
+		}
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
 		}
@@ -1007,6 +1024,38 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 		return st;
 	}
 	return (1 != st ) || status ? -EIO : len;
+}
+
+int
+fw_reconfigure_fpga_on_close(FWInfo *fw, int reconfRequest)
+{
+int     st;
+uint8_t val;
+	if ( ! reconfRequest ) {
+		fw->reconfig = 0;
+		return 0;
+	}
+	if ( fw_get_api_version( fw ) < FW_API_VERSION_4 ) {
+		return -ENOTSUP;
+	}
+printf("API 4\n");
+	if ( (st = fw_reg_read(fw, GEN_REG_VERSION_OFF, &val, 1, REG_FLG_GEN)) < 0 ) {
+		return st;
+	}
+printf("GENREG version %d\n", val);
+	if ( val != GEN_REG_VERSION_1 ) {
+		fprintf(stderr, "Unexpected GENREG version: %d\n", val);
+		return -ENOTSUP;
+	}
+	if ( (st = fw_reg_read(fw, GEN_REG_RECONF_FEATURES_OFF, &val, 1, REG_FLG_GEN)) < 0 ) {
+		return st;
+	}
+printf("reconf sup %d\n", val);
+	if ( !(val & GEN_REG_RECONF_FEATURE_SUPPORTED) ) {
+		return -ENOTSUP;
+	}
+	fw->reconfig = GEN_REG_RECONF_MAGIC;
+	return 0;
 }
 
 int

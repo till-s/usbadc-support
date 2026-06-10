@@ -33,6 +33,7 @@ use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.SDRAMBufPkg.all;
 use work.RegPkg.all;
+use work.GenRegPkg.all;
 
 entity CommandWrapperSim is
 end entity CommandWrapperSim;
@@ -127,8 +128,11 @@ architecture sim of CommandWrapperSim is
 
    signal subCmdBB: SubCommandBBType;
 
-   signal regReq   : RegisterReqType := REGISTER_REQ_INIT_C;
-   signal regRep   : RegisterRepType := REGISTER_REP_INIT_C;
+   signal regReq    : RegisterReqType := REGISTER_REQ_INIT_C;
+   signal regRep    : RegisterRepType := REGISTER_REP_INIT_C;
+
+   signal genRegReq : GenRegOutType;
+   signal genRegRep : GenRegInpType;
 
    component RamEmul is
       generic (
@@ -264,6 +268,9 @@ begin
          bbo          => bbo,
          bbi          => bbi,
          subCmdBB     => subCmdBB,
+
+         genRegOb     => genRegReq,
+         genRegIb     => genRegRep,
 
          appRegClk    => regClk,
          appRegOb     => regReq,
@@ -431,7 +438,7 @@ begin
          viol   => open
       );
 
-   P_REG_COMB : process( regReq, r ) is
+   P_REG_COMB : process( regReq, r, genRegReq ) is
       variable s : RegisterRepType;
       variable v : RegType;
       variable a : std_logic_vector(7 downto 0);
@@ -469,9 +476,6 @@ begin
       RegisterRWBitsAt(9, regReq, s, v.f1, 0);
       RegisterROBitsAt(9, regReq, s, r.regs(0)(0), 3);
       RegisterRWBitsAt(9, regReq, s, v.f2, 4);
-      if ( registerOnWrite(9, regReq, s) ) then
-report "WRITE";
-end if;
       for i in 0 to 5 loop
          RegisterRWBitsAt(10+i, regReq, s, v.regs(i));
          RegisterRWBitsAt(30+i, regReq, s, v.regs(i));
@@ -480,9 +484,14 @@ end if;
          adcLoad <= '1';
       end if;
       registerXactRegistered(regReq, s);
-      v.regRep := s;
-      rin <= v;
-      regRep <= r.regRep;
+      v.regRep  := s;
+      rin       <= v;
+      regRep    <= r.regRep;
+      genRegRep <= GEN_REG_INP_INIT_C;
+      genRegRep.reconfigurable <= '1';
+      if ( genRegReq.reconfigure = '1' ) then
+         report "RECONFIGURE REQUEST SEEN" severity failure;
+      end if;
    end process P_REG_COMB;
 
    P_REG  : process ( regClk ) is

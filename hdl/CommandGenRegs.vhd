@@ -87,38 +87,46 @@ architecture rtl of CommandGenRegs is
    signal regReq   : RegisterReqType;
    signal regRep   : RegisterRepType;
 
+   signal mObLoc   : SimpleBusMstType;
+
 begin
 
-   P_COMB : process ( r, regReq, genRegIb ) is
+   mOb <= mObLoc;
+
+   P_COMB : process ( r, regReq, genRegIb, rOb, mObLoc ) is
       variable v : RegType;
    begin
       v          := r;
-      if ( INIT = r.state ) then
-         v.state         := RUN;
-         v.genRegs.leds  := ( genRegIb.ledsInitial and genRegIb.ledsSupported );
-      else
-         registerPrepareRegistered( regReq, v.regRep );
+      registerPrepareRegistered( regReq, v.regRep );
 
-         -- version
-         registerROBitsAt( 0, regReq, v.regRep, r.genRegs.version );
-         -- scratch
-         registerRWBitsAt( 1, regReq, v.regRep, v.genRegs.scratch );
-         -- LED
-         registerRWAt    ( 2, regReq, v.regRep, v.genRegs.leds, genRegIb.ledsSupported );
-         -- reconfiguration features
-         registerROBitsAt( 3, regReq, v.regRep, genRegIb.reconfigurable, 0 );
+      -- version
+      registerROBitsAt( 0, regReq, v.regRep, r.genRegs.version );
+      -- scratch
+      registerRWBitsAt( 1, regReq, v.regRep, v.genRegs.scratch );
+      -- LED
+      registerRWAt    ( 2, regReq, v.regRep, v.genRegs.leds, genRegIb.ledsSupported );
+      -- reconfiguration features
+      registerROBitsAt( 3, regReq, v.regRep, genRegIb.reconfigurable, 0 );
 
-         -- reconfiguration request
-         registerRWBitsAt( 4, regReq, v.regRep, v.reconfMagic, 0, ro => (genRegIb.reconfigurable = '0'));
-         if ( r.reconfMagic = GEN_REG_RECONFIG_C ) then
-            v.genRegs.reconfigure := '1';
-         end if;
+      -- reconfiguration request
+      registerRWBitsAt( 4, regReq, v.regRep, v.reconfMagic, 0, ro => (genRegIb.reconfigurable = '0'));
+      registerXactRegistered( regReq, v.regRep );
 
-         registerXactRegistered( regReq, v.regRep );
+      if ( r.reconfMagic = GEN_REG_RECONFIG_C ) then
+         v.genRegs.reconfigure := '1';
       end if;
-      genRegOb   <= r.genRegs;
-      regRep     <= r.regRep;
-      rin        <= v;
+
+      case ( r.state ) is
+         when INIT =>
+            v.state         := RUN;
+            v.genRegs.leds  := ( genRegIb.ledsInitial and genRegIb.ledsSupported );
+
+         when RUN =>
+      end case;
+
+      genRegOb             <= r.genRegs;
+      regRep               <= r.regRep;
+      rin                  <= v;
    end process P_COMB;
 
    P_SEQ : process ( clk ) is
@@ -146,7 +154,7 @@ begin
          mIb          => mIb,
          rIb          => rIb,
 
-         mOb          => mOb,
+         mOb          => mObLoc,
          rOb          => rOb,
 
          regClk       => open,

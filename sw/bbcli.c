@@ -91,6 +91,7 @@ static void usage(const char *nm)
 	printf("                             G: general     register space.\n");
 	printf("   -A                 : access ADC registers.\n");
 	printf("   -i i2c_addr        : access registers of i2c device at slave-address i2c_addr.\n");
+	printf("   -X                 : request FPGA reconfiguration (performed after everything else; before exiting.\n");
 	printf("\n");
 	printf("    SPI Flash commands: multiple commands (separated by ',' w/o blanks) may be given.\n");
 	printf("       ForceBB        : force using bit-bang, even if a SPI controller is available.\n");
@@ -680,12 +681,13 @@ const char        *jsonIFnam = NULL;
 const char        *jsonOFnam = NULL;
 ScopeParams       *settings  = NULL;
 AT25ProgressData   pd;
+int                fpgaReconf = 0;
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
 	}
 
-	while ( (opt = getopt(argc, argv, "5:Aa:BC:Dd:Ff:GhIi:j:J:P:pR:S:T:Vv!?")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "5:Aa:BC:Dd:Ff:GhIi:j:J:P:pR:S:T:VvX!?")) > 0 ) {
 		u_p = 0;
 		switch ( opt ) {
             case 'h': usage(argv[0]);                                                 return 0;
@@ -705,14 +707,15 @@ AT25ProgressData   pd;
 			case 'V': fwVersion= 1;                                                   break;
 			case 'I': dac = 0; test_reg = TEST_I2C;                                   break;
 			case 'i': dac = 0; test_reg = TEST_I2C; u_p = &sla;                       break;
-			case 'j': jsonIFnam= optarg;                                              break;
-			case 'J': jsonOFnam= optarg;                                              break;
-			case 'S': test_spi = strdup(optarg);                                      break;
-			case 'T': trgOp    = optarg;                                              break;
-			case 'a': u_p      = &flashAddr;                                          break;
-			case 'f': progFile = optarg;                                              break;
-			case '!': doit     = 1;                                                   break;
-			case '?': doit     = (doit <= 0 ? doit - 1 : -1); break;
+			case 'j': jsonIFnam         = optarg;                                     break;
+			case 'J': jsonOFnam         = optarg;                                     break;
+			case 'S': test_spi          = strdup(optarg);                             break;
+			case 'T': trgOp             = optarg;                                     break;
+			case 'X': fpgaReconf        = 1;                                          break;
+			case 'a': u_p               = &flashAddr;                                 break;
+			case 'f': progFile          = optarg;                                     break;
+			case '!': doit              = 1;                                          break;
+			case '?': doit              = (doit <= 0 ? doit - 1 : -1);                break;
 		}
 		if ( u_p && 1 != sscanf(optarg, "%i", u_p) ) {
 			fprintf(stderr, "Unable to scan argument to option -%c -- should be a number\n", opt);
@@ -750,6 +753,13 @@ AT25ProgressData   pd;
 		printf("  Git Hash: %08" PRIX32 "\n", v_git);
 		printf("  API     : %8"  PRIu8  "\n", v_api);
 		printf("  Board HW: %8"  PRIu8  "\n", v_brd);
+	}
+
+	if ( fpgaReconf ) {
+		int st = fw_reconfigure_fpga_on_close( fw, 1 );
+		if ( st < 0 ) {
+			fprintf(stderr, "FPGA reconfiguration request rejected (%s); ignoring\n", strerror(-st));
+		}
 	}
 
 	if ( (jsonIFnam || jsonOFnam ) && ( 0 != scope_json_supported() ) ) {

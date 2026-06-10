@@ -175,6 +175,17 @@ fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 int
 fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned flags);
 
+/* Request FPGA reconfiguration on closing the connection;
+ * returns immediatly with -ENOTSUP if this feature is not supported.
+ * A pending reconf. request may be cancelled by providing a zero value.
+ * This sets merely a flag; the actual request is sent (unless previously
+ * cancelled) by fw_close().
+ *
+ * Returns 0 if succesfully scheduled or cancelled.
+ */
+int
+fw_reconfigure_fpga_on_close(FWInfo *fw, int val);
+
 /*
  * Send 'invalid' command - can be used to trigger ILAs
  */
