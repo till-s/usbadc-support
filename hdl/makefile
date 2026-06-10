@@ -43,6 +43,8 @@ $(RUN_TARGETS):run-%Tb:%Tb
 
 .PHONY: all tests clean $(RUN_TARGETS)
 
+OBJS+=CommandGenRegs.o
+OBJS+=GenRegPkg.o
 OBJS+=RegPkg.o
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
@@ -95,7 +97,7 @@ BitBangIF.o: BitBangIF.vhd
 CommandBitBang.o: CommandBitBang.vhd BitBangIF.o
 SimPty.o: SimPty.vhd
 MaxAdc.o: MaxAdc.vhd SampleBufferBRAM.o SampleBufferSDRAM.o SDRAMBufPkg.o
-CommandWrapper.o: CommandWrapper.vhd SDRAMBufPkg.o CommandVersion.o
+CommandWrapper.o: CommandWrapper.vhd SDRAMBufPkg.o CommandVersion.o CommandGenRegs.o
 CommandWrapperTb.o: CommandWrapperTb.vhd CommandMuxPkg.o
 CommandWrapperSim.o: CommandWrapperSim.vhd $(OBJS) SimPty.o SimPtyIO.o
 SDRAMBufPkg.o: SDRAMBufPkg.vhd
@@ -143,6 +145,9 @@ SampleBufferSDRAM.o: SynchronizerBit.o SDRAMBufPkg.o GenericFifoAsync.o
 CommandReg.o: CommandMuxPkg.o
 
 SampleBufferTbNotbound.o: SDRAMBufPkg.o 
+
+GenRegPkg.o: RegPkg.o BasicPkg.o
+CommandGenRegs.o: GenRegPkg.o RegPkg.o  BasicPkg.o CommandMuxPkg.o CommandReg.o
 
 MulShifter.o PipelinedRShifter.o SpiBitShifter.o CommandBitBang.o SpiShadowReg.o: BasicPkg.o
 

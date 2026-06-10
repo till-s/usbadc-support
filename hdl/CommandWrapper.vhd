@@ -33,6 +33,7 @@ use work.CommandMuxPkg.all;
 use work.AcqCtlPkg.all;
 use work.SDRAMBufPkg.all;
 use work.RegPkg.all;
+use work.GenRegPkg.all;
 
 entity CommandWrapper is
    generic (
@@ -90,7 +91,12 @@ entity CommandWrapper is
       adcStatus    : out std_logic_vector(7 downto 0) := (others => '0');
       err          : out std_logic_vector(1 downto 0);
 
-      -- register interface
+      -- register interfaces
+      -- generic
+      genRegOb     : out GenRegOutType   := GEN_REG_OUT_INIT_C;
+      genRegIb     : in  GenRegInpType   := GEN_REG_INP_INIT_C;
+
+      -- application specific
       appRegClk    : in  std_logic := '0'; -- only used if REG_ASYNC_G
       appRegOb     : out RegisterReqType := REGISTER_REQ_INIT_C;
       appRegIb     : in  RegisterRepType := REGISTER_REP_FORCE_ERR_C;
@@ -425,7 +431,24 @@ begin
          );
    end generate G_SPI;
 
-   G_REGS : if ( CMDS_SUPPORTED_C( CMD_APP_REG_IDX_C ) ) generate
+   G_GEN_REGS : if ( CMDS_SUPPORTED_C( CMD_GEN_REG_IDX_C ) ) generate
+      U_APP_REG : entity work.CommandGenRegs
+         port map (
+            clk          => clk,
+            rst          => rst,
+
+            mIb          => bussesIb(CMD_GEN_REG_IDX_C),
+            rIb          => readysIb(CMD_GEN_REG_IDX_C),
+
+            mOb          => bussesOb(CMD_GEN_REG_IDX_C),
+            rOb          => readysOb(CMD_GEN_REG_IDX_C),
+
+            genRegOb     => genRegOb,
+            genRegIb     => genRegIb
+         );
+   end generate G_GEN_REGS;
+
+   G_APP_REGS : if ( CMDS_SUPPORTED_C( CMD_APP_REG_IDX_C ) ) generate
       U_APP_REG : entity work.CommandReg
          generic map (
             ASYNC_G      => REG_ASYNC_G
@@ -449,6 +472,6 @@ begin
             rdat         => appRegIb.rdat,
             err          => appRegIb.err
          );
-    end generate G_REGS;
+    end generate G_APP_REGS;
 
 end architecture rtl;
