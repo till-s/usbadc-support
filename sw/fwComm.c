@@ -1038,11 +1038,9 @@ uint8_t val;
 	if ( fw_get_api_version( fw ) < FW_API_VERSION_4 ) {
 		return -ENOTSUP;
 	}
-printf("API 4\n");
 	if ( (st = fw_reg_read(fw, GEN_REG_VERSION_OFF, &val, 1, REG_FLG_GEN)) < 0 ) {
 		return st;
 	}
-printf("GENREG version %d\n", val);
 	if ( val != GEN_REG_VERSION_1 ) {
 		fprintf(stderr, "Unexpected GENREG version: %d\n", val);
 		return -ENOTSUP;
@@ -1050,7 +1048,6 @@ printf("GENREG version %d\n", val);
 	if ( (st = fw_reg_read(fw, GEN_REG_RECONF_FEATURES_OFF, &val, 1, REG_FLG_GEN)) < 0 ) {
 		return st;
 	}
-printf("reconf sup %d\n", val);
 	if ( !(val & GEN_REG_RECONF_FEATURE_SUPPORTED) ) {
 		return -ENOTSUP;
 	}
