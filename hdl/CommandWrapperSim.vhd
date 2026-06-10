@@ -32,6 +32,7 @@ use ieee.math_real.all;
 use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.SDRAMBufPkg.all;
+use work.RegPkg.all;
 
 entity CommandWrapperSim is
 end entity CommandWrapperSim;
@@ -126,13 +127,8 @@ architecture sim of CommandWrapperSim is
 
    signal subCmdBB: SubCommandBBType;
 
-   signal regRDat  : std_logic_vector(7 downto 0) := (others => '0');
-   signal regWDat  : std_logic_vector(7 downto 0);
-   signal regAddr  : unsigned(7 downto 0);
-   signal regRdnw  : std_logic;
-   signal regVld   : std_logic;
-   signal regRdy   : std_logic := '0';
-   signal regErr   : std_logic := '1';
+   signal regReq   : RegisterReqType := REGISTER_REQ_INIT_C;
+   signal regRep   : RegisterRepType := REGISTER_REP_INIT_C;
 
    component RamEmul is
       generic (
@@ -151,8 +147,26 @@ architecture sim of CommandWrapperSim is
       );
    end component RamEmul;
 
-   signal regs      : Slv8Array(0 to NUM_REGS_C - 1) := (others => (others => '0'));
-   signal scopeRegs : Slv8Array(0 to 2) := (others => (others => '0'));
+   type RegType is record
+      regs        : Slv8Array(0 to NUM_REGS_C - 1);
+      scopeRegs   : Slv8Array(0 to 2);
+      regRep      : RegisterRepType;
+      f1          : std_logic_vector(2 downto 0);
+      f2          : std_logic_vector(2 downto 0);
+      dly         : unsigned(2 downto 0);
+   end record RegType;
+
+   constant REG_INIT_C : RegType := (
+      regs        => (others => (others => '0')),
+      scopeRegs   => (others => (others => '0')),
+      regRep      => REGISTER_REP_INIT_C,
+      f1          => (others => '0'),
+      f2          => (others => '0'),
+      dly         => to_unsigned(2, 3)
+   );
+
+   signal r       : RegType := REG_INIT_C;
+   signal rin     : RegType;
 
 begin
 
@@ -251,14 +265,9 @@ begin
          bbi          => bbi,
          subCmdBB     => subCmdBB,
 
-         regClk       => regClk,
-         regRDat      => regRDat,
-         regWDat      => regWDat,
-         regAddr      => regAddr,
-         regRdnw      => regRdnw,
-         regVld       => regVld,
-         regRdy       => regRdy,
-         regErr       => regErr,
+         appRegClk    => regClk,
+         appRegOb     => regReq,
+         appRegIb     => regRep,
 
          boardVersion => x"ff",
 
@@ -316,8 +325,8 @@ begin
          sin      => adcSin
       );
 
-   adcCoef <= resize( signed( toSlv( regs(0 to 2) ) ), adcCoef'length );
-   adcCini <= resize( signed( toSlv( regs(3 to 5) ) ), adcCini'length  );
+   adcCoef <= resize( signed( toSlv( r.regs(0 to 2) ) ), adcCoef'length );
+   adcCini <= resize( signed( toSlv( r.regs(3 to 5) ) ), adcCini'length  );
    adcA    <= unsigned( adcCos(adcCos'left downto adcCos'left - ADC_W_C + 1 ) );
    adcB    <= unsigned( adcSin(adcSin'left downto adcSin'left - ADC_W_C + 1 ) );
 
@@ -422,84 +431,65 @@ begin
          viol   => open
       );
 
-   P_REG_RD : process ( regAddr, regRdnw, regs, scopeRegs ) is
-      variable regIdx : integer;
+   P_REG_COMB : process( regReq, r ) is
+      variable s : RegisterRepType;
+      variable v : RegType;
+      variable a : std_logic_vector(7 downto 0);
    begin
-      regErr  <= '0';
-      regIdx  := to_integer(regAddr);
-      case ( regIdx ) is
-         when 0 | 1 | 2 => -- USR CSR
-            regRdat <= scopeRegs(regIdx);
-         when 4 | 24  =>
-            regRDat <= x"14";
-            regErr  <= not regRdnw;
-         when 5 | 25  =>
-            regRDat <= x"15";
-            regErr  <= not regRdnw;
-         when 6 | 26  =>
-            regRDat <= x"16";
-            regErr  <= not regRdnw;
+      adcLoad <= '0';
+      v := r;
+      a := (others => '0');
 
-         when 10 | 30 =>
-            regRDat <= regs(0);
-         when 11 | 31 =>
-            regRDat <= regs(1);
-         when 12 | 32 =>
-            regRDat <= regs(2);
-         when 13 | 34 =>
-            regRDat <= regs(3);
-         when 14 | 35 =>
-            regRDat <= regs(4);
-         when 15 | 36 =>
-            regRDat <= regs(5);
-         when others =>
-            regRDat <= (others => 'X');
-            regErr  <= '1';
-      end case;
-   end process P_REG_RD;
+      s := v.regRep;
 
-   P_REG  : process ( regClk ) is
-      variable dly: unsigned(2 downto 0)         := to_unsigned(2, 3);
-      variable rdy: std_logic;
-   begin
-      rdy     := '1';
-      if ( to_integer( regAddr ) > 20 ) then
-         rdy := dly(dly'left);
+      registerPrepareRegistered(regReq, s);
+
+      if ( to_integer(regReq.addr) > 20 ) then
+--         s.rdy := r.dly(r.dly'left);
       end if;
-      if ( rising_edge( regClk ) ) then
-         adcLoad <= '0';
-         if ( regVld = '1' ) then
-            if ( rdy = '1' ) then
-               if ( regRdnw = '0' ) then
-                  if ( regAddr >= scopeRegs'low and regAddr <= scopeRegs'high ) then
-                     scopeRegs(to_integer(regAddr)) <= regWDat;
-                  elsif    ( regAddr = 10 or regAddr = 30 ) then
-                     adcLoad <= '1';
-                     regs(0) <= regWDat;
-                  elsif ( regAddr = 11 or regAddr = 31 ) then
-                     adcLoad <= '1';
-                     regs(1) <= regWDat;
-                  elsif ( regAddr = 12 or regAddr = 32 ) then
-                     adcLoad <= '1';
-                     regs(2) <= regWDat;
-                  elsif ( regAddr = 13 or regAddr = 33 ) then
-                     adcLoad <= '1';
-                     regs(3) <= regWDat;
-                  elsif ( regAddr = 14 or regAddr = 34 ) then
-                     adcLoad <= '1';
-                     regs(4) <= regWDat;
-                  elsif ( regAddr = 15 or regAddr = 35 ) then
-                     adcLoad <= '1';
-                     regs(5) <= regWDat;
-                  end if;
-               end if;
-               dly := to_unsigned(2, dly'length);
-            else
-               dly := dly - 1;
-            end if;
+
+      if ( regReq.vld = '1' ) then
+         if ( s.rdy = '1' ) then
+            v.dly := to_unsigned(2, r.dly'length);
+         else
+            v.dly := r.dly - 1;
          end if;
       end if;
-      regRdy <= rdy;
+
+      for i in v.scopeRegs'range loop
+         RegisterRWBitsAt(i, regReq, s, v.scopeRegs(i));
+      end loop;
+      RegisterROBitsAt( 4, regReq, s, x"14");
+      RegisterROBitsAt(24, regReq, s, x"14");
+      RegisterROBitsAt( 5, regReq, s, x"15");
+      RegisterROBitsAt(25, regReq, s, x"15");
+      RegisterROBitsAt( 6, regReq, s, x"16");
+      RegisterROBitsAt(26, regReq, s, x"16");
+      RegisterROBitsAt(8, regReq, s, "00" & r.f2&r.f1);
+      RegisterRWBitsAt(9, regReq, s, v.f1, 0);
+      RegisterROBitsAt(9, regReq, s, r.regs(0)(0), 3);
+      RegisterRWBitsAt(9, regReq, s, v.f2, 4);
+      if ( registerOnWrite(9, regReq, s) ) then
+report "WRITE";
+end if;
+      for i in 0 to 5 loop
+         RegisterRWBitsAt(10+i, regReq, s, v.regs(i));
+         RegisterRWBitsAt(30+i, regReq, s, v.regs(i));
+      end loop;
+      if ( ( regReq.vld and s.rdy and not s.err ) = '1' and regReq.addr >= 10 ) then
+         adcLoad <= '1';
+      end if;
+      registerXactRegistered(regReq, s);
+      v.regRep := s;
+      rin <= v;
+      regRep <= r.regRep;
+   end process P_REG_COMB;
+
+   P_REG  : process ( regClk ) is
+   begin
+      if ( rising_edge( regClk ) ) then
+         r <= rin;
+      end if;
    end process P_REG;
 
 end architecture sim;

@@ -30,6 +30,7 @@ use ieee.numeric_std.all;
 use ieee.math_real.all;
 
 use work.BasicPkg.all;
+use work.RegPkg.all;
 use work.CommandMuxPkg.all;
 
 -- simple memory mapped access

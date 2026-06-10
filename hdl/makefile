@@ -43,6 +43,7 @@ $(RUN_TARGETS):run-%Tb:%Tb
 
 .PHONY: all tests clean $(RUN_TARGETS)
 
+OBJS+=RegPkg.o
 OBJS+=CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o
 OBJS+=CommandMux.o SynchronizerBit.o BitBangIF.o CommandBitBang.o
 OBJS+=MaxAdc.o CommandWrapper.o ILAWrapper.o ILAWrapperPkg.o AcqCtlPkg.o
@@ -118,14 +119,14 @@ SynchronizerBit.o:
 BitBangIF.o:     SynchronizerBit.o BasicPkg.o
 CommandBitBang.o:     CommandMuxPkg.o BitBangIF.o
 MaxAdc.o:    CommandMuxPkg.o ILAWrapper.o AcqCtlPkg.o BasicPkg.o CicFilter.o PipelinedRShifter.o MulShifter.o
-CommandWrapper.o:    CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o CommandAcqParm.o CommandSpi.o CommandReg.o SimpleBusPipeStage.o
+CommandWrapper.o:    CommandMuxPkg.o ByteDeStuffer.o ByteStuffer.o CommandMux.o CommandBitBang.o MaxAdc.o CommandAcqParm.o CommandSpi.o CommandReg.o SimpleBusPipeStage.o RegPkg.o
 CommandWrapperTb.o:      CommandMuxPkg.o ByteStuffer.o SFifo.o ByteDeStuffer.o CommandWrapper.o
 CommandAcqParm.o: AcqCtlPkg.o CommandMuxPkg.o
 PipelinedRShifterTb.o: PipelinedRShifter.o
 CommandSpi.o: SpiBitShifter.o CommandMuxPkg.o
 SpiFlashSim.o: SpiReg.o
-CommandWrapperSim.o: SpiReg.o SpiChecker.o
-CommandReg.o: CommandMuxPkg.o BasicPkg.o SimpleBusAsync.o
+CommandWrapperSim.o: SpiReg.o SpiChecker.o RegPkg.o
+CommandReg.o: CommandMuxPkg.o BasicPkg.o SimpleBusAsync.o RegPkg.o
 
 SimpleBusPipeStage.o: CommandMuxPkg.o BasicPkg.o
 

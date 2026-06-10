@@ -32,6 +32,7 @@ use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
 use work.AcqCtlPkg.all;
 use work.SDRAMBufPkg.all;
+use work.RegPkg.all;
 
 entity CommandWrapper is
    generic (
@@ -90,14 +91,9 @@ entity CommandWrapper is
       err          : out std_logic_vector(1 downto 0);
 
       -- register interface
-      regClk       : in  std_logic := '0'; -- only used if REG_ASYNC_G
-      regRDat      : in  std_logic_vector(7 downto 0) := (others => '0');
-      regWDat      : out std_logic_vector(7 downto 0) := (others => '0');
-      regAddr      : out unsigned(7 downto 0)         := (others => '0');
-      regRdnw      : out std_logic := '1';
-      regVld       : out std_logic := '0';
-      regRdy       : in  std_logic := '1';
-      regErr       : in  std_logic := '1';
+      appRegClk    : in  std_logic := '0'; -- only used if REG_ASYNC_G
+      appRegOb     : out RegisterReqType := REGISTER_REQ_INIT_C;
+      appRegIb     : in  RegisterRepType := REGISTER_REP_FORCE_ERR_C;
 
       -- board version
       boardVersion : in  std_logic_vector(7 downto 0) := x"00";
@@ -130,21 +126,23 @@ end entity CommandWrapper;
 architecture rtl of CommandWrapper is
 
    constant CMD_VER_IDX_C     : natural := to_integer(unsigned(CMD_VERSION_C   ));
+   constant CMD_SPI_IDX_C     : natural := to_integer(unsigned(CMD_SPI_C       ));
+   constant CMD_GEN_REG_IDX_C : natural := to_integer(unsigned(CMD_GEN_REGS_C  ));
+   constant CMD_APP_REG_IDX_C : natural := to_integer(unsigned(CMD_APP_REGS_C  ));
    constant CMD_BB_IDX_C      : natural := to_integer(unsigned(CMD_BITBANG_C   ));
    constant CMD_ADC_MEM_IDX_C : natural := to_integer(unsigned(CMD_ADC_MEMORY_C));
    constant CMD_ACQ_PRM_IDX_C : natural := to_integer(unsigned(CMD_ACQ_PARAMS_C));
-   constant CMD_SPI_IDX_C     : natural := to_integer(unsigned(CMD_SPI_C       ));
-   constant CMD_REG_IDX_C     : natural := to_integer(unsigned(CMD_APP_REGS_C  ));
 
    type CmdListType is array(natural range <>) of CmdIdxRangeType;
 
    constant CMD_LIST_C : CmdListType := (
-         CMD_VER_IDX_C,
-         CMD_BB_IDX_C,
-         CMD_ADC_MEM_IDX_C,
-         CMD_ACQ_PRM_IDX_C,
-         CMD_SPI_IDX_C,
-         CMD_REG_IDX_C
+      CMD_VER_IDX_C,
+      CMD_SPI_IDX_C,
+      CMD_GEN_REG_IDX_C,
+      CMD_APP_REG_IDX_C,
+      CMD_BB_IDX_C,
+      CMD_ADC_MEM_IDX_C,
+      CMD_ACQ_PRM_IDX_C
    );
 
    function max(constant x: CmdListType) return CmdIdxRangeType is
@@ -162,12 +160,13 @@ architecture rtl of CommandWrapper is
    function CMDS_SUPPORTED_F return CmdsSupportedType is
       variable v : CmdsSupportedType(0 to max(CMD_LIST_C)) := (others => false);
    begin
-      v(CMD_VER_IDX_C    )      := true;
-      v(CMD_BB_IDX_C     )      := HAVE_BB_CMD_G;
-      v(CMD_ADC_MEM_IDX_C)      := HAVE_ADC_CMD_G;
-      v(CMD_ACQ_PRM_IDX_C)      := HAVE_ADC_CMD_G;
-      v(CMD_SPI_IDX_C    )      := HAVE_SPI_CMD_G;
-      v(CMD_REG_IDX_C    )      := HAVE_REG_CMD_G;
+      v(CMD_VER_IDX_C    ) := true;
+      v(CMD_SPI_IDX_C    ) := HAVE_SPI_CMD_G;
+      v(CMD_GEN_REG_IDX_C) := true;
+      v(CMD_APP_REG_IDX_C) := HAVE_REG_CMD_G;
+      v(CMD_BB_IDX_C     ) := HAVE_BB_CMD_G;
+      v(CMD_ADC_MEM_IDX_C) := HAVE_ADC_CMD_G;
+      v(CMD_ACQ_PRM_IDX_C) := HAVE_ADC_CMD_G;
       return v;
    end function CMDS_SUPPORTED_F;
 
@@ -426,8 +425,8 @@ begin
          );
    end generate G_SPI;
 
-   G_REGS : if ( CMDS_SUPPORTED_C( CMD_REG_IDX_C ) ) generate
-      U_REG : entity work.CommandReg
+   G_REGS : if ( CMDS_SUPPORTED_C( CMD_APP_REG_IDX_C ) ) generate
+      U_APP_REG : entity work.CommandReg
          generic map (
             ASYNC_G      => REG_ASYNC_G
          )
@@ -435,20 +434,20 @@ begin
             clk          => clk,
             rst          => rst,
 
-            mIb          => bussesIb(CMD_REG_IDX_C),
-            rIb          => readysIb(CMD_REG_IDX_C),
+            mIb          => bussesIb(CMD_APP_REG_IDX_C),
+            rIb          => readysIb(CMD_APP_REG_IDX_C),
 
-            mOb          => bussesOb(CMD_REG_IDX_C),
-            rOb          => readysOb(CMD_REG_IDX_C),
+            mOb          => bussesOb(CMD_APP_REG_IDX_C),
+            rOb          => readysOb(CMD_APP_REG_IDX_C),
 
-            regClk       => regClk,
-            rdat         => regRDat,
-            wdat         => regWDat,
-            addr         => regAddr,
-            rdnw         => regRdnw,
-            vld          => regVld,
-            rdy          => regRdy,
-            err          => regErr
+            regClk       => appRegClk,
+            wdat         => appRegOb.wdat,
+            addr         => appRegOb.addr,
+            rdnw         => appRegOb.rdnw,
+            vld          => appRegOb.vld,
+            rdy          => appRegIb.rdy,
+            rdat         => appRegIb.rdat,
+            err          => appRegIb.err
          );
     end generate G_REGS;
 

@@ -226,10 +226,10 @@ begin
    P_FEED : process is
       variable lst : std_logic;
    begin
-      x(src, x"00", '1');
-      x(src, x"00", '1');
-      x(src, x"00", '1');
-      x(src, x"11");
+      x(src, CMD_VERSION_C, '1');
+      x(src, CMD_VERSION_C, '1');
+      x(src, CMD_VERSION_C, '1');
+      x(src, commandBBMake(CMD_BB_SPI_ROM_C));
       for i in bbFeed'range loop
          if ( i = bbFeed'high ) then
             lst := '1';
@@ -244,8 +244,8 @@ begin
       end loop;
 
       
-      x(src, x"00", '1');
-      x(src, x"02", '1');
+      x(src, CMD_VERSION_C, '1');
+      x(src, CMD_ADC_MEMORY_C, '1');
 
       for i in 1 to 500 loop
          wait until rising_edge( clk );

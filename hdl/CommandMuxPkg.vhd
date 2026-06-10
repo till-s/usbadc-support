@@ -33,20 +33,22 @@ use work.BasicPkg.all;
 
 package CommandMuxPkg is
 
-   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"03";
+   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"04";
 
-   -- Version(s)
+   -- Version(s) -- always the first command !
    constant CMD_VERSION_C     : std_logic_vector(7 downto 0) := x"00";
-   -- Bit-bang serial peripherals (i2c, spi)
-   constant CMD_BITBANG_C     : std_logic_vector(7 downto 0) := x"01";
-   -- ADC memory
-   constant CMD_ADC_MEMORY_C  : std_logic_vector(7 downto 0) := x"02";
-   -- Scope parameters
-   constant CMD_ACQ_PARAMS_C  : std_logic_vector(7 downto 0) := x"03";
    -- SPI controller (flash)
-   constant CMD_SPI_C         : std_logic_vector(7 downto 0) := x"04";
+   constant CMD_SPI_C         : std_logic_vector(7 downto 0) := x"01";
+   -- Generic registers (platform support)
+   constant CMD_GEN_REGS_C    : std_logic_vector(7 downto 0) := x"02";
    -- Scope/Applicatoin registers
-   constant CMD_APP_REGS_C    : std_logic_vector(7 downto 0) := x"05";
+   constant CMD_APP_REGS_C    : std_logic_vector(7 downto 0) := x"03";
+   -- Bit-bang serial peripherals (i2c, spi)
+   constant CMD_BITBANG_C     : std_logic_vector(7 downto 0) := x"04";
+   -- ADC memory
+   constant CMD_ADC_MEMORY_C  : std_logic_vector(7 downto 0) := x"05";
+   -- Scope parameters
+   constant CMD_ACQ_PARAMS_C  : std_logic_vector(7 downto 0) := x"06";
 
    type SimpleBusMstType is record
       vld : std_logic;
@@ -83,6 +85,9 @@ package CommandMuxPkg is
    constant CMD_BB_SPI_FEG_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 5, SubCommandBBType'length ) );
    constant CMD_BB_SPI_VGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 6, SubCommandBBType'length ) );
    constant CMD_BB_SPI_VGB_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 7, SubCommandBBType'length ) );
+
+   function commandBBMake(constant subCmd : SubCommandBBType)
+      return std_logic_vector;
 
    function subCommandBBGet(constant cmd : std_logic_vector(7 downto 0))
       return SubCommandBBType;
@@ -130,6 +135,13 @@ package body CommandMuxPkg is
    begin
       return SubCommandBBType( cmd(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C) );
    end function subCommandBBGet;
+
+   function commandBBMake(constant subCmd : SubCommandBBType) return std_logic_vector is
+      variable v : std_logic_vector(7 downto 0);
+   begin
+      v := CMD_BITBANG_C or std_logic_vector(shift_left(resize(unsigned(subCmd),8),NUM_CMD_BITS_C));
+      return v;
+   end function commandBBMake;
 
    function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandAcqType is
    begin
