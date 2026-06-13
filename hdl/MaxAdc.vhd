@@ -31,6 +31,7 @@ use     ieee.math_real.all;
 
 use     work.BasicPkg.all;
 use     work.CommandMuxPkg.all;
+use     work.ScopeCommandMuxPkg.all;
 use     work.ILAWrapperPkg.all;
 use     work.AcqCtlPkg.all;
 use     work.SDRAMBufPkg.all;

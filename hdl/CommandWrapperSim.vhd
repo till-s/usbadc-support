@@ -237,7 +237,7 @@ begin
          rdat         => ramRep.rdat
       );
 
-   U_DUT : entity work.CommandWrapper
+   U_DUT : entity work.ScopeCommandWrapper
       generic map (
          FIFO_FREQ_G         => 4.0E5,
          SPI_FREQ_G          => 1.0E5,
@@ -246,7 +246,6 @@ begin
          MEM_DEPTH_G         => MEM_DEPTH_C,
          USE_SDRAM_BUF_G     => false,
          SDRAM_ADDR_WIDTH_G  => RAM_A_WIDTH_C,
-         HAVE_SPI_CMD_G      => true,
          GIT_VERSION_G       => x"deadbeef",
          REG_ASYNC_G         => true
       )

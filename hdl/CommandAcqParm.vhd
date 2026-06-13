@@ -30,6 +30,7 @@ use ieee.numeric_std.all;
 use ieee.math_real.all;
 
 use work.CommandMuxPkg.all;
+use work.ScopeCommandMuxPkg.all;
 use work.AcqCtlPkg.all;
 
 entity CommandAcqParm is

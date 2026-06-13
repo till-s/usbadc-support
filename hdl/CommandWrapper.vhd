@@ -30,17 +30,13 @@ use ieee.numeric_std.all;
 
 use work.BasicPkg.all;
 use work.CommandMuxPkg.all;
-use work.AcqCtlPkg.all;
-use work.SDRAMBufPkg.all;
 use work.RegPkg.all;
 use work.GenRegPkg.all;
 
 entity CommandWrapper is
    generic (
-      I2C_SCL_G                : integer := -1;        -- index of I2C SCL (to handle clock stretching)
-      BBO_INIT_G               : std_logic_vector(7 downto 0) := x"FF";
-      I2C_FREQ_G               : real    := 100.0E3;
-      FIFO_FREQ_G              : real;
+      -- frequency at which the spi interface is clocked
+      SPI_CLK_FREQ_G           : real;
       SPI_FREQ_G               : real    := 10.0E6;
       -- time from CS assertion to first SPI clock (0 -> 1/2 SPI clock)
       SPI_CSLO_NS_G            : real    := 0.0;
@@ -48,26 +44,11 @@ entity CommandWrapper is
       SPI_CSHI_NS_G            : real    := 0.0;
       -- delay CS deassertion after last SPI clock negedge (0 -> no delay)
       SPI_CSHI_DELAY_NS_G      : real    := 0.0;
-      ADC_FREQ_G               : real    := 130.0E6;
-      ADC_BITS_G               : natural := 8;
-      RAM_BITS_G               : natural := 8;
-      MEM_DEPTH_G              : natural := 1024;
-      SDRAM_ADDR_WIDTH_G       : natural := 0;
-      USE_SDRAM_BUF_G          : boolean := false;
-      COMMA_G                  : std_logic_vector(7 downto 0) := x"CA";
-      ESCAP_G                  : std_logic_vector(7 downto 0) := x"55";
-      DISABLE_DECIMATORS_G     : boolean := false;
+      COMMA_G                  : std_logic_vector( 7 downto 0) := x"CA";
+      ESCAP_G                  : std_logic_vector( 7 downto 0) := x"55";
       GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
-      -- may configure specific delays for individual SPI
-      -- devices (indexed by BB subCmd)
-      BB_DELAY_ARRAY_G         : NaturalArray := NATURAL_ARRAY_EMPTY_C;
-      -- dedicated SPI interface for faster flash operations;
-      HAVE_SPI_CMD_G           : boolean := true;
-      HAVE_BB_CMD_G            : boolean := true;
-      HAVE_REG_CMD_G           : boolean := true;
-      HAVE_ADC_CMD_G           : boolean := true;
-      -- registers are in other, asynchronous clock domain
-      REG_ASYNC_G              : boolean := false
+      -- list of supported external commands
+      CMDS_SUPPORTED_G         : CmdsSupportedType := APP_CMDS_SUPPORTED_NONE_C
    );
    port (
       clk          : in  std_logic;
@@ -84,48 +65,24 @@ entity CommandWrapper is
       abrt         : in  std_logic := '0';
       abrtDon      : out std_logic := '0';
 
-      bbo          : out std_logic_vector(7 downto 0);
-      bbi          : in  std_logic_vector(7 downto 0) := (others => '0');
-      subCmdBB     : out SubCommandBBType;
-
-      adcStatus    : out std_logic_vector(7 downto 0) := (others => '0');
-      err          : out std_logic_vector(1 downto 0);
-
-      -- register interfaces
+      -- register interface
       -- generic
       genRegOb     : out GenRegOutType   := GEN_REG_OUT_INIT_C;
       genRegIb     : in  GenRegInpType   := GEN_REG_INP_INIT_C;
 
-      -- application specific
-      appRegClk    : in  std_logic := '0'; -- only used if REG_ASYNC_G
-      appRegOb     : out RegisterReqType := REGISTER_REQ_INIT_C;
-      appRegIb     : in  RegisterRepType := REGISTER_REP_FORCE_ERR_C;
-
       -- board version
       boardVersion : in  std_logic_vector(7 downto 0) := x"00";
-
 
       spiSClk      : out std_logic;
       spiMOSI      : out std_logic;
       spiCSb       : out std_logic;
       spiMISO      : in  std_logic := '0';
 
-      adcClk       : in  std_logic := '0';
-      adcRst       : in  std_logic := '0';
-      -- bit 0 is the DOR (overrange) bit
-      adcDataA     : in  std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
-      adcDataB     : in  std_logic_vector(ADC_BITS_G downto 0) := (others => '0');
-
-      extTrgOut    : out std_logic := '0';
-      extTrgOutEn  : out std_logic := '0';
-
-      -- synchronized into adcClk domain internally; may be asynchronous
-      extTrg       : in  std_logic := '0';
-
-      -- SDRAM interface (if SDRAM sample buffer is used)
-      sdramClk     : in  std_logic := '0';
-      sdramReq     : out SDRAMReqType := SDRAM_REQ_INIT_C;
-      sdramRep     : in  SDRAMRepType := SDRAM_REP_INIT_C
+      -- application-specific commands (if any)
+      bussesIb     : out SimpleBusMstArray(CMDS_SUPPORTED_G'high downto CMDS_SUPPORTED_G'low) := (others => SIMPLE_BUS_MST_INIT_C);
+      readysIb     : in  std_logic_vector (CMDS_SUPPORTED_G'high downto CMDS_SUPPORTED_G'low) := (others => '1'                  );
+      bussesOb     : in  SimpleBusMstArray(CMDS_SUPPORTED_G'high downto CMDS_SUPPORTED_G'low) := (others => SIMPLE_BUS_MST_INIT_C);
+      readysOb     : out std_logic_vector (CMDS_SUPPORTED_G'high downto CMDS_SUPPORTED_G'low) := (others => '1'                  )
    );
 end entity CommandWrapper;
 
@@ -134,56 +91,18 @@ architecture rtl of CommandWrapper is
    constant CMD_VER_IDX_C     : natural := to_integer(unsigned(CMD_VERSION_C   ));
    constant CMD_SPI_IDX_C     : natural := to_integer(unsigned(CMD_SPI_C       ));
    constant CMD_GEN_REG_IDX_C : natural := to_integer(unsigned(CMD_GEN_REGS_C  ));
-   constant CMD_APP_REG_IDX_C : natural := to_integer(unsigned(CMD_APP_REGS_C  ));
-   constant CMD_BB_IDX_C      : natural := to_integer(unsigned(CMD_BITBANG_C   ));
-   constant CMD_ADC_MEM_IDX_C : natural := to_integer(unsigned(CMD_ADC_MEMORY_C));
-   constant CMD_ACQ_PRM_IDX_C : natural := to_integer(unsigned(CMD_ACQ_PARAMS_C));
 
-   type CmdListType is array(natural range <>) of CmdIdxRangeType;
-
-   constant CMD_LIST_C : CmdListType := (
-      CMD_VER_IDX_C,
-      CMD_SPI_IDX_C,
-      CMD_GEN_REG_IDX_C,
-      CMD_APP_REG_IDX_C,
-      CMD_BB_IDX_C,
-      CMD_ADC_MEM_IDX_C,
-      CMD_ACQ_PRM_IDX_C
-   );
-
-   function max(constant x: CmdListType) return CmdIdxRangeType is
-      variable v : CmdIdxRangeType;
-   begin
-      v := 0;
-      for i in x'range loop
-         if ( x(i) > v ) then
-            v := x(i);
-         end if;
-      end loop;
-      return v;
-    end function max;
-
-   function CMDS_SUPPORTED_F return CmdsSupportedType is
-      variable v : CmdsSupportedType(0 to max(CMD_LIST_C)) := (others => false);
-   begin
-      v(CMD_VER_IDX_C    ) := true;
-      v(CMD_SPI_IDX_C    ) := HAVE_SPI_CMD_G;
-      v(CMD_GEN_REG_IDX_C) := true;
-      v(CMD_APP_REG_IDX_C) := HAVE_REG_CMD_G;
-      v(CMD_BB_IDX_C     ) := HAVE_BB_CMD_G;
-      v(CMD_ADC_MEM_IDX_C) := HAVE_ADC_CMD_G;
-      v(CMD_ACQ_PRM_IDX_C) := HAVE_ADC_CMD_G;
-      return v;
-   end function CMDS_SUPPORTED_F;
-
-   constant CMDS_SUPPORTED_C  : CmdsSupportedType := CMDS_SUPPORTED_F;
+   constant CMDS_SUPPORTED_C  : CmdsSupportedType := CMDS_SUPPORTED_BASIC_C & CMDS_SUPPORTED_G;
 
    constant NUM_CMDS_C        : natural := CMDS_SUPPORTED_C'length;
+   -- shorter names:
+   constant EXT_CMD_L_C       : natural := CMDS_SUPPORTED_G'high;
+   constant EXT_CMD_R_C       : natural := CMDS_SUPPORTED_G'low;
 
-   signal   bussesIb          : SimpleBusMstArray(NUM_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
-   signal   readysIb          : std_logic_vector (NUM_CMDS_C - 1 downto 0) := (others => '1'                  );
-   signal   bussesOb          : SimpleBusMstArray(NUM_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
-   signal   readysOb          : std_logic_vector (NUM_CMDS_C - 1 downto 0) := (others => '1'                  );
+   signal   bussesIbLoc       : SimpleBusMstArray(NUM_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
+   signal   readysIbLoc       : std_logic_vector (NUM_CMDS_C - 1 downto 0) := (others => '1'                  );
+   signal   bussesObLoc       : SimpleBusMstArray(NUM_CMDS_C - 1 downto 0) := (others => SIMPLE_BUS_MST_INIT_C);
+   signal   readysObLoc       : std_logic_vector (NUM_CMDS_C - 1 downto 0) := (others => '1'                  );
 
    signal   unstuffedBusIb    : SimpleBusMstType                           := SIMPLE_BUS_MST_INIT_C;
    signal   unstuffedRdyIb    : std_logic                                  := '1';
@@ -197,10 +116,6 @@ architecture rtl of CommandWrapper is
    signal   pipelinedRdyIb    : std_logic                                  := '1';
    signal   pipelinedBusOb    : SimpleBusMstType                           := SIMPLE_BUS_MST_INIT_C;
    signal   pipelinedRdyOb    : std_logic                                  := '1';
-
-   signal   acqParms          : AcqCtlParmType := ACQ_CTL_PARM_INIT_C;
-   signal   acqParmsTgl       : std_logic      := '0';
-   signal   acqParmsAck       : std_logic;
 
    signal   stuffRst          : std_logic;
 
@@ -289,11 +204,11 @@ begin
          abrt         => abrt,
          abrtDon      => abrtDon,
 
-         busMuxedIb   => bussesIb,
-         rdyMuxedIb   => readysIb,
+         busMuxedIb   => bussesIbLoc,
+         rdyMuxedIb   => readysIbLoc,
 
-         busMuxedOb   => bussesOb,
-         rdyMuxedOb   => readysOb
+         busMuxedOb   => bussesObLoc,
+         rdyMuxedOb   => readysObLoc
       );
 
    U_VERSION : entity work.CommandVersion
@@ -306,172 +221,56 @@ begin
 
          hwVersion    => boardVersion,
 
-         mIb          => bussesIb(CMD_VER_IDX_C),
-         rIb          => readysIb(CMD_VER_IDX_C),
+         mIb          => bussesIbLoc(CMD_VER_IDX_C),
+         rIb          => readysIbLoc(CMD_VER_IDX_C),
 
-         mOb          => bussesOb(CMD_VER_IDX_C),
-         rOb          => readysOb(CMD_VER_IDX_C)
+         mOb          => bussesObLoc(CMD_VER_IDX_C),
+         rOb          => readysObLoc(CMD_VER_IDX_C)
       );
 
-   G_BITBANG : if ( CMDS_SUPPORTED_C(CMD_BB_IDX_C) ) generate
+   U_SPI : entity work.CommandSpi
+      generic map (
+         CLOCK_FREQ_G => SPI_CLK_FREQ_G,
+         SPI_FREQ_G   => SPI_FREQ_G,
+         CSLO_NS_G    => SPI_CSLO_NS_G,
+         CSHI_NS_G    => SPI_CSHI_NS_G,
+         CSDL_NS_G    => SPI_CSHI_DELAY_NS_G
+      )
+      port map (
+         clk          => clk,
+         rst          => rst,
 
-      U_BITBANG : entity work.CommandBitBang
-         generic map (
-            I2C_SCL_G    => I2C_SCL_G,
-            BBO_INIT_G   => BBO_INIT_G,
-            I2C_FREQ_G   => I2C_FREQ_G,
-            CLOCK_FREQ_G => FIFO_FREQ_G,
-            HPER_DELAY_G => BB_DELAY_ARRAY_G
-         )
-         port map (
-            clk          => clk,
-            rst          => rst,
+         mIb          => bussesIbLoc(CMD_SPI_IDX_C),
+         rIb          => readysIbLoc(CMD_SPI_IDX_C),
 
-            mIb          => bussesIb(CMD_BB_IDX_C),
-            rIb          => readysIb(CMD_BB_IDX_C),
+         mOb          => bussesObLoc(CMD_SPI_IDX_C),
+         rOb          => readysObLoc(CMD_SPI_IDX_C),
 
-            mOb          => bussesOb(CMD_BB_IDX_C),
-            rOb          => readysOb(CMD_BB_IDX_C),
+         spiSClk      => spiSClk,
+         spiMOSI      => spiMOSI,
+         spiCSb       => spiCSb,
+         spiMISO      => spiMISO
+      );
 
-            bbi          => bbi,
-            bbo          => bbo,
-            subCmd       => subCmdBB
-         );
-   end generate G_BITBANG;
+   U_GEN_REG : entity work.CommandGenRegs
+      port map (
+         clk          => clk,
+         rst          => rst,
 
-   G_ADC : if ( CMDS_SUPPORTED_C( CMD_ADC_MEM_IDX_C ) ) generate
-      U_ADC_BUF : entity work.MaxAdc
-         generic map (
-            ADC_CLOCK_FREQ_G     => ADC_FREQ_G,
-            MEM_DEPTH_G          => MEM_DEPTH_G,
-            ADC_BITS_G           => ADC_BITS_G,
-            RAM_BITS_G           => RAM_BITS_G,
-            DISABLE_DECIMATORS_G => DISABLE_DECIMATORS_G,
-            SDRAM_ADDR_WIDTH_G   => SDRAM_ADDR_WIDTH_G,
-            USE_SDRAM_BUF_G      => USE_SDRAM_BUF_G
-         )
-         port map (
-            adcClk       => adcClk,
-            adcRst       => adcRst,
-            adcDataA     => adcDataA,
-            adcDataB     => adcDataB,
+         mIb          => bussesIbLoc(CMD_GEN_REG_IDX_C),
+         rIb          => readysIbLoc(CMD_GEN_REG_IDX_C),
 
-            extTrgOut    => extTrgOut,
-            extTrgOutEn  => extTrgOutEn,
+         mOb          => bussesObLoc(CMD_GEN_REG_IDX_C),
+         rOb          => readysObLoc(CMD_GEN_REG_IDX_C),
 
-            sdramClk     => sdramClk,
-            sdramReq     => sdramReq,
-            sdramRep     => sdramRep,
+         genRegOb     => genRegOb,
+         genRegIb     => genRegIb
+      );
 
-            busClk       => clk,
-            busRst       => rst,
+   bussesIb   (EXT_CMD_L_C downto EXT_CMD_R_C) <= bussesIbLoc(EXT_CMD_L_C downto EXT_CMD_R_C);
+   readysIbLoc(EXT_CMD_L_C downto EXT_CMD_R_C) <= readysIb   (EXT_CMD_L_C downto EXT_CMD_R_C);
 
-            parms        => acqParms,
-            parmsTgl     => acqParmsTgl,
-            parmsAck     => acqParmsAck,
-
-            busIb        => bussesIb(CMD_ADC_MEM_IDX_C),
-            rdyIb        => readysIb(CMD_ADC_MEM_IDX_C),
-
-            busOb        => bussesOb(CMD_ADC_MEM_IDX_C),
-            rdyOb        => readysOb(CMD_ADC_MEM_IDX_C),
-
-            err          => err,
-            status       => adcStatus,
-
-            extTrg       => extTrg
-         );
-   end generate G_ADC;
-
-   G_PARM : if ( CMDS_SUPPORTED_C( CMD_ACQ_PRM_IDX_C ) ) generate
-      U_ACQ_PARMS : entity work.CommandAcqParm
-         generic map (
-            CLOCK_FREQ_G => FIFO_FREQ_G,
-            MEM_DEPTH_G  => MEM_DEPTH_G
-         )
-         port map (
-            clk          => clk,
-            rst          => rst,
-
-            mIb          => bussesIb(CMD_ACQ_PRM_IDX_C),
-            rIb          => readysIb(CMD_ACQ_PRM_IDX_C),
-
-            mOb          => bussesOb(CMD_ACQ_PRM_IDX_C),
-            rOb          => readysOb(CMD_ACQ_PRM_IDX_C),
-
-            parmsOb      => acqParms,
-            trgOb        => acqParmsTgl,
-            ackIb        => acqParmsAck
-         );
-   end generate G_PARM;
-
-   G_SPI  : if ( CMDS_SUPPORTED_C( CMD_SPI_IDX_C ) ) generate
-      U_SPI : entity work.CommandSpi
-         generic map (
-            CLOCK_FREQ_G => FIFO_FREQ_G,
-            SPI_FREQ_G   => SPI_FREQ_G,
-            CSLO_NS_G    => SPI_CSLO_NS_G,
-            CSHI_NS_G    => SPI_CSHI_NS_G,
-            CSDL_NS_G    => SPI_CSHI_DELAY_NS_G
-         )
-         port map (
-            clk          => clk,
-            rst          => rst,
-
-            mIb          => bussesIb(CMD_SPI_IDX_C),
-            rIb          => readysIb(CMD_SPI_IDX_C),
-
-            mOb          => bussesOb(CMD_SPI_IDX_C),
-            rOb          => readysOb(CMD_SPI_IDX_C),
-
-            spiSClk      => spiSClk,
-            spiMOSI      => spiMOSI,
-            spiCSb       => spiCSb,
-            spiMISO      => spiMISO
-         );
-   end generate G_SPI;
-
-   G_GEN_REGS : if ( CMDS_SUPPORTED_C( CMD_GEN_REG_IDX_C ) ) generate
-      U_APP_REG : entity work.CommandGenRegs
-         port map (
-            clk          => clk,
-            rst          => rst,
-
-            mIb          => bussesIb(CMD_GEN_REG_IDX_C),
-            rIb          => readysIb(CMD_GEN_REG_IDX_C),
-
-            mOb          => bussesOb(CMD_GEN_REG_IDX_C),
-            rOb          => readysOb(CMD_GEN_REG_IDX_C),
-
-            genRegOb     => genRegOb,
-            genRegIb     => genRegIb
-         );
-   end generate G_GEN_REGS;
-
-   G_APP_REGS : if ( CMDS_SUPPORTED_C( CMD_APP_REG_IDX_C ) ) generate
-      U_APP_REG : entity work.CommandReg
-         generic map (
-            ASYNC_G      => REG_ASYNC_G
-         )
-         port map (
-            clk          => clk,
-            rst          => rst,
-
-            mIb          => bussesIb(CMD_APP_REG_IDX_C),
-            rIb          => readysIb(CMD_APP_REG_IDX_C),
-
-            mOb          => bussesOb(CMD_APP_REG_IDX_C),
-            rOb          => readysOb(CMD_APP_REG_IDX_C),
-
-            regClk       => appRegClk,
-            wdat         => appRegOb.wdat,
-            addr         => appRegOb.addr,
-            rdnw         => appRegOb.rdnw,
-            vld          => appRegOb.vld,
-            rdy          => appRegIb.rdy,
-            rdat         => appRegIb.rdat,
-            err          => appRegIb.err
-         );
-    end generate G_APP_REGS;
+   bussesObLoc(EXT_CMD_L_C downto EXT_CMD_R_C) <= bussesOb   (EXT_CMD_L_C downto EXT_CMD_R_C);
+   readysOb   (EXT_CMD_L_C downto EXT_CMD_R_C) <= readysObLoc(EXT_CMD_L_C downto EXT_CMD_R_C);
 
 end architecture rtl;

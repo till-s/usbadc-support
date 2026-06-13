@@ -267,12 +267,7 @@ int64_t rval;
 FWInfo *
 fw_open(const char *devn, unsigned speed)
 {
-/* set speed to B0 which should deassert DTR; this
- * allows firmwares to MUX a FIFO and a UART using
- * DTR as the mux control signal. Unlikely that
- * there is an actual modem...
- */
-int     fd = fifoOpen( devn, B0 );
+int     fd = fifoOpen( devn, speed );
 FWInfo *rv;
 
 	if ( fd < 0 ) {

@@ -29,11 +29,12 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 use work.CommandMuxPkg.all;
+use work.ScopeCommandMuxPkg.all;
 
-entity CommandWrapperTb is
-end entity CommandWrapperTb;
+entity ScopeCommandWrapperTb is
+end entity ScopeCommandWrapperTb;
 
-architecture sim of CommandWrapperTb is
+architecture sim of ScopeCommandWrapperTb is
 
    constant MEM_DEPTH_C : natural := 16;
    constant ADC_FIRST_C : unsigned(9 downto 0) := "00" & x"A0";
@@ -176,7 +177,7 @@ begin
       );
 
 
-   U_DUT : entity work.CommandWrapper
+   U_DUT : entity work.ScopeCommandWrapper
       generic map (
          FIFO_FREQ_G  => 4.0E5,
          MEM_DEPTH_G  => MEM_DEPTH_C,
@@ -229,7 +230,7 @@ begin
       x(src, CMD_VERSION_C, '1');
       x(src, CMD_VERSION_C, '1');
       x(src, CMD_VERSION_C, '1');
-      x(src, commandBBMake(CMD_BB_SPI_ROM_C));
+      x(src, commandBBMake(CMD_BITBANG_C, CMD_BB_SPI_ROM_C));
       for i in bbFeed'range loop
          if ( i = bbFeed'high ) then
             lst := '1';

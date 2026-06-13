@@ -41,14 +41,8 @@ package CommandMuxPkg is
    constant CMD_SPI_C         : std_logic_vector(7 downto 0) := x"01";
    -- Generic registers (platform support)
    constant CMD_GEN_REGS_C    : std_logic_vector(7 downto 0) := x"02";
-   -- Scope/Applicatoin registers
-   constant CMD_APP_REGS_C    : std_logic_vector(7 downto 0) := x"03";
-   -- Bit-bang serial peripherals (i2c, spi)
-   constant CMD_BITBANG_C     : std_logic_vector(7 downto 0) := x"04";
-   -- ADC memory
-   constant CMD_ADC_MEMORY_C  : std_logic_vector(7 downto 0) := x"05";
-   -- Scope parameters
-   constant CMD_ACQ_PARAMS_C  : std_logic_vector(7 downto 0) := x"06";
+
+   constant NUM_BASIC_CMDS_C  : natural := 3;
 
    type SimpleBusMstType is record
       vld : std_logic;
@@ -74,6 +68,10 @@ package CommandMuxPkg is
    subtype  CmdIdxRangeType  is natural range 0 to NUM_CMD_MAX_C;
 
    type     CmdsSupportedType is array(CmdIdxRangeType range <>) of boolean;
+   constant APP_CMDS_SUPPORTED_NONE_C : CmdsSupportedType(NUM_BASIC_CMDS_C to NUM_BASIC_CMDS_C-1) := ( others => false );
+
+   constant CMDS_SUPPORTED_BASIC_C : CmdsSupportedType(0 to NUM_BASIC_CMDS_C - 1) := (others => true);
+
 
    subtype  SubCommandBBType  is std_logic_vector(2 downto 0);
 
@@ -86,29 +84,11 @@ package CommandMuxPkg is
    constant CMD_BB_SPI_VGA_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 6, SubCommandBBType'length ) );
    constant CMD_BB_SPI_VGB_C  : SubCommandBBType := SubCommandBBType( to_unsigned( 7, SubCommandBBType'length ) );
 
-   function commandBBMake(constant subCmd : SubCommandBBType)
+   function commandBBMake(constant cmd: std_logic_vector(7 downto 0); constant subCmd : SubCommandBBType)
       return std_logic_vector;
 
    function subCommandBBGet(constant cmd : std_logic_vector(7 downto 0))
       return SubCommandBBType;
-
-   subtype  SubCommandAcqType is std_logic_vector(1 downto 0);
-   constant CMD_ACQ_READ_C    : SubCommandAcqType := SubCommandAcqType( to_unsigned( 0, SubCommandAcqType'length ) );
-   constant CMD_ACQ_FLUSH_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 1, SubCommandAcqType'length ) );
-   -- read back sample buffer size
-   constant CMD_ACQ_MSIZE_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 2, SubCommandAcqType'length ) );
-   -- sample frequency
-   constant CMD_ACQ_SFREQ_C   : SubCommandAcqType := SubCommandAcqType( to_unsigned( 3, SubCommandAcqType'length ) );
-
-   function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0))
-      return SubCommandAcqType;
-
-   subtype SubCommandAcqParmType is std_logic_vector(1 downto 0);
-
-   constant CMD_PRM_SET_GET   : SubCommandAcqParmType := SubCommandAcqParmType( to_unsigned( 0, SubCommandAcqParmType'length ) );
-
-   function subCommandAcqParmGet(constant cmd : in std_logic_vector (7 downto 0))
-      return SubCommandAcqParmType;
 
    subtype  SubCommandSPIType is std_logic_vector(1 downto 0);
 
@@ -136,23 +116,13 @@ package body CommandMuxPkg is
       return SubCommandBBType( cmd(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C) );
    end function subCommandBBGet;
 
-   function commandBBMake(constant subCmd : SubCommandBBType) return std_logic_vector is
+   function commandBBMake(constant cmd: std_logic_vector(7 downto 0); constant subCmd : SubCommandBBType)
+      return std_logic_vector is
       variable v : std_logic_vector(7 downto 0);
    begin
-      v := CMD_BITBANG_C or std_logic_vector(shift_left(resize(unsigned(subCmd),8),NUM_CMD_BITS_C));
+      v := cmd or std_logic_vector(shift_left(resize(unsigned(subCmd),8),NUM_CMD_BITS_C));
       return v;
    end function commandBBMake;
-
-   function subCommandAcqGet(constant cmd : std_logic_vector(7 downto 0)) return SubCommandAcqType is
-   begin
-      return SubCommandAcqType( cmd(NUM_CMD_BITS_C + SubCommandAcqType'length - 1 downto NUM_CMD_BITS_C) );
-   end function subCommandAcqGet;
-
-   function subCommandAcqParmGet(constant cmd : in std_logic_vector (7 downto 0))
-      return SubCommandAcqParmType is
-   begin
-      return SubCommandAcqParmType( cmd(NUM_CMD_BITS_C + SubCommandAcqParmType'length - 1 downto NUM_CMD_BITS_C) );
-   end function subCommandAcqParmGet;
 
    function subCommandSPIGet(constant cmd : in std_logic_vector (7 downto 0))
       return SubCommandSPIType is
