@@ -1,0 +1,18 @@
+# Source files of command dispatcher core (without scope-specific bits)
+hdl/BasicPkg.vhd
+hdl/RegPkg.vhd
+hdl/GenRegPkg.vhd
+hdl/ILAWrapperPkg.vhd
+hdl/CommandMuxPkg.vhd
+hdl/CommandVersion.vhd
+hdl/CommandGenRegs.vhd
+hdl/SpiBitShifter.vhd
+hdl/CommandSpi.vhd
+hdl/CommandReg.vhd
+hdl/CommandMux.vhd
+hdl/SynchronizerBit.vhd
+hdl/SimpleBusPipeStage.vhd
+hdl/SimpleBusAsync.vhd
+hdl/ByteDeStuffer.vhd
+hdl/ByteStuffer.vhd
+hdl/CommandWrapper.vhd
