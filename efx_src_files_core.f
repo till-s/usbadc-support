@@ -16,3 +16,4 @@ hdl/SimpleBusAsync.vhd
 hdl/ByteDeStuffer.vhd
 hdl/ByteStuffer.vhd
 hdl/CommandWrapper.vhd
+hdl/Flicker.vhd
