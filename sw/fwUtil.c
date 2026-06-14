@@ -80,3 +80,9 @@ bail:
 	}
 	return rval;
 }
+
+int
+fileUnmap( uint8_t *map, off_t siz )
+{
+	return munmap( map, siz ) ? -errno : 0;
+}

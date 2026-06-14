@@ -29,6 +29,8 @@
 #include <sys/types.h>
 #include <stdint.h>
 
+#include <flash.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -98,11 +100,11 @@ int
 at25_block_erase(AT25Flash *flash, unsigned addr, size_t sz);
 
 /* 'check' flags for at25_prog */
-#define AT25_CHECK_ERASED 1
-#define AT25_CHECK_VERIFY 2
-#define AT25_EXEC_PROG    4
+#define AT25_CHECK_ERASED FLASH_CHECK_ERASED
+#define AT25_CHECK_VERIFY FLASH_CHECK_VERIFY
+#define AT25_EXEC_PROG    FLASH_PROGRAM
 /* 'erase' is set by at25_area_erase when executing the AT25Progress callback */
-#define AT25_ERASE        8
+#define AT25_ERASE        FLASH_ERASE
 
 /* Return nonzero to abort operation.
  * The 'progress' call back is called
@@ -111,13 +113,11 @@ at25_block_erase(AT25Flash *flash, unsigned addr, size_t sz);
  * block.
  */
 
-typedef int (*AT25Progress)(AT25Flash *flash, void *closure, int flag, unsigned addr, unsigned remain);
+int
+at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, FlashProgress progress, void *userData);
 
 int
-at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, AT25Progress progress, void *userData);
-
-int
-at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int flags, AT25Progress progress, void *userData);
+at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int flags, FlashProgress progress, void *userData);
 
 /* Send soft reset sequence */
 int

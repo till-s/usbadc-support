@@ -35,6 +35,7 @@
 
 #include "cmdXfer.h"
 #include "fwComm.h"
+#include "fwUtil.h"
 #include "at25Sup.h"
 
 #define AT25_PAGE          256
@@ -80,7 +81,7 @@ struct AT25Flash {
 };
 
 static int
-verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  AT25Progress progress, void *userData);
+verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  FlashProgress progress, void *userData);
 
 static int
 do_xfer(AT25Flash *flash, const uint8_t *hdr, unsigned hlen, const uint8_t *tbuf, uint8_t *rbuf, unsigned buflen);
@@ -417,7 +418,7 @@ size_t  deviceBlockSize = at25_get_block_size( flash );
 	return 0;
 }
 
-static int verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  AT25Progress progress, void *userData)
+static int verify(AT25Flash *flash, unsigned addr, const uint8_t *cmp, size_t len,  FlashProgress progress, void *userData)
 {
 uint8_t   buf[2048];
 int       mismatch = 0;
@@ -463,7 +464,7 @@ int       flag = cmp ? AT25_CHECK_VERIFY : AT25_CHECK_ERASED;
 }
 
 int
-at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int check, AT25Progress progress, void *userData)
+at25_prog(AT25Flash *flash, unsigned addr, const uint8_t *data, size_t len, int check, FlashProgress progress, void *userData)
 {
 uint8_t        buf[2048];
 unsigned       wrkAddr;
@@ -696,7 +697,7 @@ int i;
 }
 
 int
-at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, AT25Progress progress, void *userData)
+at25_area_erase(AT25Flash *flash, unsigned flashAddr, size_t flashSize, FlashProgress progress, void *userData)
 {
 
 unsigned aligned;

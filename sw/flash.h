@@ -26,31 +26,41 @@
 
 #pragma once
 
+#include <sys/types.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* open and mmap a file;
- *
- * If 'readOnly' is nonzero the file is opened for reading only, otherwise
- * for read-write access.
- *
- * If 'creatsz' is nonzero and 'readOnly' is zero then the file is created
- * with the requested size.
- *
- * The file is mmapped and closed.
- *
- * RETURNS: zero on success or -errno of the failed operation.
- *
- * NOTE: the returned area must be 'munmap'ped by the caller.
- */
-int
-fileMap(const char *fnam,  uint8_t **mapp, off_t *sizp, off_t creatsz, int readOnly);
+struct FWInfo;
+struct Flash;
+
+/* progress state flags */
+#define FLASH_CHECK_ERASED 1
+#define FLASH_CHECK_VERIFY 2
+#define FLASH_PROGRAM      4
+#define FLASH_ERASE        8 
+
+typedef int (*FlashProgress)(void *flash, void *closure, int flag, unsigned addr, unsigned remain);
 
 int
-fileUnmap( uint8_t *mapp, off_t siz );
+flash_write_from_file(struct FWInfo *fw, const char *filename, unsigned flashAddr, FlashProgress progress, void *progressState);
+
+int
+flash_read_to_file(struct FWInfo *fw, const char *filename, unsigned flashAddr, unsigned size);
+
+typedef struct {
+	int    iter;
+	FILE  *fp;
+} FlashStdioProgressData;
+
+void
+flash_stdio_progress_data_init(FlashStdioProgressData *pd);
+
+int
+flash_stdio_progress(void *flash, void *closure, int flag, unsigned addr, unsigned remain);
 
 #ifdef __cplusplus
 }

@@ -60,7 +60,7 @@ CFLAGS+=$(addprefix -D,$(JANSSON_DEFINES_$(HAVE_JANSSON)))
 OBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 OBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o
 OBJS+=tca6408FECSup.o at24EepromSup.o unitData.o unitDataFlash.o
-OBJS+=scopeSup.o jsonSup.o
+OBJS+=scopeSup.o jsonSup.o flash.o
 
 LOBJS=$(OBJS) $(H5_OBJS)
 
@@ -100,6 +100,7 @@ cmdXfer.o: cmdXfer.h
 at25Sup.o: fwComm.h cmdXfer.h
 max195xxSup.o: fwComm.h max195xxSup.h
 versaClkSup.o: fwComm.h versaClkSup.h
+flash.o: flash.h
 
 .PHONY: clean
 

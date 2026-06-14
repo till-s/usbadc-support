@@ -596,92 +596,54 @@ const char *  xt = "";
 	fprintf(f, "ADC Buffer size: %ld (%d-bit%s) samples/channel.\n", sz, bs, xt);
 }
 
-typedef struct {
-	int    iter;
-} AT25ProgressData;
-
-static int
-at25Progress(AT25Flash *flash, void *closure, int flag, unsigned addr, unsigned remain)
-{
-	AT25ProgressData *pd = closure;
-	if ( !! (flag & AT25_ERASE ) ) {
-		if ( pd->iter < 0 ) {
-			printf("Erasing 0x%x/%d bytes from address 0x%x\n", remain, remain, addr);
-			if ( pd->iter < -1 ) {
-				return -EACCES;
-			}
-		} else {
-			printf("e"); fflush(stdout);
-		}
-	} else {
-		if ( pd->iter >= 0 ) {
-			if ( !! (flag & AT25_CHECK_ERASED) ) {
-				printf("z"); fflush(stdout);
-			}
-			if ( !! (flag & AT25_EXEC_PROG) ) {
-				printf("."); fflush(stdout);
-			}
-			if ( !! (flag & AT25_CHECK_VERIFY) ) {
-				printf("v"); fflush(stdout);
-			}
-		}
-	}
-	pd->iter++;
-	if ( 0 == remain || (pd->iter > 0 && (0 == pd->iter % 64))) {
-		printf("\n");
-	}
-	if ( 0 == remain ) {
-		pd->iter = -1;
-	}
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
-const char        *devn;
-FWInfo            *fw        = 0;
-int                rval      = 1;
-unsigned           speed     = 115200; /* not sure this really matters */
-uint8_t           *buf       = 0;
+const char                *devn;
+FWInfo                    *fw        = 0;
+int                        rval      = 1;
+unsigned                   speed     = 115200; /* not sure this really matters */
+uint8_t                   *buf       = 0;
 /* max # samples in 200 device is 16k */
-unsigned           buflen    = 33000;
-int                i;
-int                reg       =  0;
-int                val       = -1;
-unsigned           rdl       = 0;
+unsigned                   buflen    = 33000;
+int                        i;
+int                        reg       =  0;
+int                        val       = -1;
+unsigned                   rdl       = 0;
 
-unsigned           sla       = 0;
+unsigned                   sla       = 0;
 
-int                dac       = 0;
+int                        dac       = 0;
 
-int                opt;
-int                test_reg  = 0;
-char              *test_spi  = 0;
-unsigned           flashAddr = FLASHADDR_DFLT;
-unsigned          *u_p;
-char              *progFile  = 0;
-uint8_t           *progMap   = NULL;
-off_t              progSize  = 0;
-int                progRdonly= 1;
-int                doit      = 0;
-int                debug     = 0;
-int                fwVersion = 0;
-int                dumpAdc   = 0;
-int                dumpPrms  = 0;
-const char        *trgOp     = 0;
-const char        *regOp     = 0;
-const char        *feOp      = 0;
-AT25Flash         *flash     = 0;
-ScopePvt          *scope     = 0;
-const char        *h5nam     = NULL;
-ScopeH5Data       *h5d       = NULL;
-int                h5st      = 0;
-const char        *h5comment = NULL;
-const char        *jsonIFnam = NULL;
-const char        *jsonOFnam = NULL;
-ScopeParams       *settings  = NULL;
-AT25ProgressData   pd;
-int                fpgaReconf = 0;
+int                        opt;
+int                        test_reg  = 0;
+char                      *test_spi  = 0;
+unsigned                   flashAddr = FLASHADDR_DFLT;
+unsigned                  *u_p;
+char                      *progFile  = 0;
+uint8_t                   *progMap   = NULL;
+off_t                      progSize  = 0;
+int                        progRdonly= 1;
+int                        doit      = 0;
+int                        debug     = 0;
+int                        fwVersion = 0;
+int                        dumpAdc   = 0;
+int                        dumpPrms  = 0;
+const char                *trgOp     = 0;
+const char                *regOp     = 0;
+const char                *feOp      = 0;
+AT25Flash                 *flash     = 0;
+ScopePvt                  *scope     = 0;
+const char                *h5nam     = NULL;
+ScopeH5Data               *h5d       = NULL;
+int                        h5st      = 0;
+const char                *h5comment = NULL;
+const char                *jsonIFnam = NULL;
+const char                *jsonOFnam = NULL;
+ScopeParams               *settings  = NULL;
+int                        fpgaReconf = 0;
+FlashStdioProgressData     pd;
+
+	flash_stdio_progress_data_init( &pd );
 
 	if ( ! (devn = getenv( "BBCLI_DEVICE" )) ) {
 		devn = "/dev/ttyACM0";
@@ -1066,7 +1028,7 @@ int                fpgaReconf = 0;
 				}
 
 				pd.iter = -1;
-				if ( at25_prog( flash, flashAddr, progMap, progSize, cmd, at25Progress, &pd ) < 0 ) {
+				if ( at25_prog( flash, flashAddr, progMap, progSize, cmd, flash_stdio_progress, &pd ) < 0 ) {
 					fprintf(stderr, "Programming flash failed\n");
 					goto bail;
 				}
@@ -1090,7 +1052,7 @@ int                fpgaReconf = 0;
 				}
 
 				pd.iter = doit > 0 ? -1 : -2;
-				st = at25_area_erase(flash, flashAddr, i, at25Progress, &pd);
+				st = at25_area_erase(flash, flashAddr, i, flash_stdio_progress, &pd);
 				if ( st < 0 ) {
 					if ( -EACCES == st ) {
 						fprintf(stderr, "... bailing out -- please use -! to proceed or -? to just verify the flash\n");
