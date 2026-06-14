@@ -4,7 +4,7 @@ include( FindPkgConfig )
 
 project( fwcomm LANGUAGES C )
 
-set( SOURCES fwComm.c fwUtil.c cmdXfer.c at25Sup.c dac47cxSup.c lmh6882Sup.c max195xxSup.c versaClkSup.c fegRegSup.c ad8370Sup.c tca6408FECSup.c at24EepromSup.c unitData.c unitDataFlash.c scopeSup.c jsonSup.c hdf5Sup.c )
+set( SOURCES fwComm.c fwUtil.c cmdXfer.c at25Sup.c dac47cxSup.c lmh6882Sup.c max195xxSup.c versaClkSup.c fegRegSup.c ad8370Sup.c tca6408FECSup.c at24EepromSup.c unitData.c unitDataFlash.c scopeSup.c jsonSup.c hdf5Sup.c flash.c )
 set( LIBS    fwcomm          )
 
 include_directories( ./ )
