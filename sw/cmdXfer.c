@@ -86,7 +86,7 @@ int                err  = 0;
 			i = 1;
 		} else {
 			if ( ioctl( fd, TIOCEXCL ) ) {
-				snprintf(msg, sizeof(msg), "settiong TIOCEXCL failed");
+				snprintf(msg, sizeof(msg), "setting TIOCEXCL failed");
 				perror(msg);
 				goto bail;
 			}
