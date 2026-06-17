@@ -47,6 +47,7 @@ entity CommandWrapper is
       COMMA_G                  : std_logic_vector( 7 downto 0) := x"CA";
       ESCAP_G                  : std_logic_vector( 7 downto 0) := x"55";
       GIT_VERSION_G            : std_logic_vector(31 downto 0) := x"0000_0000";
+      API_FUNCTION_G           : std_logic_vector( 3 downto 0) := CMD_API_FUNCTION_GENERIC_C;
       -- list of supported external commands
       CMDS_SUPPORTED_G         : CmdsSupportedType := APP_CMDS_SUPPORTED_NONE_C
    );
@@ -213,7 +214,8 @@ begin
 
    U_VERSION : entity work.CommandVersion
       generic map (
-         GIT_VERSION_G   => GIT_VERSION_G
+         GIT_VERSION_G   => GIT_VERSION_G,
+         API_FUNCTION_G  => API_FUNCTION_G
       )
       port map (
          clk          => clk,

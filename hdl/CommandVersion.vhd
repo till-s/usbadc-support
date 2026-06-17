@@ -34,7 +34,8 @@ use work.CommandMuxPkg.all;
 
 entity CommandVersion is
    generic (
-      GIT_VERSION_G   : std_logic_vector(31 downto 0)
+      GIT_VERSION_G   : std_logic_vector(31 downto 0);
+      API_FUNCTION_G  : std_logic_vector( 3 downto 0) := CMD_API_FUNCTION_GENERIC_C
    );
    port (
       clk          : in  std_logic;
@@ -54,7 +55,7 @@ architecture rtl of CommandVersion is
 
    constant VERSION_C : Slv8Array := (
       0 => x"00",
-      1 => CMD_API_VERSION_C,
+      1 => mkApiVersion( API_FUNCTION_G ),
       2 => GIT_VERSION_G(31 downto 24),
       3 => GIT_VERSION_G(23 downto 16),
       4 => GIT_VERSION_G(15 downto  8),

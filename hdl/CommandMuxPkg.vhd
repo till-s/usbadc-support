@@ -33,16 +33,22 @@ use work.BasicPkg.all;
 
 package CommandMuxPkg is
 
-   constant CMD_API_VERSION_C : std_logic_vector(7 downto 0) := x"04";
+   constant CMD_API_VERSION_C             : std_logic_vector(3 downto 0) := x"4";
+
+   constant CMD_API_FUNCTION_GENERIC_C    : std_logic_vector(3 downto 0) := x"0";
+   constant CMD_API_FUNCTION_SCOPE_C      : std_logic_vector(3 downto 0) := x"1";
+
+   function mkApiVersion(constant apiFunction : std_logic_vector(3 downto 0))
+      return std_logic_vector;
 
    -- Version(s) -- always the first command !
-   constant CMD_VERSION_C     : std_logic_vector(7 downto 0) := x"00";
+   constant CMD_VERSION_C                 : std_logic_vector(7 downto 0) := x"00";
    -- SPI controller (flash)
-   constant CMD_SPI_C         : std_logic_vector(7 downto 0) := x"01";
+   constant CMD_SPI_C                     : std_logic_vector(7 downto 0) := x"01";
    -- Generic registers (platform support)
-   constant CMD_GEN_REGS_C    : std_logic_vector(7 downto 0) := x"02";
+   constant CMD_GEN_REGS_C                : std_logic_vector(7 downto 0) := x"02";
 
-   constant NUM_BASIC_CMDS_C  : natural := 3;
+   constant NUM_BASIC_CMDS_C              : natural := 3;
 
    type SimpleBusMstType is record
       vld : std_logic;
@@ -134,5 +140,11 @@ package body CommandMuxPkg is
    begin
       return SubCommandRegType( cmd(NUM_CMD_BITS_C + SubCommandBBType'length - 1 downto NUM_CMD_BITS_C) );
    end function subCommandRegGet;
+
+   function mkApiVersion(constant apiFunction : std_logic_vector(3 downto 0))
+      return std_logic_vector is
+   begin
+      return apiFunction & CMD_API_VERSION_C;
+   end function mkApiVersion;
 
 end package body CommandMuxPkg;

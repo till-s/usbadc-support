@@ -76,6 +76,11 @@ fw_get_board_version(FWInfo *fw);
 uint8_t
 fw_get_api_version(FWInfo *fw);
 
+#define FW_API_FUNCTION_GENERIC 0
+#define FW_API_FUNCTION_SCOPE   1
+uint8_t
+fw_get_api_function(FWInfo *fw);
+
 #define FW_FEATURE_SPI_CONTROLLER (1ULL<<0)
 #define FW_FEATURE_ADC            (1ULL<<1)
 

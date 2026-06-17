@@ -193,6 +193,7 @@ begin
          COMMA_G                  => COMMA_G,
          ESCAP_G                  => ESCAP_G,
          GIT_VERSION_G            => GIT_VERSION_G,
+         API_FUNCTION_G           => CMD_API_FUNCTION_SCOPE_C,
          CMDS_SUPPORTED_G         => CMDS_SUPPORTED_C
       )
       port map (

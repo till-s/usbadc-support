@@ -97,7 +97,7 @@ static uint8_t mapCmdApiV3(FWCmd aCmd)
         case FW_CMD_GEN_REG_RD8    : return BITS_FW_CMD_UNSUPPORTED;
         case FW_CMD_GEN_REG_WR8    : return BITS_FW_CMD_UNSUPPORTED;
 		default:
-			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			fprintf(stderr, "mapCmdApiV3() -- illegal switch case\n");
 			abort();
 	}
 }
@@ -118,7 +118,28 @@ static uint8_t mapCmdApiV4(FWCmd aCmd)
         case FW_CMD_GEN_REG_RD8    : return BITS_FW_CMD_GEN_REG_API_4;
         case FW_CMD_GEN_REG_WR8    : return BITS_FW_CMD_GEN_REG_API_4;
 		default:
-			fprintf(stderr, "spi_get_subcmd() -- illegal switch case\n");
+			fprintf(stderr, "mapCmdApiV4() -- illegal switch case\n");
+			abort();
+	}
+}
+
+static uint8_t mapCmdGenericApiV4(FWCmd aCmd)
+{
+	switch ( aCmd ) {
+		case FW_CMD_VERSION        : return BITS_FW_CMD_VER;
+		case FW_CMD_ADC_BUF        : return BITS_FW_CMD_UNSUPPORTED;
+		case FW_CMD_ADC_FLUSH      : return BITS_FW_CMD_UNSUPPORTED;
+		case FW_CMD_BB_OFF         : return BITS_FW_CMD_UNSUPPORTED;
+		case FW_CMD_BB_SPI         : return BITS_FW_CMD_UNSUPPORTED;
+		case FW_CMD_BB_I2C         : return BITS_FW_CMD_UNSUPPORTED;
+		case FW_CMD_ACQ_PARMS      : return BITS_FW_CMD_UNSUPPORTED;
+		case FW_CMD_SPI            : return BITS_FW_CMD_SPI_API_4;
+        case FW_CMD_APP_REG_RD8    : return BITS_FW_CMD_UNSUPPORTED;
+        case FW_CMD_APP_REG_WR8    : return BITS_FW_CMD_UNSUPPORTED;
+        case FW_CMD_GEN_REG_RD8    : return BITS_FW_CMD_GEN_REG_API_4;
+        case FW_CMD_GEN_REG_WR8    : return BITS_FW_CMD_GEN_REG_API_4;
+		default:
+			fprintf(stderr, "mapCmdGenericApiV4() -- illegal switch case\n");
 			abort();
 	}
 }
@@ -308,8 +329,12 @@ int64_t  vers;
 	fw->apiVers = ( (vers >> 32) & 0xff );
     fw->brdVers = ( (vers >> 40) & 0xff );
 
-	if ( fw->apiVers >= FW_API_VERSION_4 ) {
-		fw->mapCmd = mapCmdApiV4;
+	if ( fw_get_api_version( fw ) >= FW_API_VERSION_4 ) {
+		if ( fw_get_api_function( fw ) == FW_API_FUNCTION_SCOPE ) {
+			fw->mapCmd = mapCmdApiV4;
+		} else {
+			fw->mapCmd = mapCmdGenericApiV4;
+		}
 	} else {
 		fw->mapCmd = mapCmdApiV3;
 	}
@@ -328,7 +353,7 @@ int64_t  vers;
 	}
 
 	/* avoid a timeout on old fw */
-	if ( fw->apiVers >= FW_API_VERSION_1 &&  0 == fw_xfer( fw, fw_get_cmd(fw, FW_CMD_SPI), 0, 0, 0 ) ) {
+	if ( fw_get_api_version( fw ) >= FW_API_VERSION_1 &&  0 == fw_xfer( fw, fw_get_cmd(fw, FW_CMD_SPI), 0, 0, 0 ) ) {
 		fw->features |= FW_FEATURE_SPI_CONTROLLER;
 	}
 
@@ -902,7 +927,7 @@ __fw_get_sampling_freq_mhz(FWInfo *fw)
 uint8_t buf[1];
 uint8_t cmd = fw_get_cmd(fw, FW_CMD_ADC_BUF ) | BITS_FW_CMD_SMPLFREQ;
 long    rval;
-	if ( fw->apiVers < FW_API_VERSION_3 ) {
+	if ( fw_get_api_version( fw ) < FW_API_VERSION_3 ) {
 		return -ENOTSUP;
 	}
 	rval = fw_xfer( fw, cmd, 0, buf, sizeof(buf) );
@@ -921,9 +946,14 @@ fw_get_board_version(FWInfo *fw)
 uint8_t
 fw_get_api_version(FWInfo *fw)
 {
-	return fw->apiVers;
+	return fw->apiVers & 0x0f;
 }
 
+uint8_t
+fw_get_api_function(FWInfo *fw)
+{
+	return (fw->apiVers >> 4) & 0x0f;
+}
 
 uint32_t
 fw_get_version(FWInfo *fw)
