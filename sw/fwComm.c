@@ -158,7 +158,6 @@ struct FWInfo {
 	uint8_t         brdVers;
 	uint8_t         apiVers;
 	uint64_t        features;
-	AT24EEPROM     *eeprom;
 	uint8_t       (*mapCmd)(FWCmd);
     uint8_t         reconfig;
 };
@@ -333,16 +332,6 @@ int64_t  vers;
 		fw->features |= FW_FEATURE_SPI_CONTROLLER;
 	}
 
-	/* abiVers etc. valid after this point */
-
-	switch ( fw->brdVers ) {
-		case 2:
-			fw->eeprom         = at24EepromCreate( fw, 0x50, 128, 8 );
-			break;
-		default:
-			break;
-	}
-
 	return fw;
 
 bail:
@@ -367,9 +356,6 @@ uint8_t v = SPI_MASK | I2C_MASK;
 		}
 		if ( fw->ownFd ) {
 			fifoClose( fw->fd );
-		}
-		if ( fw->eeprom ) {
-			at24EepromDestroy( fw->eeprom );
 		}
 		free( fw );
 	}
@@ -1055,22 +1041,4 @@ fw_inv_cmd(FWInfo *fw)
 {
 	int st = fw_xfer( fw, BITS_FW_CMD_UNSUPPORTED, 0, 0, 0 );
 	return (-ENOTSUP == st) ? 0 : st;
-}
-
-int
-eepromGetSize(FWInfo *fw)
-{
-	return fw->eeprom ? at24EepromGetSize( fw->eeprom ) : -ENODEV;
-}
-
-int
-eepromRead(FWInfo *fw, unsigned off, uint8_t *buf, size_t len)
-{
-	return fw->eeprom ? at24EepromRead( fw->eeprom, off, buf, len ) : -ENODEV;
-}
-
-int
-eepromWrite(FWInfo *fw, unsigned off, uint8_t *buf, size_t len)
-{
-	return fw->eeprom ? at24EepromWrite( fw->eeprom, off, buf, len ) : -ENODEV;
 }

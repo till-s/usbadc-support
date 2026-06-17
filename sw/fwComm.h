@@ -192,10 +192,6 @@ fw_reconfigure_fpga_on_close(FWInfo *fw, int val);
 int
 fw_inv_cmd(FWInfo *fw);
 
-int    eepromGetSize(FWInfo *);
-int    eepromRead(FWInfo *, unsigned off, uint8_t *buf, size_t len);
-int    eepromWrite(FWInfo *, unsigned off, uint8_t *buf, size_t len);
-
 #define BUF_SIZE_FAILED ((long)-1L)
 #define BUF_SIZE_NOTSUP ((long)-2L)
 int

@@ -1205,44 +1205,6 @@ cdef class FwCommExprt(FwComm):
   def ampWriteReg(self, unsigned channel, int reg, uint8_t val):
     self._amp.writeReg( channel, reg, val );
 
-  def eepromGetSize(self):
-    cdef int sz
-    with self._mgr as fw, nogil:
-      sz = eepromGetSize( fw )
-    if ( sz < 0 ):
-      raise RuntimeError("FwCommExprt.eepromGetSize failed: {}".format(strerror(-sz)))
-    return sz
-
-  cdef eepromRW(self, bool rnw, uint8_t off, pyb):
-    cdef Py_buffer b
-    cdef int       rv
-    if ( not PyObject_CheckBuffer( pyb ) or 0 != PyObject_GetBuffer( pyb, &b, PyBUF_C_CONTIGUOUS | PyBUF_WRITEABLE ) ):
-      raise ValueError("FwCommExprt.eepromRW arg must support buffer protocol")
-    if   ( b.itemsize == 1 ) :
-      if ( rnw ):
-        with self._mgr as fw, nogil:
-           rv = eepromRead( fw, off, <uint8_t*>b.buf, b.len )
-      else:
-        with self._mgr as fw, nogil:
-           rv = eepromWrite( fw, off, <uint8_t*>b.buf, b.len )
-    else:
-      PyBuffer_Release( &b )
-      raise ValueError("FwCommExprt.eepromRW arg buffer itemsize must be 1")
-    PyBuffer_Release( &b )
-    if ( rv < 0 ):
-      if ( rnw ):
-        nm = "Read"
-      else:
-        nm = "Write"
-      raise RuntimeError("FwCommExprt.eeprom{} failed: {}".format(nm, strerror(-rv)))
-    return rv
-
-  def eepromRead(self, unsigned off, pb):
-    return self.eepromRW( True, off, pb )
-
-  def eepromWrite(self, unsigned off, pb):
-    return self.eepromRW( False, off, pb )
-
   def readReg(self, unsigned off, unsigned flags = REG_FLG_APP):
     cdef uint8_t val
     with self._mgr as fw, nogil:

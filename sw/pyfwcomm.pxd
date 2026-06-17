@@ -74,11 +74,6 @@ cdef extern from "fwComm.h":
   int            bb_i2c_write_reg(FWInfo *, uint8_t sla, uint8_t reg, uint8_t val) nogil
   int            bb_i2c_rw_a8(FWInfo *fw, uint8_t sla, uint8_t addr, uint8_t *data, size_t len) nogil
 
-  int            eepromGetSize(FWInfo *) nogil
-  int            eepromRead(FWInfo *, unsigned off, uint8_t *buf, size_t len) nogil
-  int            eepromWrite(FWInfo *, unsigned off, uint8_t *buf, size_t len) nogil
-
-
 cdef extern from "lmh6882Sup.h":
   float          lmh6882GetAtt(FWInfo *fw, unsigned channel) nogil
   int            lmh6882SetAtt(FWInfo *fw, unsigned channel, float att) nogil
