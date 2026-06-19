@@ -51,13 +51,16 @@ package GenRegPkg is
       leds            : std_logic_vector(7 downto 0);
       -- request to reconfigure the FPGA
       reconfigure     : std_logic;
+      -- debug/user registers
+      dbg             : Slv8Array(0 to 3);
    end record GenRegOutType;
 
    constant GEN_REG_OUT_INIT_C : GenRegOutType := (
       version         => (others => '0'),
       scratch         => (others => '0'),
       leds            => (others => '0'),
-      reconfigure     => '0'
+      reconfigure     => '0',
+      dbg             => (others => (others => '0'))
    );
 
    type GenRegInpType is record
@@ -66,12 +69,15 @@ package GenRegPkg is
       ledsInitial     : std_logic_vector(7 downto 0);
       -- indication of whether the FPGA supports reconfiguration
       reconfigurable  : std_logic;
+      -- debug/user registers
+      dbg             : Slv8Array(0 to 3);
    end record GenRegInpType;
 
    constant GEN_REG_INP_INIT_C : GenRegInpType := (
       ledsSupported   => (others => '0'),
       ledsInitial     => (others => '0'),
-      reconfigurable  => '0'
+      reconfigurable  => '0',
+      dbg             => (others => (others => '0'))
    );
 
 end package GenRegPkg;

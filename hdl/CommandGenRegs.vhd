@@ -110,6 +110,12 @@ begin
 
       -- reconfiguration request
       registerRWBitsAt( 4, regReq, v.regRep, v.reconfMagic, 0, ro => (genRegIb.reconfigurable = '0'));
+      for i in r.genRegs.dbg'low to r.genRegs.dbg'high loop
+         registerRWBitsAt( 8 + i, regReq, v.regRep, v.genRegs.dbg(i) );
+      end loop;
+      for i in genRegIb.dbg'low to genRegIb.dbg'high loop
+         registerROBitsAt(16 + i, regReq, v.regRep, genRegIb.dbg(i) );
+      end loop;
       registerXactRegistered( regReq, v.regRep );
 
       if ( r.reconfMagic = GEN_REG_RECONFIG_C ) then
