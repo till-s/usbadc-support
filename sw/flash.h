@@ -49,7 +49,13 @@ int
 flash_write_from_file(struct FWInfo *fw, const char *filename, unsigned flashAddr, FlashProgress progress, void *progressState);
 
 int
-flash_read_to_file(struct FWInfo *fw, const char *filename, unsigned flashAddr, unsigned size);
+flash_write(struct FWInfo *fw, const uint8_t *buf, size_t size, unsigned flashAddr, FlashProgress progress, void *progressState);
+
+int
+flash_read(struct FWInfo *fw, uint8_t *buf, unsigned size,  unsigned flashAddr);
+
+int
+flash_read_into_file(struct FWInfo *fw, const char *filename, unsigned flashAddr, unsigned size);
 
 typedef struct {
 	int    iter;

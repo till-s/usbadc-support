@@ -48,16 +48,11 @@ flash_stdio_progress(void *flash, void *closure, int flag, unsigned addr, unsign
 }
 
 int
-flash_write_from_file(FWInfo *fw, const char *filename, unsigned flashAddr, FlashProgress progress, void *progressState)
+flash_write(struct FWInfo *fw, const uint8_t *buf, size_t size, unsigned flashAddr, FlashProgress progress, void *progressState)
 {
-uint8_t     *map = NULL;
-off_t         sz = 0;
 AT25Flash *flash = NULL;
-int     status, flags;
+int        status, flags;
 
-	if ( (status = fileMap(filename,  &map, &sz, 0, 1)) ) {
-		goto bail;
-	}
 	if ( (status = at25_open1( fw, &flash, 0 )) ) {
 		goto bail;
 	}
@@ -66,12 +61,12 @@ int     status, flags;
 		goto bail;
 	}
 
-	status = at25_area_erase( flash, flashAddr, sz, progress, progressState );
+	status = at25_area_erase( flash, flashAddr, size, progress, progressState );
 	if ( status < 0 ) {
 		goto bail;
 	}
 	flags = ( AT25_CHECK_ERASED | AT25_EXEC_PROG | AT25_CHECK_VERIFY );
-	status = at25_prog( flash, flashAddr, map, sz, flags, progress, progressState );
+	status = at25_prog( flash, flashAddr, buf, size, flags, progress, progressState );
 	if ( status < 0 ) {
 		goto bail;
 	}
@@ -81,6 +76,21 @@ bail:
 		at25_write_dis( flash );
 		at25_close( flash );
 	}
+	return status;
+}
+
+int
+flash_write_from_file(struct FWInfo *fw, const char *filename, unsigned flashAddr, FlashProgress progress, void *progressState)
+{
+uint8_t     *map = NULL;
+off_t         sz = 0;
+int       status;
+	if ( (status = fileMap(filename,  &map, &sz, 0, 1)) ) {
+		return status;
+	}
+
+	status = flash_write( fw, map, sz, flashAddr, progress, progressState );
+
 	if ( map ) {
 		fileUnmap( map, sz );
 	}
@@ -88,28 +98,40 @@ bail:
 }
 
 int
-flash_read_to_file(FWInfo *fw, const char *filename, unsigned flashAddr, unsigned size)
+flash_read(struct FWInfo *fw, uint8_t *buf, unsigned size,  unsigned flashAddr)
 {
-uint8_t     *map = NULL;
-off_t         sz = 0;
 AT25Flash *flash = NULL;
 int     status;
-	if ( (status = fileMap(filename,  &map, &sz, size, 0)) ) {
-		goto bail;
-	}
+
 	if ( (status = at25_open1( fw, &flash, 0 )) ) {
-		goto bail;
+		return status;
 	}
 
-	status = at25_spi_read(flash, flashAddr, map, sz);
+	status = at25_spi_read(flash, flashAddr, buf, size);
 	if ( status > 0 ) {
 		status = 0;
 	}
 
-bail:
 	if ( flash ) {
 		at25_close( flash );
 	}
+	return status;
+}
+
+int
+flash_read_into_file(struct FWInfo *fw, const char *filename, unsigned size, unsigned flashAddr)
+{
+uint8_t     *map = NULL;
+off_t         sz = 0;
+int     status;
+	if ( (status = fileMap(filename,  &map, &sz, size, 0)) ) {
+		goto bail;
+	}
+
+	status = flash_read( fw, map, sz, flashAddr );
+
+bail:
+
 	if ( map ) {
 		fileUnmap( map, sz );
 		/* unlink only if map succeeded; don't unlink an existing file to which we could not write! */
