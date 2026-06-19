@@ -84,10 +84,6 @@ SampleBufferBRAMTb: SampleBufferBRAMTb.o
 SampleBufferSDRAMTb: SampleBufferSDRAMTb.o
 	$(GHDL) -e $(GHDLFLAGS) -o $@  $@
 
-# Run target
-run: ScopeCommandWrapperTb
-	$(GHDL) -r $^ $(GHDLRUNFLAGS)
-
 CommandMuxPkg.o: CommandMuxPkg.vhd
 ByteStuffer.o: ByteStuffer.vhd
 SFifo.o: SFifo.vhd
