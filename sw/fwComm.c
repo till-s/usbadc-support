@@ -1038,14 +1038,10 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
 }
 
 int
-fw_reconfigure_fpga_on_close(FWInfo *fw, int reconfRequest)
+fw_reconfigure_fpga_supported(FWInfo *fw)
 {
 int     st;
 uint8_t val;
-	if ( ! reconfRequest ) {
-		fw->reconfig = 0;
-		return 0;
-	}
 	if ( fw_get_api_version( fw ) < FW_API_VERSION_4 ) {
 		return -ENOTSUP;
 	}
@@ -1061,6 +1057,20 @@ uint8_t val;
 	}
 	if ( !(val & GEN_REG_RECONF_FEATURE_SUPPORTED) ) {
 		return -ENOTSUP;
+	}
+	return 0;
+}
+
+int
+fw_reconfigure_fpga_on_close(FWInfo *fw, int reconfRequest)
+{
+int     st;
+	if ( ! reconfRequest ) {
+		fw->reconfig = 0;
+		return 0;
+	}
+	if ( (st = fw_reconfigure_fpga_supported( fw )) ) {
+		return st;
 	}
 	fw->reconfig = GEN_REG_RECONF_MAGIC;
 	return 0;

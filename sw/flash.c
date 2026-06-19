@@ -108,9 +108,6 @@ int     status;
 	}
 
 	status = at25_spi_read(flash, flashAddr, buf, size);
-	if ( status > 0 ) {
-		status = 0;
-	}
 
 	if ( flash ) {
 		at25_close( flash );

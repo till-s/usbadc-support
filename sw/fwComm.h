@@ -180,6 +180,12 @@ fw_reg_read(FWInfo *fw, uint32_t addr, uint8_t *buf, size_t len, unsigned flags)
 int
 fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned flags);
 
+/* Check if FPGA reconfiguration is supported by firmware;
+ * RETURN 0 if support is available, negative status otherwise
+ */
+int
+fw_reconfigure_fpga_supported(FWInfo *fw);
+
 /* Request FPGA reconfiguration on closing the connection;
  * returns immediatly with -ENOTSUP if this feature is not supported.
  * A pending reconf. request may be cancelled by providing a zero value.
@@ -188,6 +194,8 @@ fw_reg_write(FWInfo *fw, uint32_t addr, const uint8_t *buf, size_t len, unsigned
  *
  * Returns 0 if succesfully scheduled or cancelled.
  */
+#define FW_RECONFIGURE_FPGA        1
+#define FW_CANCEL_RECONFIGURE_FPGA 0
 int
 fw_reconfigure_fpga_on_close(FWInfo *fw, int val);
 
