@@ -81,7 +81,7 @@ architecture rtl of CommandVersion is
 
 begin
 
-   P_COMB : process ( r, mIb, rOb, hwVersion ) is
+   P_COMB : process ( r, mIb, rOb, hwVersion, version ) is
       variable v       : RegType;
    begin
       v := r;
