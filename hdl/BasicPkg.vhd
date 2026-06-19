@@ -42,6 +42,9 @@ package BasicPkg is
 
    constant SLV8_ARRAY_EMPTY_C : Slv8Array(0 downto 1) := (others => (others =>'0'));
 
+   function toSlv(constant a : in Slv8Array)
+   return std_logic_vector;
+
    type NaturalArray is array(integer range <>) of natural;
 
    constant NATURAL_ARRAY_EMPTY_C : NaturalArray(0 downto 1) := (others => 0);
@@ -70,4 +73,15 @@ package body BasicPkg is
    begin
       if ( x ) then return a; else return b; end if;
    end function ite;
+
+   function toSlv(constant a : in Slv8Array)
+   return std_logic_vector is
+      variable v : std_logic_vector(8*a'length - 1 downto 0);
+   begin
+      for i in a'low to a'high loop
+         v(8*(i - a'low) + 7 downto 8*(i - a'low)) := a(i);
+      end loop;
+      return v;
+   end function toSlv;
+
 end package body BasicPkg;
