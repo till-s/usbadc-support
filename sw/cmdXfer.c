@@ -239,6 +239,7 @@ struct timespec timeout;
 	puts  = 0;
 	tidx  = ridx = 0;
     tlen  = 0;
+    rlen  = 0;
     while ( tidx < tcnt && 0 == (tlen = tbuf[tidx].len) ) {
 		tidx++;
 	}
