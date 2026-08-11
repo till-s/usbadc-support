@@ -171,7 +171,7 @@ usage(const char *name)
 	printf("       -I                   : Allow calibration of a device that appears to have been\n");
 	printf("                              already. Normally, this is prohibited as the device could be\n");
 	printf("                              in an unknown state.\n");
-	printf("       -p                   : Print initial calibration (before running calibration).\n");
+	printf("       -p                   : Print current calibration (instead of running calibration).\n");
 	printf("       -w                   : Write to non-volatile memory after running calilbration.\n");
 	printf("       -a <pgaMinAttDb>     : Set PGA min. attenuation in dB (default: read from device).\n");
 	printf("       -a <pgaMaxAttDb>     : Set PGA max. attenuation in dB (default: read from device).\n");
@@ -247,6 +247,10 @@ size_t                 *z_p;
 		}
 	}
 
+	if ( doErase || doPrint ) {
+		allowPreInited = 1;
+	}
+
 	if ( ! (fw = fw_open( devName, 115200 )) ) {
 		fprintf( stderr, "Error: unable to open firmware (wrong tty device?)\n");
 		goto bail;
@@ -276,6 +280,24 @@ size_t                 *z_p;
 	
 	nChannels = scope_get_num_channels( scp );
 
+	if ( ! (calData = malloc( sizeof(*calData) * nChannels )) ) {
+		fprintf( stderr, "Error; no memory for calibration data\n" );
+		goto bail;
+	}
+
+	st = scope_get_cal_data( scp, calData, nChannels );
+	if ( st < 0 ) {
+		fprintf( stderr, "Error; scope_get_cal_data failed: %s\n", strerror(-st));
+		goto bail;
+	}
+
+	if ( doPrint ) {
+		printf("Current calibration parameters:\n");
+		printCal( calData, nChannels );
+		st = 0;
+		goto bail;
+	}
+
 	if ( ! (dvals = malloc( sizeof(*dvals) * nChannels ) ) ) {
 		fprintf( stderr, "Error: no memory\n");
 		goto bail;
@@ -300,24 +322,6 @@ size_t                 *z_p;
 
 	if ( ! (buf = malloc( sizeof(*buf) * nChannels * nSamples )) ) {
 		fprintf( stderr, "Error; no memory for acquisition buffer\n" );
-		goto bail;
-	}
-
-	if ( ! (calData = malloc( sizeof(*calData) * nChannels )) ) {
-		fprintf( stderr, "Error; no memory for calibration data\n" );
-		goto bail;
-	}
-
-	st = scope_get_cal_data( scp, calData, nChannels );
-	if ( st < 0 ) {
-		fprintf( stderr, "Error; scope_get_cal_data failed: %s\n", strerror(-st));
-		goto bail;
-	}
-
-	if ( doPrint ) {
-		printf("Current calibration parameters:\n");
-		printCal( calData, nChannels );
-		st = 0;
 		goto bail;
 	}
 
