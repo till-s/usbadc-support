@@ -53,7 +53,7 @@ HCC_NO=$(CC)
 H5_DEFINES_YES=CONFIG_WITH_HDF5
 JANSSON_DEFINES_YES=CONFIG_WITH_JANSSON
 
-CFLAGS=-O2 -Wall -g -fpic -fno-strict-aliasing -I.
+CFLAGS=-O0 -Wall -g -fpic -fno-strict-aliasing -I.
 CFLAGS+=$(addprefix -D,$(H5_DEFINES_$(HAVE_H5)))
 CFLAGS+=$(addprefix -D,$(JANSSON_DEFINES_$(HAVE_JANSSON)))
 

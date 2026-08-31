@@ -175,12 +175,12 @@ static void prb(const char * hdr, const uint8_t *b, size_t l)
 typedef struct DestufferCtx {
 	RxState        state;
 	int            warned;
-	uint8_t       *cmdp;
-	size_t         got;
-	size_t         tot;
-	size_t         ridx;
-	const rbufvec *rbuf;
-	size_t         rcnt;
+	const uint8_t *src;
+	size_t         srcIndex;
+	size_t         srcSize;
+	uint8_t       *dst;
+	size_t         dstIndex;
+	size_t         dstSize;
 } DestufferCtx;
 
 typedef struct StufferCtx {
@@ -240,75 +240,52 @@ stuffInit(StufferCtx *ctx, uint8_t *tbufs, size_t tsize)
 }
 
 static void
-destuffInit(DestufferCtx *ctx, const rbufvec *rbuf, size_t rcnt)
+destuffInit(DestufferCtx *ctx, const uint8_t *rbufs, size_t rsize)
 {
 	memset(ctx, 0, sizeof(*ctx));
-	ctx->state = RX;
-	ctx->rbuf  = rbuf;
-	ctx->rcnt  = rcnt;
-	while ( ctx->ridx < ctx->rcnt && 0 == ctx->rbuf[ctx->ridx].len ) {
-		ctx->ridx++;
-	}
-	ctx->warned = (0 == ctx->rbuf[ctx->ridx].len ? 1 : 0);
+	ctx->src        = rbufs;
+	ctx->srcSize    = rsize;
+	ctx->state      = RX;
 }
 
 static void
-destuff(DestufferCtx *ctx, const uint8_t *rbufs, size_t rbufsz)
+destuff(DestufferCtx *ctx)
 {
 size_t          j;
 uint8_t        *dstp;
 uint8_t        *dstend;
-	if ( ctx->ridx < ctx->rcnt ) {
-		dstp   = ctx->rbuf[ctx->ridx].buf;
-		dstend = dstp + ctx->rbuf[ctx->ridx].len;
-		dstp  += ctx->got;
-	} else {
-		dstp   = dstend = NULL;
-	}
+const uint8_t  *rbufs;
+
+	rbufs  = ctx->src;
+	dstp   = ctx->dst + ctx->dstIndex;
+	dstend = ctx->dst + ctx->dstSize;
 	
-	for ( j = 0; j < rbufsz; j++ ) {
+	for ( j = ctx->srcIndex; j < ctx->srcSize; j++ ) {
 		if ( ESC != ctx->state && COMMA == rbufs[j] ) {
 			ctx->state = DONE;
-			if ( j + 1 < rbufsz ) {
+			if ( j + 1 < ctx->srcSize ) {
 				fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
+				j++; /* consume source */
 				break;
 			}
 		} else if ( ESC != ctx->state && ESCAP == rbufs[j] ) {
 			ctx->state = ESC;
 		} else {
 			ctx->state = RX;
-			if ( ctx->cmdp ) {
-				*ctx->cmdp = rbufs[j];
-				ctx->cmdp  = NULL;
-			} else {
-				/* dstp == dstend includes the case where they both are NULL because we ran out of rbufs */
-				if ( dstp >= dstend ) {
-					if ( ! ctx->warned ) {
-						fprintf(stderr, "fifoXferFrame: RX buffer too small; truncating frame\n");
-						ctx->warned = 1;
-					}
-				} else {
-					*dstp++ = rbufs[j];
-					while ( dstp == dstend ) {
-						ctx->tot += ctx->rbuf[ctx->ridx].len;
-						ctx->got  = 0;
-						if ( ++ctx->ridx < ctx->rcnt ) {
-							dstp      = ctx->rbuf[ctx->ridx].buf;
-							dstend    = dstp + ctx->rbuf[ctx->ridx].len;
-						} else {
-							dstp      = NULL;
-							dstend    = NULL;
-							break;
-						}
-					}
+			if ( dstp >= dstend ) {
+				if ( ! ctx->warned ) {
+					fprintf(stderr, "Not enough buffers for received message\n");
+					ctx->warned = 1;
 				}
+				// drop
+			} else {
+				ctx->state = RX;
+				*dstp++ = rbufs[j];
 			}
 		}
 	}
-	/* non-null dstp implies ridx < rcnt */
-	if ( dstp ) {
-		ctx->got = dstp - ctx->rbuf[ctx->ridx].buf;
-	}
+	ctx->dstIndex = dstp - ctx->dst;
+	ctx->srcIndex = j;
 }
 
 int
@@ -335,25 +312,33 @@ rbufvec rvec[1];
 	return fifoXferFrameVec( fd, cmdp, tvec, tlen ? 1 : 0, rvec, rlen ? 1 : 0 );
 }
 
-
 int
 fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
 {
 uint8_t         tbufs[MAXLEN];
 uint8_t         rbufs[MAXLEN];
-size_t          i, rlens, puts, tlens, tidx;
+size_t          i, rlens, puts, tlens, tidx, tot, ridx;
 fd_set          rfds, tfds;
 int             eofSent     = 0;
 struct timespec timeout;
 StufferCtx      stuffCtx;
 DestufferCtx    destuffCtx;
+int             cmdReadback = 0;
 
 	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
-	destuffInit( &destuffCtx, rbuf, rcnt );
+	destuffInit( &destuffCtx, rbufs, sizeof(rbufs) );
 
+	tot   = 0;
 	tlens = 0;
 	rlens = sizeof(rbufs);
 	puts  = 0;
+	ridx  = 0;
+
+	while ( ridx < rcnt && 0 == rbuf[ridx].len ) {
+		++ridx;
+	}
+
+	destuffCtx.warned = (ridx < rcnt) ? 0 : 1;
 
 	if ( cmdp ) {
 		stuffCtx.src      = cmdp;
@@ -361,7 +346,7 @@ DestufferCtx    destuffCtx;
 		stuffCtx.srcIndex = 0;
 		stuff( &stuffCtx );
 
-		destuffCtx.cmdp = cmdp;
+		cmdReadback       = 1;
 	}
 
 	/* *after* potentially stuffing the command byte */
@@ -447,13 +432,42 @@ DestufferCtx    destuffCtx;
 			if ( fifoDebug > 0 ) {
 				prb( "Received:", rbufs, i );
 			}
-			destuff( &destuffCtx, rbufs, i );
+			destuffCtx.srcIndex = 0;
+			destuffCtx.srcSize  = i;
+			if ( cmdReadback ) {
+				destuffCtx.dst     = cmdp;
+				destuffCtx.dstSize = sizeof(*cmdp);
+				destuff( &destuffCtx );
+				if ( destuffCtx.dstIndex != sizeof(*cmdp) ) {
+					fprintf(stderr, "Internal error - readback of command failed!\n");
+				}
+				cmdReadback = 0;
+				destuffCtx.dstSize  = 0;
+				destuffCtx.dstIndex = 0;
+			}
+			while ( destuffCtx.srcIndex < destuffCtx.srcSize ) {
+				if ( destuffCtx.dstIndex == destuffCtx.dstSize ) {
+					tot += destuffCtx.dstSize;
+					while ( ridx < rcnt && 0 == rbuf[ridx].len ) {
+						ridx++;
+					}
+					destuffCtx.dstIndex = 0;
+					if ( ridx < rcnt ) {
+						destuffCtx.dstSize  = rbuf[ridx].len;
+						destuffCtx.dst      = rbuf[ridx].buf;
+						ridx++;
+					} else {
+						destuffCtx.dstSize = 0;
+						/* still proceed to destuff; may still find EOF */
+					}
+				}
+				destuff( &destuffCtx );
+			}
 		}
 	}
+	tot += destuffCtx.dstIndex;
 
-	destuffCtx.tot += destuffCtx.got;
-
-	return destuffCtx.tot;
+	return tot;
 
 bail:
 	return -errno;
