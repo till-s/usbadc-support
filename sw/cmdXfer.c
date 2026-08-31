@@ -60,13 +60,13 @@ struct termios     atts;
 size_t             i,put;
 int                err  = 0;
 
-    /* Special trick: open the TTY twice. If another program (minicom!)
-     * already has the port opened (but w/o TIOCEXCL) then our first
+	/* Special trick: open the TTY twice. If another program (minicom!)
+	 * already has the port opened (but w/o TIOCEXCL) then our first
 	 * open succeeds and the subsequent TIOCEXCL persists/sticks (since the
-     * TTY remains open [linux-5.4]) which causes the second open() to fail.
-     */
+	 * TTY remains open [linux-5.4]) which causes the second open() to fail.
+	 */
 
-    i = 0;
+	i = 0;
 	while ( 1 ) {
 
 		if ( (fd = open(devn, O_RDWR)) < 0 ) {
@@ -238,15 +238,15 @@ struct timespec timeout;
 	put   = got  = tot = 0;
 	puts  = 0;
 	tidx  = ridx = 0;
-    tlen  = 0;
-    rlen  = 0;
-    while ( tidx < tcnt && 0 == (tlen = tbuf[tidx].len) ) {
+	tlen  = 0;
+	rlen  = 0;
+	while ( tidx < tcnt && 0 == (tlen = tbuf[tidx].len) ) {
 		tidx++;
 	}
-    while ( ridx < rcnt && 0 == (rlen = rbuf[ridx].len) ) {
+	while ( ridx < rcnt && 0 == (rlen = rbuf[ridx].len) ) {
 		ridx++;
 	}
-    warned = (0 == rlen ? 1 : 0);
+	warned = (0 == rlen ? 1 : 0);
 
 	if ( cmdp ) {
 		tlens      += stuff( tbufs + tlens, sizeof(tbufs) - tlens, cmdp );
@@ -345,7 +345,7 @@ struct timespec timeout;
 							rbuf[ridx].buf[got] = rbufs[j];
 							got++;
 							while ( got == rlen && ++ridx < rcnt ) {
-                                tot += got;
+								tot += got;
 								got  = 0;
 								rlen = rbuf[ridx].len;
 							}
