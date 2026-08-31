@@ -172,8 +172,29 @@ static void prb(const char * hdr, const uint8_t *b, size_t l)
 	}
 }
 
+typedef struct DestufferCtx {
+	RxState        state;
+	int            warned;
+	uint8_t       *cmdp;
+	size_t         got;
+	size_t         tot;
+	size_t         ridx;
+	const rbufvec *rbuf;
+	size_t         rcnt;
+} DestufferCtx;
+
+typedef struct StufferCtx {
+	uint8_t       *dst;
+	size_t         dstIndex;
+	size_t         dstSize;
+	const uint8_t *src;
+	size_t         srcSize;
+	size_t         srcIndex;
+} StufferCtx;
+
+
 static size_t
-stuff(uint8_t *dbuf, ssize_t dbufsz, const uint8_t *buf)
+stuffByte(uint8_t *dbuf, ssize_t dbufsz, const uint8_t *buf)
 {
 size_t rval = 0;
 
@@ -194,6 +215,100 @@ size_t rval = 0;
 	dbuf[rval] = *buf;
 	rval++;
 	return rval;
+}
+
+static int
+stuff(StufferCtx *ctx)
+{
+	while ( ( ctx->srcSize > ctx->srcIndex ) ) {
+		if ( ctx->dstIndex >= ctx->dstSize - 3 ) {
+			return 0; 
+		}
+		/* Stuff tbuf */
+		ctx->dstIndex += stuffByte( ctx->dst + ctx->dstIndex, ctx->dstSize - ctx->dstIndex, ctx->src + ctx->srcIndex );
+		ctx->srcIndex++;
+	}
+	return 1;
+}
+
+static void
+stuffInit(StufferCtx *ctx, uint8_t *tbufs, size_t tsize)
+{
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->dst     = tbufs;
+	ctx->dstSize = tsize;
+}
+
+static void
+destuffInit(DestufferCtx *ctx, const rbufvec *rbuf, size_t rcnt)
+{
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->state = RX;
+	ctx->rbuf  = rbuf;
+	ctx->rcnt  = rcnt;
+	while ( ctx->ridx < ctx->rcnt && 0 == ctx->rbuf[ctx->ridx].len ) {
+		ctx->ridx++;
+	}
+	ctx->warned = (0 == ctx->rbuf[ctx->ridx].len ? 1 : 0);
+}
+
+static void
+destuff(DestufferCtx *ctx, const uint8_t *rbufs, size_t rbufsz)
+{
+size_t          j;
+uint8_t        *dstp;
+uint8_t        *dstend;
+	if ( ctx->ridx < ctx->rcnt ) {
+		dstp   = ctx->rbuf[ctx->ridx].buf;
+		dstend = dstp + ctx->rbuf[ctx->ridx].len;
+		dstp  += ctx->got;
+	} else {
+		dstp   = dstend = NULL;
+	}
+	
+	for ( j = 0; j < rbufsz; j++ ) {
+		if ( ESC != ctx->state && COMMA == rbufs[j] ) {
+			ctx->state = DONE;
+			if ( j + 1 < rbufsz ) {
+				fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
+				break;
+			}
+		} else if ( ESC != ctx->state && ESCAP == rbufs[j] ) {
+			ctx->state = ESC;
+		} else {
+			ctx->state = RX;
+			if ( ctx->cmdp ) {
+				*ctx->cmdp = rbufs[j];
+				ctx->cmdp  = NULL;
+			} else {
+				/* dstp == dstend includes the case where they both are NULL because we ran out of rbufs */
+				if ( dstp >= dstend ) {
+					if ( ! ctx->warned ) {
+						fprintf(stderr, "fifoXferFrame: RX buffer too small; truncating frame\n");
+						ctx->warned = 1;
+					}
+				} else {
+					*dstp++ = rbufs[j];
+					while ( dstp == dstend ) {
+						ctx->tot += ctx->rbuf[ctx->ridx].len;
+						ctx->got  = 0;
+						if ( ++ctx->ridx < ctx->rcnt ) {
+							dstp      = ctx->rbuf[ctx->ridx].buf;
+							dstend    = dstp + ctx->rbuf[ctx->ridx].len;
+						} else {
+							dstp      = NULL;
+							dstend    = NULL;
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+	/* non-null dstp implies ridx < rcnt */
+	if ( dstp ) {
+		ctx->got = dstp - ctx->rbuf[ctx->ridx].buf;
+	}
 }
 
 int
@@ -220,66 +335,77 @@ rbufvec rvec[1];
 	return fifoXferFrameVec( fd, cmdp, tvec, tlen ? 1 : 0, rvec, rlen ? 1 : 0 );
 }
 
+
 int
 fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
 {
 uint8_t         tbufs[MAXLEN];
 uint8_t         rbufs[MAXLEN];
-size_t          i, j, tlens, rlens, puts, put, got, tot, tidx, ridx, tlen, rlen;
+size_t          i, rlens, puts, tlens, tidx;
 fd_set          rfds, tfds;
-RxState         state       = RX;
-int             warned;
 int             eofSent     = 0;
-int             cmdReadback = 0;
 struct timespec timeout;
+StufferCtx      stuffCtx;
+DestufferCtx    destuffCtx;
+
+	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
+	destuffInit( &destuffCtx, rbuf, rcnt );
 
 	tlens = 0;
 	rlens = sizeof(rbufs);
-	put   = got  = tot = 0;
 	puts  = 0;
-	tidx  = ridx = 0;
-	tlen  = 0;
-	rlen  = 0;
-	while ( tidx < tcnt && 0 == (tlen = tbuf[tidx].len) ) {
-		tidx++;
-	}
-	while ( ridx < rcnt && 0 == (rlen = rbuf[ridx].len) ) {
-		ridx++;
-	}
-	warned = (0 == rlen ? 1 : 0);
 
 	if ( cmdp ) {
-		tlens      += stuff( tbufs + tlens, sizeof(tbufs) - tlens, cmdp );
-		cmdReadback = 1;
+		stuffCtx.src      = cmdp;
+		stuffCtx.srcSize  = sizeof(*cmdp);
+		stuffCtx.srcIndex = 0;
+		stuff( &stuffCtx );
+
+		destuffCtx.cmdp = cmdp;
 	}
 
-	while ( ( ! eofSent ) || ( tlens > 0 ) || (DONE != state ) ) {
+	/* *after* potentially stuffing the command byte */
+	tlens = stuffCtx.dstIndex;
+
+	tidx = 0;
+	stuffCtx.srcIndex = 0;
+	stuffCtx.srcSize  = 0;
+	for ( tidx = 0; tidx < tcnt; ++tidx ) {
+		stuffCtx.src     = tbuf[tidx].buf;
+		stuffCtx.srcSize = tbuf[tidx].len;
+		if ( stuffCtx.srcSize > 0 ) {
+			break;
+		}
+	}
+
+	while ( ( ! eofSent ) || ( tlens > 0 ) || (DONE != destuffCtx.state ) ) {
 		FD_ZERO( &rfds );
 		FD_ZERO( &tfds );
 
 		if ( ( 0 == tlens ) ) {
 			puts = 0;
-			if ( ( tlen > put ) ) {
-				while ( ( tlen > put ) && ( tlens < sizeof(tbufs) - 3 ) ) {
-					/* Stuff tbuf */
-					tlens += stuff( tbufs + tlens, sizeof(tbufs) - tlens, tbuf[tidx].buf + put );
-					put++;
-					while ( put == tlen && ++tidx < tcnt ) {
-						put  = 0;
-						tlen = tbuf[tidx].len;
+			stuffCtx.dstIndex = 0;
+			if ( ( stuffCtx.srcSize > stuffCtx.srcIndex ) ) {
+				/* stuff() returns nonzero if the entire source has been consumeds */
+				while ( tidx < tcnt && stuff(&stuffCtx) ) {
+					while ( stuffCtx.srcIndex == stuffCtx.srcSize && ++tidx < tcnt ) {
+						stuffCtx.srcIndex = 0;
+						stuffCtx.srcSize  = tbuf[tidx].len;
+						stuffCtx.src      = tbuf[tidx].buf;
 					}
 				}
 			} else if ( ! eofSent ) {
-				tbufs[tlens] = COMMA;
-				tlens++;
-				eofSent      = 1;
+				stuffCtx.dst[stuffCtx.dstIndex] = COMMA;
+				stuffCtx.dstIndex++;
+				eofSent                         = 1;
 			}
+			tlens = stuffCtx.dstIndex;
 		}
 
 		if ( tlens > 0 ) {
 			FD_SET( fd, &tfds );
 		}
-		if ( DONE != state ) {
+		if ( DONE != destuffCtx.state ) {
 			FD_SET( fd, &rfds );
 		}
 
@@ -298,7 +424,7 @@ struct timespec timeout;
 
 		if ( FD_ISSET( fd, &tfds ) ) {
 			if ( fifoDebug > 0 ) {
-				prb( "Sending:", tbufs+puts, tlens );
+				prb( "Sending:", tbufs + puts, tlens );
 			}
 			if ( (i = write(fd, tbufs + puts, tlens)) <= 0 ) {
 				perror("fifoXferFrame: writing FIFO failed");
@@ -321,44 +447,13 @@ struct timespec timeout;
 			if ( fifoDebug > 0 ) {
 				prb( "Received:", rbufs, i );
 			}
-			for ( j = 0; j < i; j++ ) {
-				if ( ESC != state && COMMA == rbufs[j] ) {
-					state = DONE;
-					if ( j + 1 < i ) {
-						fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
-						break;
-					}
-				} else if ( ESC != state && ESCAP == rbufs[j] ) {
-					state = ESC;
-				} else {
-					state = RX;
-					if ( cmdReadback ) {
-						*cmdp = rbufs[j];
-						cmdReadback = 0;
-					} else {
-						if ( got >= rlen ) {
-							if ( ! warned ) {
-								fprintf(stderr, "fifoXferFrame: RX buffer too small; truncating frame (got %zu >= rlen %zu)\n", got, rlen);
-								warned = 1;
-							}
-						} else {
-							rbuf[ridx].buf[got] = rbufs[j];
-							got++;
-							while ( got == rlen && ++ridx < rcnt ) {
-								tot += got;
-								got  = 0;
-								rlen = rbuf[ridx].len;
-							}
-						}
-					}
-				}
-			}
+			destuff( &destuffCtx, rbufs, i );
 		}
 	}
 
-	tot += got;
+	destuffCtx.tot += destuffCtx.got;
 
-	return tot;
+	return destuffCtx.tot;
 
 bail:
 	return -errno;
