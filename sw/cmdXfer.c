@@ -174,7 +174,6 @@ static void prb(const char * hdr, const uint8_t *b, size_t l)
 
 typedef struct DestufferCtx {
 	RxState        state;
-	int            warned;
 	const uint8_t *src;
 	size_t         srcIndex;
 	size_t         srcSize;
@@ -248,13 +247,18 @@ destuffInit(DestufferCtx *ctx, const uint8_t *rbufs, size_t rsize)
 	ctx->state      = RX;
 }
 
-static void
+/* Returns
+ *  1 -> comma detected
+ *  0 -> other conditions
+ */
+static int
 destuff(DestufferCtx *ctx)
 {
 size_t          j;
 uint8_t        *dstp;
 uint8_t        *dstend;
 const uint8_t  *rbufs;
+int             rv = 0;
 
 	rbufs  = ctx->src;
 	dstp   = ctx->dst + ctx->dstIndex;
@@ -263,21 +267,16 @@ const uint8_t  *rbufs;
 	for ( j = ctx->srcIndex; j < ctx->srcSize; j++ ) {
 		if ( ESC != ctx->state && COMMA == rbufs[j] ) {
 			ctx->state = DONE;
-			if ( j + 1 < ctx->srcSize ) {
-				fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
-				j++; /* consume source */
-				break;
-			}
+			++j; /* consume source */
+			rv = 1;
+			break;
 		} else if ( ESC != ctx->state && ESCAP == rbufs[j] ) {
 			ctx->state = ESC;
 		} else {
 			ctx->state = RX;
 			if ( dstp >= dstend ) {
-				if ( ! ctx->warned ) {
-					fprintf(stderr, "Not enough buffers for received message\n");
-					ctx->warned = 1;
-				}
-				// drop
+				/* destination exhausted */
+				break;
 			} else {
 				ctx->state = RX;
 				*dstp++ = rbufs[j];
@@ -286,6 +285,7 @@ const uint8_t  *rbufs;
 	}
 	ctx->dstIndex = dstp - ctx->dst;
 	ctx->srcIndex = j;
+	return rv;
 }
 
 int
@@ -324,6 +324,8 @@ struct timespec timeout;
 StufferCtx      stuffCtx;
 DestufferCtx    destuffCtx;
 int             cmdReadback = 0;
+int             warned      = 0;
+size_t          progress;
 
 	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
 	destuffInit( &destuffCtx, rbufs, sizeof(rbufs) );
@@ -338,7 +340,7 @@ int             cmdReadback = 0;
 		++ridx;
 	}
 
-	destuffCtx.warned = (ridx < rcnt) ? 0 : 1;
+	warned = (ridx < rcnt) ? 0 : 1;
 
 	if ( cmdp ) {
 		stuffCtx.src      = cmdp;
@@ -370,7 +372,7 @@ int             cmdReadback = 0;
 		if ( ( 0 == tlens ) ) {
 			puts = 0;
 			stuffCtx.dstIndex = 0;
-			if ( ( stuffCtx.srcSize > stuffCtx.srcIndex ) ) {
+			if ( ( stuffCtx.srcIndex < stuffCtx.srcSize ) ) {
 				/* stuff() returns nonzero if the entire source has been consumeds */
 				while ( tidx < tcnt && stuff(&stuffCtx) ) {
 					while ( stuffCtx.srcIndex == stuffCtx.srcSize && ++tidx < tcnt ) {
@@ -461,7 +463,21 @@ int             cmdReadback = 0;
 						/* still proceed to destuff; may still find EOF */
 					}
 				}
-				destuff( &destuffCtx );
+				progress = destuffCtx.srcIndex;
+				if ( destuff( &destuffCtx ) ) {
+					if ( destuffCtx.srcIndex < destuffCtx.srcSize ) {
+						fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
+					}
+					break;
+				}
+				if ( progress == destuffCtx.srcIndex ) {
+					if ( ! warned ) {
+						fprintf(stderr, "Not enough buffers for received message - %zd bytes dropped\n", destuffCtx.srcSize - progress);
+						warned = 1;
+					}
+					// drop
+					break;
+				}
 			}
 		}
 	}
