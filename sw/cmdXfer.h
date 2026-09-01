@@ -36,14 +36,18 @@
 extern "C" {
 #endif
 
-int fifoOpen(const char *devn, unsigned speed);
+typedef struct CmdFifoRec *CmdFifo;
 
-int fifoClose(int fd);
+int fifoOpen(CmdFifo *pfifo, const char *devn, unsigned speed);
+
+int fifoOpenFd(CmdFifo *pfifo, int fd);
+
+int fifoClose(CmdFifo fifo);
 
 /* set new debug level and return the previous one; if 'val < 0' then
  * the current level is unchanged (and returned).
  */
-int fifoSetDebug(int val);
+int fifoSetDebug(CmdFifo fifo, int val);
 
 typedef struct rbufvec {
 	uint8_t *buf;
@@ -57,9 +61,9 @@ typedef struct tbufvec {
 
 
 /* These routines return -ETIMEDOUT on timeout */
-int fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen);
+int fifoXferFrame(CmdFifo fifo, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen);
 
-int fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);
+int fifoXferFrameVec(CmdFifo fifo, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);
 
 #ifdef __cplusplus
 }

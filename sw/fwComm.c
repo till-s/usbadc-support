@@ -172,7 +172,7 @@ static uint8_t mapCmdGenericApiV4(FWCmd aCmd)
 #define GEN_REG_RECONF_MAGIC        0x3a
 
 struct FWInfo {
-	int             fd;
+	CmdFifo         fifo;
 	int             debug;
 	int             ownFd;
 	uint32_t        gitHash;
@@ -193,7 +193,7 @@ void
 fw_set_debug(FWInfo *fw, int level)
 {
 	fw->debug = level;
-	fifoSetDebug( (level > 1) );
+	fifoSetDebug(fw->fifo, (level > 1) );
 }
 
 static int
@@ -284,27 +284,8 @@ int64_t rval;
 	return rval;
 }
 
-FWInfo *
-fw_open(const char *devn, unsigned speed)
-{
-int     fd = fifoOpen( devn, speed );
-FWInfo *rv;
-
-	if ( fd < 0 ) {
-		return 0;
-	}
-
-	rv = fw_open_fd( fd );
-	if ( rv ) {
-		rv->ownFd = 1;
-	} else {
-		close( fd );
-	}
-	return rv;
-}
-
-FWInfo *
-fw_open_fd(int fd)
+static FWInfo *
+fw_open_fifo(CmdFifo fifo)
 {
 FWInfo  *fw;
 int64_t  vers;
@@ -314,7 +295,7 @@ int64_t  vers;
 		return NULL;
 	}
 
-	fw->fd             = fd;
+	fw->fifo           = fifo;
 	fw->debug          = 0;
 	fw->ownFd          = 0;
 	fw->features       = 0;
@@ -327,7 +308,7 @@ int64_t  vers;
 
 	fw->gitHash = ( vers & 0xffffffff );
 	fw->apiVers = ( (vers >> 32) & 0xff );
-    fw->brdVers = ( (vers >> 40) & 0xff );
+	fw->brdVers = ( (vers >> 40) & 0xff );
 
 	if ( fw_get_api_version( fw ) >= FW_API_VERSION_4 ) {
 		if ( fw_get_api_function( fw ) == FW_API_FUNCTION_SCOPE ) {
@@ -360,9 +341,45 @@ int64_t  vers;
 	return fw;
 
 bail:
+	fw->fifo = NULL;
 	fw_close( fw );
 	return NULL;
 }
+
+FWInfo *
+fw_open(const char *devn, unsigned speed)
+{
+	CmdFifo fifo;
+	int     status;
+	FWInfo *fw;
+	if ( (status = fifoOpen( &fifo, devn, speed )) ) {
+		return NULL;
+	}
+
+	fw = fw_open_fifo( fifo );
+	if ( ! fw ) {
+		fifoClose( fifo );
+	}
+	return fw;
+}
+
+FWInfo *
+fw_open_fd(int fd)
+{
+	CmdFifo fifo;
+	int     status;
+	FWInfo *fw;
+	if ( (status = fifoOpenFd( &fifo, fd)) ) {
+		return NULL;
+	}
+
+	fw = fw_open_fifo( fifo );
+	if ( ! fw ) {
+		fifoClose( fifo );
+	}
+	return fw;
+}
+
 
 void
 fw_close(FWInfo *fw)
@@ -379,8 +396,8 @@ uint8_t v = SPI_MASK | I2C_MASK;
 				}
 			}
 		}
-		if ( fw->ownFd ) {
-			fifoClose( fw->fd );
+		if ( fw->fifo ) {
+			fifoClose( fw->fifo );
 		}
 		free( fw );
 	}
@@ -449,7 +466,7 @@ int     st;
 		return -ENOTSUP;
 	}
 
-	st = fifoXferFrame( fw->fd, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
+	st = fifoXferFrame( fw->fifo, &cmdLoc, tbuf, tbuf ? len : 0, rbuf, rbuf ? len : 0 );
 	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
 		st = -ENOTSUP;
 	}
@@ -467,7 +484,7 @@ int     st;
 		return -ENOTSUP;
 	}
 
-	st = fifoXferFrameVec( fw->fd, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
+	st = fifoXferFrameVec( fw->fifo, &cmdLoc, tbuf, tcnt, rbuf, rcnt );
 	if ( BITS_FW_CMD_UNSUPPORTED == cmdLoc ) {
 		st = -ENOTSUP;
 	}

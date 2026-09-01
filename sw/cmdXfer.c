@@ -46,13 +46,18 @@
 #define COMMA  0xCA
 #define ESCAP  0x55
 
-static int fifoDebug = 0;
+struct CmdFifoRec {
+	int       fd;
+	int       dbg;
+	int       ownFd;
+};
+
 
 typedef enum { RX, ESC, DONE } RxState;
 
 /* Basic communication with the USB-FIFO (FT245), byte-stuffer/de-stuffer and command multiplexer in firmware */
 
-int fifoOpen(const char *devn, unsigned speed)
+int fifoTtyOpen(const char *devn, unsigned speed)
 {
 int                fd   = -1;
 char               msg[256];
@@ -147,11 +152,42 @@ bail:
 	return err ? err : -errno;
 }
 
-int
-fifoClose( int fd )
+int fifoOpen(CmdFifo *pfifo, const char *devn, unsigned speed)
 {
-	if ( fd >= 0 ) {
-		close ( fd );
+	int st;
+	int fd = fifoTtyOpen(devn, speed);
+	if ( fd < 0 ) {
+		return fd;
+	}
+	if ( (st = fifoOpenFd(pfifo, fd)) ) {
+		close(fd);
+	}
+	(*pfifo)->ownFd = 1;
+	return st;
+}
+
+int fifoOpenFd(CmdFifo *pfifo, int fd) {
+	if ( fd < 0 ) {
+		return fd;
+	}
+	if ( ! pfifo ) {
+		return -EINVAL;
+	}
+	if ( ! (*pfifo = calloc(1, sizeof(*pfifo))) ) {
+		return -ENOMEM;
+	}
+	(*pfifo)->fd = fd;
+	return 0;
+}
+
+int
+fifoClose(CmdFifo fifo)
+{
+	if ( fifo ) {
+		if ( fifo->ownFd ) {
+			close ( fifo->fd );
+		}
+		free( fifo );
 	}
 	return 0;
 }
@@ -289,17 +325,17 @@ int             rv = 0;
 }
 
 int
-fifoSetDebug(int val)
+fifoSetDebug(CmdFifo fifo, int val)
 {
-int oldVal = fifoDebug;
+int oldVal = fifo->dbg;
 	if ( val >= 0 ) {
-		fifoDebug = val;
+		fifo->dbg = val;
 	}
 	return oldVal;
 }
 
 int
-fifoXferFrame(int fd, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen)
+fifoXferFrame(CmdFifo fifo, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen)
 {
 tbufvec tvec[1];
 rbufvec rvec[1];
@@ -309,11 +345,11 @@ rbufvec rvec[1];
 	rvec[0].buf = rbuf;
 	rvec[0].len = rlen;
 
-	return fifoXferFrameVec( fd, cmdp, tvec, tlen ? 1 : 0, rvec, rlen ? 1 : 0 );
+	return fifoXferFrameVec(fifo, cmdp, tvec, tlen ? 1 : 0, rvec, rlen ? 1 : 0 );
 }
 
 int
-fifoXferFrameVec(int fd, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
+fifoXferFrameVec(CmdFifo fifo, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
 {
 uint8_t         tbufs[MAXLEN];
 uint8_t         rbufs[MAXLEN];
@@ -390,15 +426,15 @@ size_t          progress;
 		}
 
 		if ( tlens > 0 ) {
-			FD_SET( fd, &tfds );
+			FD_SET( fifo->fd, &tfds );
 		}
 		if ( DONE != destuffCtx.state ) {
-			FD_SET( fd, &rfds );
+			FD_SET( fifo->fd, &rfds );
 		}
 
 		timeout.tv_sec  = 1;
 		timeout.tv_nsec = 0;
-		i = pselect( fd + 1, &rfds, &tfds, 0, &timeout, 0 );
+		i = pselect( fifo->fd + 1, &rfds, &tfds, 0, &timeout, 0 );
 
 		if ( i <= 0 ) {
 			if ( 0 == i ) {
@@ -409,11 +445,11 @@ size_t          progress;
 			goto bail;
 		}
 
-		if ( FD_ISSET( fd, &tfds ) ) {
-			if ( fifoDebug > 0 ) {
+		if ( FD_ISSET( fifo->fd, &tfds ) ) {
+			if ( fifo->dbg > 0 ) {
 				prb( "Sending:", tbufs + puts, tlens );
 			}
-			if ( (i = write(fd, tbufs + puts, tlens)) <= 0 ) {
+			if ( (i = write(fifo->fd, tbufs + puts, tlens)) <= 0 ) {
 				perror("fifoXferFrame: writing FIFO failed");
 				if ( 0 == i ) {
 					errno = EIO;
@@ -423,15 +459,15 @@ size_t          progress;
 			puts  += i;
 			tlens -= i;
 		}
-		if ( FD_ISSET( fd, &rfds ) ) {
-			if ( (i = read(fd, rbufs, rlens)) <= 0 ) {
+		if ( FD_ISSET( fifo->fd, &rfds ) ) {
+			if ( (i = read(fifo->fd, rbufs, rlens)) <= 0 ) {
 				perror("fifoXferFrame: reading FIFO failed");
 				if ( 0 == i ) {
 					errno = EIO;
 				}
 				goto bail;
 			}
-			if ( fifoDebug > 0 ) {
+			if ( fifo->dbg > 0 ) {
 				prb( "Received:", rbufs, i );
 			}
 			destuffCtx.srcIndex = 0;
