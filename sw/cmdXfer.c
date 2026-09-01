@@ -285,6 +285,7 @@ destuffInit(DestufferCtx *ctx, const uint8_t *rbufs, size_t rsize)
 
 /* Returns
  *  1 -> comma detected
+ * -1 -> no progress
  *  0 -> other conditions
  */
 static int
@@ -320,6 +321,9 @@ int             rv = 0;
 		}
 	}
 	ctx->dstIndex = dstp - ctx->dst;
+	if ( ctx->srcIndex == j ) {
+		return -1;
+	}
 	ctx->srcIndex = j;
 	return rv;
 }
@@ -361,7 +365,7 @@ StufferCtx      stuffCtx;
 DestufferCtx    destuffCtx;
 int             cmdReadback = 0;
 int             warned      = 0;
-size_t          progress;
+int             progress;
 
 	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
 	destuffInit( &destuffCtx, rbufs, sizeof(rbufs) );
@@ -499,17 +503,18 @@ size_t          progress;
 						/* still proceed to destuff; may still find EOF */
 					}
 				}
-				progress = destuffCtx.srcIndex;
-				if ( destuff( &destuffCtx ) ) {
-					if ( destuffCtx.srcIndex < destuffCtx.srcSize ) {
-						fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
-					}
-					break;
-				}
-				if ( progress == destuffCtx.srcIndex ) {
-					if ( ! warned ) {
-						fprintf(stderr, "Not enough buffers for received message - %zd bytes dropped\n", destuffCtx.srcSize - progress);
-						warned = 1;
+				if ( (progress = destuff( &destuffCtx )) ) {
+					if ( progress > 0 ) {
+						/* progress > 0 signals EOF detection */
+						if ( destuffCtx.srcIndex < destuffCtx.srcSize ) {
+							fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
+						}
+					} else {
+						/* no progress; no source consumed */
+						if ( ! warned ) {
+							fprintf(stderr, "Not enough buffers for received message - %zd bytes dropped\n", destuffCtx.srcSize - destuffCtx.srcIndex);
+							warned = 1;
+						}
 					}
 					// drop
 					break;
