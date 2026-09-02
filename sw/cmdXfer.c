@@ -50,7 +50,8 @@ struct CmdFifoRec {
 	int       fd;
 	int       dbg;
 	int       ownFd;
-	size_t    winsize;
+	size_t    winSize;
+	unsigned  ttySpeed;
 };
 
 
@@ -153,31 +154,98 @@ bail:
 	return err ? err : -errno;
 }
 
+int fifoOpenConfig(CmdFifo *pfifo, const CmdFifoConfig *pcfg)
+{
+	CmdFifo        fifo = NULL;
+	int            status;
+	struct termios att;
+	int            fd = pcfg->ttyFd;
+
+	/* special case; zero is treated as unset unless accompanied by
+	 * flag.
+	 */
+	if ( 0 == fd && ! (pcfg->flags & CMD_FIFO_CFG_TTY_STDIN) ) {
+		fd = -1;
+	}
+
+	if ( ! pcfg || ( ! pcfg->ttyName && fd < 0 ) ) {
+		return -EINVAL;
+	}
+
+	if ( ! (fifo = calloc(1, sizeof(*fifo))) ) {
+		return -ENOMEM;
+	}
+
+	fifo->fd = -1;
+
+	if ( pcfg->ttyName ) {
+		if ( !! (pcfg->flags & CMD_FIFO_CFG_TTY_SPEED) ) {
+			fifo->ttySpeed = pcfg->ttySpeed;
+		} else {
+			fifo->ttySpeed = B115200;
+		}
+		status = fifoTtyOpen( pcfg->ttyName, fifo->ttySpeed );
+		if ( status < 0 ) {
+			goto bail;
+		}
+		fifo->fd    = status;
+		fifo->ownFd = 1;
+	} else {
+		/* fd >= 0 checked above */
+		if ( tcgetattr( fd, &att ) ) {
+			status = -errno;
+			goto bail;
+		}
+		fifo->ttySpeed = cfgetispeed( &att );
+		fifo->fd       = fd;
+	}
+
+	if ( !! (pcfg->flags & CMD_FIFO_CFG_WINSIZE) ) {
+		fifo->winSize = pcfg->windowSize;
+	} /* else defaults to 0 because of calloc */
+
+	if ( 0 == fifo->winSize ) {
+		fifo->winSize = ~ fifo->winSize; /* max */
+	}
+
+	*pfifo = fifo;
+	fifo   = NULL;
+	status = 0;
+
+bail:
+	if ( fifo ) {
+		if ( fifo->ownFd && fifo->fd >= 0 ) {
+			close( fifo->fd );
+		}
+		free( fifo );
+	}
+	return status;
+}
+
 int fifoOpen(CmdFifo *pfifo, const char *devn, unsigned speed)
 {
-	int st;
-	int fd = fifoTtyOpen(devn, speed);
-	if ( fd < 0 ) {
-		return fd;
-	}
-	if ( (st = fifoOpenFd(pfifo, fd)) ) {
-		close(fd);
-	}
-	(*pfifo)->ownFd = 1;
-	return st;
+	CmdFifoConfig cfg;
+	memset( &cfg, 0, sizeof(cfg) );
+	cfg.ttyName  = devn;
+	cfg.ttySpeed = speed;
+	cfg.flags   |= CMD_FIFO_CFG_TTY_SPEED;
+	return fifoOpenConfig( pfifo, &cfg );
 }
 
 int fifoOpenFd(CmdFifo *pfifo, int fd) {
-	if ( fd < 0 ) {
-		return fd;
-	}
-	if ( ! pfifo ) {
-		return -EINVAL;
-	}
-	if ( ! (*pfifo = calloc(1, sizeof(*pfifo))) ) {
-		return -ENOMEM;
-	}
-	(*pfifo)->fd = fd;
+	CmdFifoConfig cfg;
+	memset( &cfg, 0, sizeof(cfg) );
+	cfg.ttyFd    = fd;
+	cfg.flags   |= CMD_FIFO_CFG_TTY_STDIN; /* in case fd == 0 */
+	return fifoOpenConfig( pfifo, &cfg );
+}
+
+int fifoGetConfig(CmdFifo fifo, CmdFifoConfig *pcfg)
+{
+	memset(pcfg, 0, sizeof(*pcfg));
+	pcfg->ttyFd      = fifo->fd;
+	pcfg->ttySpeed   = fifo->ttySpeed;
+	pcfg->windowSize = fifo->winSize;
 	return 0;
 }
 
@@ -367,11 +435,7 @@ DestufferCtx    destuffCtx;
 int             cmdReadback = 0;
 int             warned      = 0;
 int             progress;
-size_t          winsize     = fifo->winsize;
-
-	if ( 0 == winsize ) {
-		winsize = ~winsize; /* max */
-	}
+size_t          winSize     = fifo->winSize;
 
 	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
 	destuffInit( &destuffCtx, rbufs, sizeof(rbufs) );
@@ -435,7 +499,7 @@ size_t          winsize     = fifo->winsize;
 			tlens = stuffCtx.dstIndex;
 		}
 
-		if ( tlens > 0 && winsize > 0 ) {
+		if ( tlens > 0 && winSize > 0 ) {
 			FD_SET( fifo->fd, &tfds );
 		}
 		if ( DONE != destuffCtx.state ) {
@@ -463,7 +527,7 @@ size_t          winsize     = fifo->winsize;
 				}
 				goto bail;
 			}
-			winsize += i;
+			winSize += i;
 			if ( fifo->dbg > 0 ) {
 				prb( "Received:", rbufs, i );
 			}
@@ -517,9 +581,9 @@ size_t          winsize     = fifo->winsize;
 
 		if ( FD_ISSET( fifo->fd, &tfds ) ) {
 			if ( fifo->dbg > 0 ) {
-				prb( "Sending:", tbufs + puts, tlens > winsize ? winsize : tlens );
+				prb( "Sending:", tbufs + puts, tlens > winSize ? winSize : tlens );
 			}
-			if ( (i = write(fifo->fd, tbufs + puts, tlens > winsize ? winsize : tlens)) <= 0 ) {
+			if ( (i = write(fifo->fd, tbufs + puts, tlens > winSize ? winSize : tlens)) <= 0 ) {
 				perror("fifoXferFrame: writing FIFO failed");
 				if ( 0 == i ) {
 					errno = EIO;
@@ -528,7 +592,7 @@ size_t          winsize     = fifo->winsize;
 			}
 			puts    += i;
 			tlens   -= i;
-			winsize -= i;
+			winSize -= i;
 		}
 }
 	tot += destuffCtx.dstIndex;

@@ -261,14 +261,15 @@ bail:
 extern int fifoTtyOpen(const char *, unsigned);
 
 static int
-blaster(const char *ttyName, size_t blastSz, int debug)
+blaster(const char *ttyName, size_t blastSz, size_t winSz, int debug)
 {
-	uint8_t *tx  = NULL;
-	uint8_t *rx  = NULL;
-	CmdFifo fifo = NULL;
-	int     fd   = -1;
-	int     rv   = -1;
-	int     i;
+	uint8_t       *tx  = NULL;
+	uint8_t       *rx  = NULL;
+	CmdFifo       fifo = NULL;
+	int           fd   = -1;
+	int           rv   = -1;
+	int           i;
+	CmdFifoConfig fifoCfg;
 
 	if ( !(tx = malloc(blastSz)) ) {
 		fprintf(stderr, "No memory\n");
@@ -280,14 +281,24 @@ blaster(const char *ttyName, size_t blastSz, int debug)
 		goto bail;
 	}
 
+	memset(&fifoCfg, 0, sizeof(fifoCfg));
+	fifoCfg.ttyName    = ttyName;
+	fifoCfg.windowSize = winSz;
+	fifoCfg.flags     |= CMD_FIFO_CFG_WINSIZE;
+
+
 	if ( (fd = fifoTtyOpen( ttyName, 115200 )) < 0 ) {
 		fprintf(stderr, "Error: opening fifo failed: %s\n", strerror(-fd));
 		goto bail;
 	}
-	if ( ( i = fifoOpenFd( &fifo, fd) ) ) {
+
+	if ( ( i = fifoOpenConfig( &fifo, &fifoCfg) ) || fifoGetConfig(fifo, &fifoCfg ) ) {
 		fprintf(stderr, "Error: opening fifo failed: %s\n", strerror(-i));
 		goto bail;
 	}
+
+	fd = fifoCfg.ttyFd;
+
 	/* Discard initial SYNC bytes */
 	i = read(fd, rx, blastSz);
 	if ( debug ) {
@@ -388,9 +399,9 @@ main(int argc, char **argv)
 		printf("  rate limit       : %g(B/s)\n", loopbackParams.rateLimit);
 		throttledLoopback( &loopbackParams );
 	} else {
-		printf("Running blaster with frame length %u\n", (1<<loopbackParams.ldBufSz));
+		printf("Running blaster with frame length %u, window size %u\n", (1<<loopbackParams.ldBufSz), loopbackParams.winSz);
 		
-		if ( 0 == blaster( ttyNam, (1<<loopbackParams.ldBufSz), loopbackParams.debug ) ) {
+		if ( 0 == blaster( ttyNam, (1<<loopbackParams.ldBufSz), loopbackParams.winSz, loopbackParams.debug ) ) {
 			printf("Test Passed\n");
 			rv = 0;
 		} else {

@@ -40,6 +40,51 @@ extern "C" {
 
 typedef struct CmdFifoRec *CmdFifo;
 
+typedef struct CmdFifoConfig {
+	/* name of the device to open
+	 */
+	const char *ttyName;
+	/* filedescriptor to use; if both, ttyFd and ttyName
+	 * are set then ttyFd is ignored!
+	 * Furthermore: when ttyFd is 0 (stdin) then it is
+	 * treated as unset (equivalent to -1) *unless*
+	 * the CMD_FIFO_TTY_STDIN flag is set. Set this in the unlikely
+	 * case you really want to use stdin.
+	 * Ignoring the value of zero allows you to simply memset
+	 * the CmdFifoConfig to all-zero and have a blank configuration.
+	 */
+	int         ttyFd;
+	/* number of bytes that may be outstanding (sent-received);
+	 * useful if the transport has no flow-control and the
+	 * peer has limited buffer space.
+	 * Setting to zero is equivalent to selecting a very large
+	 * window. (Default: 0)
+     */
+	size_t      windowSize;
+	/* Speed; this must be one of the termios macros, e.g., B115200
+	 * (Default: B115200)
+	 */
+	unsigned    ttySpeed;
+	/* Only the settings for which the associated flag is
+	 * set are used; for others a default is chosen.
+	 * Note that one of 'ttyName' or 'ttyFd' must always
+	 * be provided; they have no associated flag.
+	 */
+#define CMD_FIFO_CFG_WINSIZE     (1<<0)
+#define CMD_FIFO_CFG_TTY_SPEED   (1<<1)
+#define CMD_FIFO_CFG_TTY_STDIN   (1<<2)
+	unsigned    flags;
+} CmdFifoConfig;
+
+int fifoOpenConfig(CmdFifo *pfifo, const CmdFifoConfig *pcfg);
+
+/* Note that the tty name is never returned by this call
+ * but the associated file-descriptor.
+ *
+ * RETURN: 0 on success negative error on failure.
+ */
+int fifoGetConfig(CmdFifo pfifo, CmdFifoConfig *pcfg);
+
 int fifoOpen(CmdFifo *pfifo, const char *devn, unsigned speed);
 
 int fifoOpenFd(CmdFifo *pfifo, int fd);
