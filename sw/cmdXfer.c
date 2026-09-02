@@ -50,6 +50,7 @@ struct CmdFifoRec {
 	int       fd;
 	int       dbg;
 	int       ownFd;
+	size_t    winsize;
 };
 
 
@@ -366,6 +367,11 @@ DestufferCtx    destuffCtx;
 int             cmdReadback = 0;
 int             warned      = 0;
 int             progress;
+size_t          winsize     = fifo->winsize;
+
+	if ( 0 == winsize ) {
+		winsize = ~winsize; /* max */
+	}
 
 	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
 	destuffInit( &destuffCtx, rbufs, sizeof(rbufs) );
@@ -429,7 +435,7 @@ int             progress;
 			tlens = stuffCtx.dstIndex;
 		}
 
-		if ( tlens > 0 ) {
+		if ( tlens > 0 && winsize > 0 ) {
 			FD_SET( fifo->fd, &tfds );
 		}
 		if ( DONE != destuffCtx.state ) {
@@ -449,20 +455,6 @@ int             progress;
 			goto bail;
 		}
 
-		if ( FD_ISSET( fifo->fd, &tfds ) ) {
-			if ( fifo->dbg > 0 ) {
-				prb( "Sending:", tbufs + puts, tlens );
-			}
-			if ( (i = write(fifo->fd, tbufs + puts, tlens)) <= 0 ) {
-				perror("fifoXferFrame: writing FIFO failed");
-				if ( 0 == i ) {
-					errno = EIO;
-				}
-				goto bail;
-			}
-			puts  += i;
-			tlens -= i;
-		}
 		if ( FD_ISSET( fifo->fd, &rfds ) ) {
 			if ( (i = read(fifo->fd, rbufs, rlens)) <= 0 ) {
 				perror("fifoXferFrame: reading FIFO failed");
@@ -471,6 +463,7 @@ int             progress;
 				}
 				goto bail;
 			}
+			winsize += i;
 			if ( fifo->dbg > 0 ) {
 				prb( "Received:", rbufs, i );
 			}
@@ -521,7 +514,23 @@ int             progress;
 				}
 			}
 		}
-	}
+
+		if ( FD_ISSET( fifo->fd, &tfds ) ) {
+			if ( fifo->dbg > 0 ) {
+				prb( "Sending:", tbufs + puts, tlens > winsize ? winsize : tlens );
+			}
+			if ( (i = write(fifo->fd, tbufs + puts, tlens > winsize ? winsize : tlens)) <= 0 ) {
+				perror("fifoXferFrame: writing FIFO failed");
+				if ( 0 == i ) {
+					errno = EIO;
+				}
+				goto bail;
+			}
+			puts    += i;
+			tlens   -= i;
+			winsize -= i;
+		}
+}
 	tot += destuffCtx.dstIndex;
 
 	return tot;
