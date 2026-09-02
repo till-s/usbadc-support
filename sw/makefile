@@ -68,7 +68,7 @@ H5_OBJS=hdf5Sup.o
 
 HCC=$(HCC_$(HAVE_H5))
 
-PROGS=bbcli scopeCal
+PROGS=bbcli scopeCal ttyLoopTest
 
 PYINC=$(lastword $(sort $(wildcard /usr/include/python3.*)))
 
@@ -79,7 +79,7 @@ all: $(PROGS) pyfwcomm.so
 libfwcomm.a: $(LOBJS)
 	$(AR) r $@ $^
 
-bbcli scopeCal unitDataTst:%:%.o libfwcomm.a
+bbcli scopeCal unitDataTst ttyLoopTest:%:%.o libfwcomm.a
 	$(HCC) $(CFLAGS) -o $@ $< -L. -lfwcomm -lm $(JANSSON_LIBS)
 
 pyfwcomm.o: $(PYFWCOMM_C)
