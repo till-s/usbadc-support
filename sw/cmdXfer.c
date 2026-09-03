@@ -425,7 +425,7 @@ stuffBytes(Codec *cdc, StufferCtx *ctx)
 {
 	while ( ( ctx->srcSize > ctx->srcIndex ) ) {
 		if ( ctx->dstIndex >= ctx->dstSize - 3 ) {
-			return 0; 
+			return 0;
 		}
 		/* Stuff tbuf */
 		ctx->dstIndex += stuffByte( ctx->dst + ctx->dstIndex, ctx->dstSize - ctx->dstIndex, ctx->src + ctx->srcIndex );
@@ -472,7 +472,7 @@ ByteDestufferCtx *bctx = (ByteDestufferCtx*)ctx;
 	rbufs  = ctx->src;
 	dstp   = ctx->dst + ctx->dstIndex;
 	dstend = ctx->dst + ctx->dstSize;
-	
+
 	for ( j = ctx->srcIndex; j < ctx->srcSize; j++ ) {
 		if ( ESC != bctx->state && COMMA == rbufs[j] ) {
 			bctx->state = DONE;
@@ -529,7 +529,7 @@ fifoXferFrameVec(CmdFifo fifo, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, 
 {
 uint8_t             tbufs[MAXLEN];
 uint8_t             rbufs[MAXLEN];
-size_t              i, rlens, puts, tlens, tidx, tot, ridx;
+size_t              i, rlens, puts, tlens, tot, ridx;
 fd_set              rfds, tfds;
 int                 eofSent     = 0;
 struct timespec     timeout;
@@ -543,48 +543,45 @@ int                 eof;
 int                 progress;
 size_t              winSize     = fifo->winSize;
 Codec              *codec       = &fifo->codec;
+ssize_t             tidx, tend;
 
 	codec->stuffInitCtx( codec, &stuffCtx );
 	stuffCtx.dst          = tbufs;
 	stuffCtx.dstSize      = sizeof(tbufs);
 
 	codec->destuffInitCtx( codec, destuffCtx );
-	destuffCtx->src        = rbufs;
-	destuffCtx->srcSize    = sizeof(rbufs);
+	destuffCtx->src       = rbufs;
+	destuffCtx->srcSize   = sizeof(rbufs);
 
-	tot   = 0;
-	tlens = 0;
-	rlens = sizeof(rbufs);
-	puts  = 0;
-	ridx  = 0;
+	tot                   = 0;
+	tlens                 = 0;
+	rlens                 = sizeof(rbufs);
+	puts                  = 0;
+	ridx                  = 0;
 
 	while ( ridx < rcnt && 0 == rbuf[ridx].len ) {
 		++ridx;
 	}
 
-	warned = (ridx < rcnt) ? 0 : 1;
-	eof    = 0;
+	warned                 = (ridx < rcnt) ? 0 : 1;
+	eof                    = 0;
 
+	tidx                   = 0;
+	tend                   = tcnt;
+	stuffCtx.srcIndex      = 0;
 	if ( cmdp ) {
 		stuffCtx.src      = cmdp;
 		stuffCtx.srcSize  = sizeof(*cmdp);
-		stuffCtx.srcIndex = 0;
-		codec->stuff( codec, &stuffCtx );
-
 		cmdReadback       = 1;
-	}
-
-	/* *after* potentially stuffing the command byte */
-	tlens = stuffCtx.dstIndex;
-
-	tidx = 0;
-	stuffCtx.srcIndex = 0;
-	stuffCtx.srcSize  = 0;
-	for ( tidx = 0; tidx < tcnt; ++tidx ) {
-		stuffCtx.src     = tbuf[tidx].buf;
-		stuffCtx.srcSize = tbuf[tidx].len;
-		if ( stuffCtx.srcSize > 0 ) {
-			break;
+		/* fictitious first tbuf holding the cmdp */
+		tidx              = -1;
+	} else {
+		for ( tidx = 0; tidx < tend; ++tidx ) {
+			stuffCtx.src     = tbuf[tidx].buf;
+			stuffCtx.srcSize = tbuf[tidx].len;
+			if ( stuffCtx.srcSize > 0 ) {
+				break;
+			}
 		}
 	}
 
@@ -592,7 +589,7 @@ Codec              *codec       = &fifo->codec;
 		FD_ZERO( &rfds );
 		FD_ZERO( &tfds );
 
-		if ( ( 0 == tlens ) && (tidx < tcnt) ) {
+		if ( ( 0 == tlens ) && (tidx < tend) ) {
 			puts = 0;
 			/* 'continue' is called after 'stuff' returns 0 and the encoding
 			 * buffer was flushed in order to continue stuffing from the
@@ -602,8 +599,8 @@ Codec              *codec       = &fifo->codec;
 			 *
 			 * We can never get here with a fully consumed source (calling
 			 * 'continue' in this case would be illegal) because of the
-			 * (tidx < tcnt) test above. 0 == tlens indicates that the
-			 * buffer was flushed but tidx < tcnt says the source is empty.
+			 * (tidx < tend) test above. 0 == tlens indicates that the
+			 * buffer was flushed but tidx < tend says the source is empty.
 			 */
 			codec->stuffContinue(codec, &stuffCtx);
 			/* stuff() returns nonzero if the source has been consumed */
@@ -612,7 +609,7 @@ Codec              *codec       = &fifo->codec;
 				stuffCtx.srcIndex = 0;
 				stuffCtx.srcSize  = 0;
 				while ( 0 == stuffCtx.srcSize ) {
-					if ( ++tidx >= tcnt ) {
+					if ( ++tidx >= tend ) {
 						/* all tbufs stuffed; the stuffer ensures there is
 						 * space for the comma
 						 */
