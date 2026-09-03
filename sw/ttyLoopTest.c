@@ -61,7 +61,9 @@ struct LoopbackParams {
 	double          rateLimit; /* cap of transmission rate (bytes/s)          */
 	unsigned        winSz;
 	unsigned        ldBufSz;
+	unsigned        numLoops;
 	int             debug;
+	int             cobs;
 };
 
 /* receive bytes and echo them back but at rate that can be throttled
@@ -261,15 +263,17 @@ bail:
 extern int fifoTtyOpen(const char *, unsigned);
 
 static int
-blaster(const char *ttyName, size_t blastSz, size_t winSz, int debug)
+blaster(const char *ttyName, struct LoopbackParams *p)
 {
 	uint8_t       *tx  = NULL;
 	uint8_t       *rx  = NULL;
 	CmdFifo       fifo = NULL;
 	int           fd   = -1;
 	int           rv   = -1;
-	int           i;
+	int           i,k,j;
 	CmdFifoConfig fifoCfg;
+	size_t        blastSz = (1<<p->ldBufSz);
+	int           errs = 0;
 
 	if ( !(tx = malloc(blastSz)) ) {
 		fprintf(stderr, "No memory\n");
@@ -283,8 +287,11 @@ blaster(const char *ttyName, size_t blastSz, size_t winSz, int debug)
 
 	memset(&fifoCfg, 0, sizeof(fifoCfg));
 	fifoCfg.ttyName    = ttyName;
-	fifoCfg.windowSize = winSz;
+	fifoCfg.windowSize = p->winSz;
 	fifoCfg.flags     |= CMD_FIFO_CFG_WINSIZE;
+	if ( p->cobs ) {
+		fifoCfg.codec = CMD_FIFO_CFG_CODEC_COBS;
+	}
 
 
 	if ( (fd = fifoTtyOpen( ttyName, 115200 )) < 0 ) {
@@ -301,28 +308,40 @@ blaster(const char *ttyName, size_t blastSz, size_t winSz, int debug)
 
 	/* Discard initial SYNC bytes */
 	i = read(fd, rx, blastSz);
-	if ( debug ) {
+	if ( p->debug ) {
 		printf("Initial sync dump: %d\n", i);
 		fifoSetDebug(fifo, 1);
 	}
-	for ( i = 0; i < sizeof(tx); ++i ) {
-		tx[i] = lrand48();
-	}
-	i = fifoXferFrame(fifo, NULL, tx, blastSz, rx, blastSz);
-	if ( i < 0 ) {
-		fprintf(stderr, "Error: transferring data: %s\n", strerror(-i));
-	}
-	if ( debug ) {
-		printf("xferFrame: %d\n", i);
-	} else {
-		assert( i == blastSz );
+	for ( k = 0; k < p->numLoops; ++k ) {
+		for ( i = 0; i < sizeof(tx); ++i ) {
+			tx[i] = lrand48();
+		}
+		i = fifoXferFrame(fifo, NULL, tx, blastSz, rx, blastSz);
+		if ( i < 0 ) {
+			fprintf(stderr, "Error: transferring data: %s\n", strerror(-i));
+		}
+		if ( p->debug ) {
+			printf("xferFrame: %d\n", i);
+			errs += (i != blastSz);
+		} else {
+			assert( i == blastSz );
+		}
+
+		if ( p->debug ) {
+			printf("TX -> RX Mismatch\n");
+			for ( j = 0; j < i; ++ j ) {
+				errs += (tx[j] != rx[j]);
+				printf("%02x -> %02x %s\n", tx[j], rx[j], tx[j] == rx[j] ? "" : "E");
+			}
+		} else {
+			while ( --i >= 0 ) {
+				assert(rx[i] == tx[i]);
+			}
+		}
+		printf("%u frames %stested\n", k+1, errs ? "" : "successfully ");
 	}
 
-	while ( --i >= 0 ) {
-		assert(rx[i] == tx[i]);
-	}
-
-	rv = 0;
+	rv = errs;;
 
 bail:
 	free(tx);
@@ -351,8 +370,10 @@ main(int argc, char **argv)
 	loopbackParams.chunkSz   = 0;
 	loopbackParams.rateLimit = 1000.0;
 	loopbackParams.debug     = 0;
+	loopbackParams.numLoops  = 1;
+	loopbackParams.cobs      = 0;
 
-	while ( (opt = getopt(argc, argv, "d:Dw:B:c:r:")) > 0 ) {
+	while ( (opt = getopt(argc, argv, "d:DCw:B:c:r:n:")) > 0 ) {
 		u_p = NULL;
 		d_p = NULL;
 		switch ( opt ) {
@@ -363,6 +384,8 @@ main(int argc, char **argv)
 			case 'B': u_p = &loopbackParams.ldBufSz;   break;
 			case 'c': u_p = &loopbackParams.chunkSz;   break;
 			case 'r': d_p = &loopbackParams.rateLimit; break;
+			case 'n': u_p = &loopbackParams.numLoops;  break;
+			case 'C': loopbackParams.cobs = 1;         break;
 		}
 		if ( u_p && 1 != sscanf(optarg, "%u", u_p) ) {
 			fprintf(stderr, "unable to scan arg to option -%c\n", opt);
@@ -401,7 +424,7 @@ main(int argc, char **argv)
 	} else {
 		printf("Running blaster with frame length %u, window size %u\n", (1<<loopbackParams.ldBufSz), loopbackParams.winSz);
 		
-		if ( 0 == blaster( ttyNam, (1<<loopbackParams.ldBufSz), loopbackParams.winSz, loopbackParams.debug ) ) {
+		if ( 0 == blaster( ttyNam, &loopbackParams ) ) {
 			printf("Test Passed\n");
 			rv = 0;
 		} else {

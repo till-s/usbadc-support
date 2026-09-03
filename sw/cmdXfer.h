@@ -65,6 +65,16 @@ typedef struct CmdFifoConfig {
 	 * (Default: B115200)
 	 */
 	unsigned    ttySpeed;
+
+	/* The codec to use (default: bytestuff)
+	 *
+	 * Note: The library must be built with COBS support
+	 * to make this available; otherwise fifoOpen returns
+	 * -ENOTSUP.
+	 */
+#define CMD_FIFO_CFG_CODEC_BYTESTUFF  0
+#define CMD_FIFO_CFG_CODEC_COBS       1
+	unsigned    codec;
 	/* Only the settings for which the associated flag is
 	 * set are used; for others a default is chosen.
 	 * Note that one of 'ttyName' or 'ttyFd' must always

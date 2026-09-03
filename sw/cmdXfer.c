@@ -41,10 +41,104 @@
 
 #include "cmdXfer.h"
 
+#ifdef CONFIG_WITH_COBS
+#include <cobsC.h>
+#endif
+
 #define MAXLEN 500
 
 #define COMMA  0xCA
 #define ESCAP  0x55
+
+/* Fields chosen to match COBS structs so we
+ * can reuse those when available (hacky, sorry)
+ */
+
+typedef enum { RX, ESC, DONE } RxState;
+
+typedef struct Codec Codec;
+
+#ifndef CONFIG_WITH_COBS
+typedef struct DestufferCtx {
+	RxState        state;
+	const uint8_t *src;
+	size_t         srcIndex;
+	size_t         srcSize;
+	uint8_t       *dst;
+	size_t         dstIndex;
+	size_t         dstSize;
+} DestufferCtx;
+
+typedef struct StufferCtx {
+	uint8_t       *dst;
+	size_t         dstIndex;
+	size_t         dstSize;
+	const uint8_t *src;
+	size_t         srcSize;
+	size_t         srcIndex;
+} StufferCtx;
+
+typedef DestufferCtx ByteDestufferCtx;
+#else
+typedef CobsCDecoderCtx DestufferCtx;
+
+typedef struct ByteDestufferCtx {
+	DestufferCtx cobsCtx;
+	RxState      state;
+} ByteDestufferCtx;
+
+typedef CobsCEncoderCtx StufferCtx;
+
+static uint8_t cobsComma(Codec *cdc) { return COBSC_EOF; }
+
+static void cobsInitEncCtx(Codec *cdc, StufferCtx *ctx)
+{
+	cobsCEncodeInit( ctx );
+	ctx->srcSize  = 0;
+}
+
+static void cobsInitDecCtx(Codec *cdc, DestufferCtx *ctx)
+{
+	cobsCDecodeInit( ctx );
+	ctx->dstSize  = 0;
+}
+
+static int cobsStuff(Codec *cdc, StufferCtx *ctx)
+{
+	return cobsCEncode( ctx );
+}
+
+static void cobsStuffContinue(Codec *cdc, StufferCtx *ctx)
+{
+	return cobsCEncodeContinue(ctx);
+}
+
+static int cobsDestuff(Codec *cdc, DestufferCtx *ctx)
+{
+	return cobsCDecode( ctx );
+}
+#endif
+
+static void stuffBytesInitCtx(Codec *cdc, StufferCtx *ctx);
+static void destuffBytesInitCtx(Codec *cdc, DestufferCtx *ctx);
+static int destuffBytes(Codec *cdc, DestufferCtx *ctx);
+static int stuffBytes(Codec *cdc, StufferCtx *ctx);
+static void stuffBytesContinue(Codec *cdc, StufferCtx *ctx);
+
+static uint8_t stuffBytesComma(Codec *cdc) { return COMMA; }
+
+struct Codec {
+	uint8_t (*comma)(Codec *);
+	void (*stuffInitCtx)(Codec *, StufferCtx *);
+	void (*destuffInitCtx)(Codec *, DestufferCtx *);
+	/* returns 1 on success, 0 if not enough destination space
+	 */
+	int  (*stuff)(Codec *, StufferCtx *);
+	void (*stuffContinue)(Codec *, StufferCtx *);
+	/* must return 1 on EOF, -1 if no progress made
+	 */
+	int  (*destuff)(Codec *, DestufferCtx *);
+};
 
 struct CmdFifoRec {
 	int       fd;
@@ -52,10 +146,8 @@ struct CmdFifoRec {
 	int       ownFd;
 	size_t    winSize;
 	unsigned  ttySpeed;
+	Codec     codec;
 };
-
-
-typedef enum { RX, ESC, DONE } RxState;
 
 /* Basic communication with the USB-FIFO (FT245), byte-stuffer/de-stuffer and command multiplexer in firmware */
 
@@ -64,8 +156,7 @@ int fifoTtyOpen(const char *devn, unsigned speed)
 int                fd   = -1;
 char               msg[256];
 struct termios     atts;
-size_t             i,put;
-int                err  = 0;
+size_t             i;
 
 	/* Special trick: open the TTY twice. If another program (minicom!)
 	 * already has the port opened (but w/o TIOCEXCL) then our first
@@ -135,31 +226,23 @@ int                err  = 0;
 	}
 */
 
-	for ( i = 0; i < 4; i++ ) {
-		msg[i] = COMMA;
-	}
-	put = write( fd, msg, i );
-	if ( i != put ) {
-		perror("Writing syncing commas failed");
-		err = put < 0 ? -errno : -EIO;
-		goto bail;
-	}
-
 	return fd;
 
 bail:
 	if ( fd >= 0 ) {
 		close( fd );
 	}
-	return err ? err : -errno;
+	return -errno;
 }
 
 int fifoOpenConfig(CmdFifo *pfifo, const CmdFifoConfig *pcfg)
 {
-	CmdFifo        fifo = NULL;
-	int            status;
-	struct termios att;
-	int            fd = pcfg->ttyFd;
+CmdFifo        fifo = NULL;
+int            status;
+int            i, put;
+struct termios att;
+int            fd = pcfg->ttyFd;
+char           msg[4];
 
 	/* special case; zero is treated as unset unless accompanied by
 	 * flag.
@@ -198,6 +281,7 @@ int fifoOpenConfig(CmdFifo *pfifo, const CmdFifoConfig *pcfg)
 		}
 		fifo->ttySpeed = cfgetispeed( &att );
 		fifo->fd       = fd;
+		fd             = -1;
 	}
 
 	if ( !! (pcfg->flags & CMD_FIFO_CFG_WINSIZE) ) {
@@ -206,6 +290,40 @@ int fifoOpenConfig(CmdFifo *pfifo, const CmdFifoConfig *pcfg)
 
 	if ( 0 == fifo->winSize ) {
 		fifo->winSize = ~ fifo->winSize; /* max */
+	}
+
+	if ( CMD_FIFO_CFG_CODEC_BYTESTUFF == pcfg->codec ) {
+		fifo->codec.comma          = stuffBytesComma;
+		fifo->codec.stuffInitCtx   = stuffBytesInitCtx;
+		fifo->codec.destuffInitCtx = destuffBytesInitCtx;
+		fifo->codec.stuff          = stuffBytes;
+		fifo->codec.stuffContinue  = stuffBytesContinue;
+		fifo->codec.destuff        = destuffBytes;
+	} else if ( CMD_FIFO_CFG_CODEC_COBS == pcfg->codec ) {
+#ifdef CONFIG_WITH_COBS
+		fifo->codec.comma          = cobsComma;
+		fifo->codec.stuffInitCtx   = cobsInitEncCtx;
+		fifo->codec.destuffInitCtx = cobsInitDecCtx;
+		fifo->codec.stuff          = cobsStuff;
+		fifo->codec.stuffContinue  = cobsStuffContinue;
+		fifo->codec.destuff        = cobsDestuff;
+#else
+		status = -ENOTSUP;
+		goto bail;
+#endif
+	} else {
+		status = -EINVAL;
+		goto bail;
+	}
+
+	for ( i = 0; i < sizeof(msg)/sizeof(msg[0]); i++ ) {
+		msg[i] = fifo->codec.comma(&fifo->codec);
+	}
+	put = write( fifo->fd, msg, i );
+	if ( i != put ) {
+		perror("Writing syncing commas failed");
+		status = put < 0 ? -errno : -EIO;
+		goto bail;
 	}
 
 	*pfifo = fifo;
@@ -277,26 +395,6 @@ static void prb(const char * hdr, const uint8_t *b, size_t l)
 	}
 }
 
-typedef struct DestufferCtx {
-	RxState        state;
-	const uint8_t *src;
-	size_t         srcIndex;
-	size_t         srcSize;
-	uint8_t       *dst;
-	size_t         dstIndex;
-	size_t         dstSize;
-} DestufferCtx;
-
-typedef struct StufferCtx {
-	uint8_t       *dst;
-	size_t         dstIndex;
-	size_t         dstSize;
-	const uint8_t *src;
-	size_t         srcSize;
-	size_t         srcIndex;
-} StufferCtx;
-
-
 static size_t
 stuffByte(uint8_t *dbuf, ssize_t dbufsz, const uint8_t *buf)
 {
@@ -322,7 +420,7 @@ size_t rval = 0;
 }
 
 static int
-stuff(StufferCtx *ctx)
+stuffBytes(Codec *cdc, StufferCtx *ctx)
 {
 	while ( ( ctx->srcSize > ctx->srcIndex ) ) {
 		if ( ctx->dstIndex >= ctx->dstSize - 3 ) {
@@ -336,20 +434,23 @@ stuff(StufferCtx *ctx)
 }
 
 static void
-stuffInit(StufferCtx *ctx, uint8_t *tbufs, size_t tsize)
+stuffBytesContinue(Codec *cdc, StufferCtx *ctx)
 {
-	memset(ctx, 0, sizeof(*ctx));
-	ctx->dst     = tbufs;
-	ctx->dstSize = tsize;
+	ctx->dstIndex = 0;
 }
 
 static void
-destuffInit(DestufferCtx *ctx, const uint8_t *rbufs, size_t rsize)
+stuffBytesInitCtx(Codec *cdc, StufferCtx *ctx)
 {
 	memset(ctx, 0, sizeof(*ctx));
-	ctx->src        = rbufs;
-	ctx->srcSize    = rsize;
-	ctx->state      = RX;
+}
+
+static void
+destuffBytesInitCtx(Codec *cdc, DestufferCtx *ctx)
+{
+	ByteDestufferCtx *bctx = (ByteDestufferCtx*)ctx;
+	memset(bctx, 0, sizeof(*bctx));
+	bctx->state      = RX;
 }
 
 /* Returns
@@ -358,33 +459,34 @@ destuffInit(DestufferCtx *ctx, const uint8_t *rbufs, size_t rsize)
  *  0 -> other conditions
  */
 static int
-destuff(DestufferCtx *ctx)
+destuffBytes(Codec *cdc, DestufferCtx *ctx)
 {
-size_t          j;
-uint8_t        *dstp;
-uint8_t        *dstend;
-const uint8_t  *rbufs;
-int             rv = 0;
+size_t            j;
+uint8_t          *dstp;
+uint8_t          *dstend;
+const uint8_t    *rbufs;
+int               rv = 0;
+ByteDestufferCtx *bctx = (ByteDestufferCtx*)ctx;
 
 	rbufs  = ctx->src;
 	dstp   = ctx->dst + ctx->dstIndex;
 	dstend = ctx->dst + ctx->dstSize;
 	
 	for ( j = ctx->srcIndex; j < ctx->srcSize; j++ ) {
-		if ( ESC != ctx->state && COMMA == rbufs[j] ) {
-			ctx->state = DONE;
+		if ( ESC != bctx->state && COMMA == rbufs[j] ) {
+			bctx->state = DONE;
 			++j; /* consume source */
 			rv = 1;
 			break;
-		} else if ( ESC != ctx->state && ESCAP == rbufs[j] ) {
-			ctx->state = ESC;
+		} else if ( ESC != bctx->state && ESCAP == rbufs[j] ) {
+			bctx->state = ESC;
 		} else {
-			ctx->state = RX;
+			bctx->state = RX;
 			if ( dstp >= dstend ) {
 				/* destination exhausted */
 				break;
 			} else {
-				ctx->state = RX;
+				bctx->state = RX;
 				*dstp++ = rbufs[j];
 			}
 		}
@@ -424,21 +526,30 @@ rbufvec rvec[1];
 int
 fifoXferFrameVec(CmdFifo fifo, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt)
 {
-uint8_t         tbufs[MAXLEN];
-uint8_t         rbufs[MAXLEN];
-size_t          i, rlens, puts, tlens, tidx, tot, ridx;
-fd_set          rfds, tfds;
-int             eofSent     = 0;
-struct timespec timeout;
-StufferCtx      stuffCtx;
-DestufferCtx    destuffCtx;
-int             cmdReadback = 0;
-int             warned      = 0;
-int             progress;
-size_t          winSize     = fifo->winSize;
+uint8_t             tbufs[MAXLEN];
+uint8_t             rbufs[MAXLEN];
+size_t              i, rlens, puts, tlens, tidx, tot, ridx;
+fd_set              rfds, tfds;
+int                 eofSent     = 0;
+struct timespec     timeout;
+StufferCtx          stuffCtx;
+/* Hack - use ByteDestufferCtx; in case of COBS only the cobsCtx subpart will be used */
+ByteDestufferCtx    hackCtx;
+DestufferCtx       *destuffCtx = (DestufferCtx*) &hackCtx;
+int                 cmdReadback = 0;
+int                 warned      = 0;
+int                 eof;
+int                 progress;
+size_t              winSize     = fifo->winSize;
+Codec              *codec       = &fifo->codec;
 
-	stuffInit( &stuffCtx, tbufs, sizeof(tbufs) );
-	destuffInit( &destuffCtx, rbufs, sizeof(rbufs) );
+	codec->stuffInitCtx( codec, &stuffCtx );
+	stuffCtx.dst          = tbufs;
+	stuffCtx.dstSize      = sizeof(tbufs);
+
+	codec->destuffInitCtx( codec, destuffCtx );
+	destuffCtx->src        = rbufs;
+	destuffCtx->srcSize    = sizeof(rbufs);
 
 	tot   = 0;
 	tlens = 0;
@@ -451,12 +562,13 @@ size_t          winSize     = fifo->winSize;
 	}
 
 	warned = (ridx < rcnt) ? 0 : 1;
+	eof    = 0;
 
 	if ( cmdp ) {
 		stuffCtx.src      = cmdp;
 		stuffCtx.srcSize  = sizeof(*cmdp);
 		stuffCtx.srcIndex = 0;
-		stuff( &stuffCtx );
+		codec->stuff( codec, &stuffCtx );
 
 		cmdReadback       = 1;
 	}
@@ -475,34 +587,51 @@ size_t          winSize     = fifo->winSize;
 		}
 	}
 
-	while ( ( ! eofSent ) || ( tlens > 0 ) || (DONE != destuffCtx.state ) ) {
+	while ( ( ! eofSent ) || ( tlens > 0 ) || ! eof ) {
 		FD_ZERO( &rfds );
 		FD_ZERO( &tfds );
 
-		if ( ( 0 == tlens ) ) {
+		if ( ( 0 == tlens ) && (tidx < tcnt) ) {
 			puts = 0;
-			stuffCtx.dstIndex = 0;
-			if ( ( stuffCtx.srcIndex < stuffCtx.srcSize ) ) {
-				/* stuff() returns nonzero if the entire source has been consumeds */
-				while ( tidx < tcnt && stuff(&stuffCtx) ) {
-					while ( stuffCtx.srcIndex == stuffCtx.srcSize && ++tidx < tcnt ) {
-						stuffCtx.srcIndex = 0;
-						stuffCtx.srcSize  = tbuf[tidx].len;
-						stuffCtx.src      = tbuf[tidx].buf;
+			/* 'continue' is called after 'stuff' returns 0 and the encoding
+			 * buffer was flushed in order to continue stuffing from the
+			 * same source buffer (or initially which does no harm).
+			 * After flushing the frame 'rewind' should be called but because
+			 * this routine returns this is not necessary.
+			 *
+			 * We can never get here with a fully consumed source (calling
+			 * 'continue' in this case would be illegal) because of the
+			 * (tidx < tcnt) test above. 0 == tlens indicates that the
+			 * buffer was flushed but tidx < tcnt says the source is empty.
+			 */
+			codec->stuffContinue(codec, &stuffCtx);
+			/* stuff() returns nonzero if the source has been consumed */
+			while ( codec->stuff(codec, &stuffCtx) ) {
+				/* this tbuf exhausted */
+				stuffCtx.srcIndex = 0;
+				stuffCtx.srcSize  = 0;
+				while ( 0 == stuffCtx.srcSize ) {
+					if ( ++tidx >= tcnt ) {
+						/* all tbufs stuffed; the stuffer ensures there is
+						 * space for the comma
+						 */
+						stuffCtx.dst[stuffCtx.dstIndex] = codec->comma(codec);
+						stuffCtx.dstIndex++;
+						eofSent                         = 1;
+						goto break_outer_loop;
 					}
+					stuffCtx.srcSize  = tbuf[tidx].len;
+					stuffCtx.src      = tbuf[tidx].buf;
 				}
-			} else if ( ! eofSent ) {
-				stuffCtx.dst[stuffCtx.dstIndex] = COMMA;
-				stuffCtx.dstIndex++;
-				eofSent                         = 1;
 			}
+		break_outer_loop:
 			tlens = stuffCtx.dstIndex;
 		}
 
 		if ( tlens > 0 && winSize > 0 ) {
 			FD_SET( fifo->fd, &tfds );
 		}
-		if ( DONE != destuffCtx.state ) {
+		if ( ! eof ) {
 			FD_SET( fifo->fd, &rfds );
 		}
 
@@ -531,45 +660,48 @@ size_t          winSize     = fifo->winSize;
 			if ( fifo->dbg > 0 ) {
 				prb( "Received:", rbufs, i );
 			}
-			destuffCtx.srcIndex = 0;
-			destuffCtx.srcSize  = i;
+			destuffCtx->srcIndex = 0;
+			destuffCtx->srcSize  = i;
 			if ( cmdReadback ) {
-				destuffCtx.dst     = cmdp;
-				destuffCtx.dstSize = sizeof(*cmdp);
-				destuff( &destuffCtx );
-				if ( destuffCtx.dstIndex != sizeof(*cmdp) ) {
+				destuffCtx->dst     = cmdp;
+				destuffCtx->dstSize = sizeof(*cmdp);
+				codec->destuff( codec, destuffCtx );
+				if ( destuffCtx->dstIndex != sizeof(*cmdp) ) {
 					fprintf(stderr, "Internal error - readback of command failed!\n");
+					errno = -EIO;
+					goto bail;
 				}
 				cmdReadback = 0;
-				destuffCtx.dstSize  = 0;
-				destuffCtx.dstIndex = 0;
+				destuffCtx->dstSize  = 0;
+				destuffCtx->dstIndex = 0;
 			}
-			while ( destuffCtx.srcIndex < destuffCtx.srcSize ) {
-				if ( destuffCtx.dstIndex == destuffCtx.dstSize ) {
-					tot += destuffCtx.dstSize;
+			while ( destuffCtx->srcIndex < destuffCtx->srcSize ) {
+				if ( destuffCtx->dstIndex == destuffCtx->dstSize ) {
+					tot += destuffCtx->dstSize;
 					while ( ridx < rcnt && 0 == rbuf[ridx].len ) {
 						ridx++;
 					}
-					destuffCtx.dstIndex = 0;
+					destuffCtx->dstIndex = 0;
 					if ( ridx < rcnt ) {
-						destuffCtx.dstSize  = rbuf[ridx].len;
-						destuffCtx.dst      = rbuf[ridx].buf;
+						destuffCtx->dstSize  = rbuf[ridx].len;
+						destuffCtx->dst      = rbuf[ridx].buf;
 						ridx++;
 					} else {
-						destuffCtx.dstSize = 0;
+						destuffCtx->dstSize = 0;
 						/* still proceed to destuff; may still find EOF */
 					}
 				}
-				if ( (progress = destuff( &destuffCtx )) ) {
+				if ( (progress = codec->destuff( codec, destuffCtx )) ) {
 					if ( progress > 0 ) {
+						eof = 1;
 						/* progress > 0 signals EOF detection */
-						if ( destuffCtx.srcIndex < destuffCtx.srcSize ) {
+						if ( destuffCtx->srcIndex < destuffCtx->srcSize ) {
 							fprintf(stderr, "fifoXferFrame: WARNING -- received comma but there are extra data\n");
 						}
 					} else {
 						/* no progress; no source consumed */
 						if ( ! warned ) {
-							fprintf(stderr, "Not enough buffers for received message - %zd bytes dropped\n", destuffCtx.srcSize - destuffCtx.srcIndex);
+							fprintf(stderr, "Not enough buffers for received message - %zd bytes dropped\n", destuffCtx->srcSize - destuffCtx->srcIndex);
 							warned = 1;
 						}
 					}
@@ -595,7 +727,7 @@ size_t          winSize     = fifo->winSize;
 			winSize -= i;
 		}
 }
-	tot += destuffCtx.dstIndex;
+	tot += destuffCtx->dstIndex;
 
 	return tot;
 
