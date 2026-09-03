@@ -306,8 +306,10 @@ blaster(const char *ttyName, struct LoopbackParams *p)
 
 	fd = fifoCfg.ttyFd;
 
+	i = 0;
 	/* Discard initial SYNC bytes */
-	i = read(fd, rx, blastSz);
+	while ( 0 == fifoSync( fifo, 10 ) )
+		++i;
 	if ( p->debug ) {
 		printf("Initial sync dump: %d\n", i);
 		fifoSetDebug(fifo, 1);

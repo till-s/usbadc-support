@@ -101,6 +101,13 @@ int fifoOpenFd(CmdFifo *pfifo, int fd);
 
 int fifoClose(CmdFifo fifo);
 
+/* Read and discard bytes until the next comma or timeout
+ * RETURN: 0 on success or negative error code (e.g., -ETIMEDOUT) 
+ *
+ * A negative timeout waits indefinitely.
+ */
+int fifoSync(CmdFifo fifo, int milliseconds);
+
 /* set new debug level and return the previous one; if 'val < 0' then
  * the current level is unchanged (and returned).
  */
@@ -117,7 +124,11 @@ typedef struct tbufvec {
 } tbufvec;
 
 
-/* These routines return -ETIMEDOUT on timeout */
+/* Send a frame and (optionally) wait for a reply.
+ * These routines return -ETIMEDOUT on timeout and the number of
+ * bytesreceived on success (not counting the 'command' byte which
+ * is returned in *cmdp).
+ */
 int fifoXferFrame(CmdFifo fifo, uint8_t *cmdp, const uint8_t *tbuf, size_t tlen, uint8_t *rbuf, size_t rlen);
 
 int fifoXferFrameVec(CmdFifo fifo, uint8_t *cmdp, const tbufvec *tbuf, size_t tcnt, const rbufvec *rbuf, size_t rcnt);

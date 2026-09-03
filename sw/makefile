@@ -57,13 +57,13 @@ COBS_DEFINES_YES=CONFIG_WITH_COBS
 COBS_OBJS_YES=cobsC.o
 HAVE_COBS=$(if $(COBS_DIR),YES,NO)
 
-vpath cobsC.c $(COBS_DIR)
+vpath cobsC.c $(addsuffix /sw,$(COBS_DIR))
 
 CFLAGS=-O0 -Wall -g -fpic -fno-strict-aliasing -I.
 CFLAGS+=$(addprefix -D,$(H5_DEFINES_$(HAVE_H5)))
 CFLAGS+=$(addprefix -D,$(JANSSON_DEFINES_$(HAVE_JANSSON)))
 CFLAGS+=$(addprefix -D,$(COBS_DEFINES_$(HAVE_COBS)))
-CFLAGS+=$(addprefix -I,$(COBS_DIR))
+CFLAGS+=$(addprefix -I,$(addsuffix /sw,$(COBS_DIR)))
 
 OBJS+=fwComm.o fwUtil.o cmdXfer.o at25Sup.o dac47cxSup.o
 OBJS+=lmh6882Sup.o max195xxSup.o versaClkSup.o fegRegSup.o ad8370Sup.o

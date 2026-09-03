@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <inttypes.h>
+#include <time.h>
 
 #include "cmdXfer.h"
 
@@ -733,4 +734,84 @@ Codec              *codec       = &fifo->codec;
 
 bail:
 	return -errno;
+}
+
+static int pollfor(int fd, struct timespec *pto)
+{
+fd_set rfds;
+int    status;
+
+	FD_ZERO( &rfds );
+	FD_SET( fd, &rfds );
+	status = pselect( fd + 1, &rfds, NULL, NULL, pto, NULL );
+	if ( status <= 0 ) {
+		if ( 0 == status ) {
+			return -ETIMEDOUT;
+		}
+		return -errno;
+	}
+	return  FD_ISSET( fd, &rfds ) ? 0 : -ENODEV;
+}
+
+int fifoSync(CmdFifo fifo, int milliseconds)
+{
+struct timespec  now, deadline;
+struct timespec  timeout, *pto;
+int              status;
+uint8_t          byte;
+int              expired;
+
+	if ( milliseconds >= 0 ) {
+		timeout.tv_sec  = (milliseconds / 1000);
+		timeout.tv_nsec = (milliseconds % 1000) * 1000000L;
+		if ( clock_gettime( CLOCK_MONOTONIC, &now ) ) {
+			return -errno;
+		}
+		deadline.tv_nsec = now.tv_nsec + timeout.tv_nsec;
+		deadline.tv_sec  = now.tv_sec  + timeout.tv_sec;
+		if ( deadline.tv_nsec >= 1000000000L ) {
+			deadline.tv_nsec -= 1000000000L;
+			deadline.tv_sec  += 1;
+		}
+		pto = &timeout;
+	} else {
+		pto = NULL;
+	}
+	expired = 0;
+	do {
+		status = pollfor( fifo->fd, pto );
+		if ( status < 0 ) {
+			return status;
+		}
+		status = read( fifo->fd, &byte, 1 );
+		if ( 1 != status ) {
+			if ( 0 == status ) {
+				return -EIO;
+			}
+			return -errno;
+		}
+		if ( byte == fifo->codec.comma( &fifo->codec ) ) {
+			return 0;
+		}
+		if ( pto ) {
+			if ( clock_gettime( CLOCK_MONOTONIC, &now ) ) {
+				return -errno;
+			}
+			if ( deadline.tv_sec >= now.tv_sec ) {
+				timeout.tv_sec = (deadline.tv_sec - now.tv_sec);
+				timeout.tv_nsec =(deadline.tv_nsec - now.tv_nsec);
+				if ( now.tv_nsec > deadline.tv_nsec ) {
+					if ( timeout.tv_sec > 0 ) {
+						timeout.tv_sec--;
+						timeout.tv_nsec = 1000000000L;
+					} else {
+						expired = 1;
+					}
+				}
+			} else {
+				expired = 1;
+			}
+		}
+	} while ( ! expired );
+	return -ETIMEDOUT;
 }
