@@ -15,20 +15,25 @@ HEREDIR:=$(dir $(lastword $(MAKEFILE_LIST)))
 TESTS= ScopeCommandWrapperTb CommandWrapperSim CicFilterTb PipelinedRShifterTb
 TESTS+=SpiRegTb SpiShadowRegTb SampleBufferBRAMTb
 TESTS+=SimpleBusAsyncTb SimpleBusPipeStageTb
+TESTS+=$(COBS_TEST_$(HAVE_COBS))
+
+HAVE_COBS=$(if $(COBS_DIR),YES,NO)
+COBS_TEST_YES=CobsEchoTb
 
 # can we find RamEmul.vhd?
 ifneq ($(wildcard $(SDRAM_CTRL_PATH)/RamEmul.vhd)x,x)
-VPATH=$(SDRAM_CTRL_PATH)
+VPATH+=$(SDRAM_CTRL_PATH)
 TESTS+=SampleBufferSDRAMTb
 OBJS+=RamEmul.o
 endif
 
+VPATH+=$(addsuffix /hdl, $(COBS_DIR))
 
 SampleBufferSDRAMTb_WITH_ARGS=-gSAMPLE_WIDTH_G=16
 
 all: $(TESTS)
 
-RUNNABLE_TESTS=$(filter-out CommandWrapperSim,$(TESTS))
+RUNNABLE_TESTS=$(filter-out CommandWrapperSim CobsEchoTb,$(TESTS))
 RUN_TARGETS=$(addprefix run-,$(RUNNABLE_TESTS))
 
 tests: $(RUN_TARGETS)
@@ -75,7 +80,15 @@ ScopeCommandWrapperTb: ScopeCommandWrapperTb.o $(OBJS)
 %Tb: %Tb.o $(OBJS)
 	$(GHDL) -e $(GHDLFLAGS) -o $@ $@
 
-CommandWrapperSim: $(OBJS) SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
+CommandWrapperSim: SimPty.o SimPtyIO.o CommandWrapperSim.o $(OBJS)
+	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o -o $@  $@
+
+CobsEchoTb.o: SimPty.o SimPtyIO.o COBSDecoder.o COBSEncoder.o
+
+COBSEncoder.o: COBSFifo.o
+COBSDecoder.o: EOFTag.o
+
+CobsEchoTb: CobsEchoTb.o
 	$(GHDL) -e $(GHDLFLAGS) -Wl,SimPtyIO.o -o $@  $@
 
 SampleBufferBRAMTb: SampleBufferBRAMTb.o
