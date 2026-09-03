@@ -410,7 +410,7 @@ main(int argc, char **argv)
 		fprintf(stderr, "buffer size too big; note that the we need a log2!\n");
 		goto bail;
 	}
-	if ( (1<<loopbackParams.ldBufSz) < loopbackParams.winSz ) {
+	if ( (1<<loopbackParams.ldBufSz) < loopbackParams.winSz && ! ttyNam ) {
 		fprintf(stderr, "buffer size smaller than window size (%u); please increase\n", loopbackParams.winSz);
 		goto bail;
 	}
