@@ -46,21 +46,44 @@
 #include <cobsC.h>
 #endif
 
-#define MAXLEN 500
+/* stuff/destuff buffer size */
+#define SBUFSZ 16384
 
 #define COMMA  0xCA
 #define ESCAP  0x55
-
-/* Fields chosen to match COBS structs so we
- * can reuse those when available (hacky, sorry)
- */
 
 typedef enum { RX, ESC, DONE } RxState;
 
 typedef struct Codec Codec;
 
-#ifndef CONFIG_WITH_COBS
-typedef struct DestufferCtx {
+struct Codec {
+	uint8_t             tbufs[SBUFSZ];
+	uint8_t             rbufs[SBUFSZ];
+	void               *stuffCtx;
+	void               *destuffCtx;
+	uint8_t           (*comma)(Codec *);
+	void              (*stuffInitCtx)(Codec *);
+	void              (*stuffRewind)(Codec *);
+	void              (*stuffContinue)(Codec *);
+	void              (*stuffSetSource)(Codec *, const uint8_t *src, size_t srcSize);
+	/* returns 1 on success, 0 if not enough destination space
+	 */
+	int               (*stuff)(Codec *);
+	void              (*stuffAddComma)(Codec *);
+	size_t            (*stuffGetSize)(Codec *);
+
+	void              (*destuffInitCtx)(Codec *);
+	void              (*destuffRewind)(Codec *);
+	size_t            (*destuffGetSourceRemaining)(Codec *);
+	size_t            (*destuffGetDestinationMissing)(Codec *);
+	void              (*destuffSetSourceSize)(Codec *, size_t);
+	void              (*destuffSetDestination)(Codec *, uint8_t *, size_t);
+	/* must return 1 on EOF, -1 if no progress made
+	 */
+	int               (*destuff)(Codec *);
+};
+
+typedef struct DestuffBytesCtx {
 	RxState        state;
 	const uint8_t *src;
 	size_t         srcIndex;
@@ -68,54 +91,130 @@ typedef struct DestufferCtx {
 	uint8_t       *dst;
 	size_t         dstIndex;
 	size_t         dstSize;
-} DestufferCtx;
+} DestuffBytesCtx;
 
-typedef struct StufferCtx {
+typedef struct StuffBytesCtx {
 	uint8_t       *dst;
 	size_t         dstIndex;
 	size_t         dstSize;
 	const uint8_t *src;
 	size_t         srcSize;
 	size_t         srcIndex;
-} StufferCtx;
+} StuffBytesCtx;
 
-typedef DestufferCtx ByteDestufferCtx;
-#else
-typedef CobsCDecoderCtx DestufferCtx;
+#ifdef CONFIG_WITH_COBS
+static uint8_t
+cobsComma(Codec *cdc) { return COBSC_EOF; }
 
-typedef struct ByteDestufferCtx {
-	DestufferCtx cobsCtx;
-	RxState      state;
-} ByteDestufferCtx;
-
-typedef CobsCEncoderCtx StufferCtx;
-
-static uint8_t cobsComma(Codec *cdc) { return COBSC_EOF; }
-
-static void cobsInitEncCtx(Codec *cdc, StufferCtx *ctx)
+static void
+cobsEncInitCtx(Codec *cdc)
 {
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
 	cobsCEncodeInit( ctx );
-	ctx->srcSize  = 0;
+	ctx->src        = NULL;
+	ctx->srcSize    = 0;
+	ctx->dst        = cdc->tbufs;
+	ctx->dstSize    = sizeof(cdc->tbufs);
 }
 
-static void cobsInitDecCtx(Codec *cdc, DestufferCtx *ctx)
+static void
+cobsEncRewind(Codec *cdc)
 {
-	cobsCDecodeInit( ctx );
-	ctx->dstSize  = 0;
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
+	cobsCEncodeRewind( ctx );
 }
 
-static int cobsStuff(Codec *cdc, StufferCtx *ctx)
+static void
+cobsEncSetSource(Codec *cdc, const uint8_t *src, size_t srcSize)
 {
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
+	ctx->srcIndex = 0;
+	ctx->src      = src;
+	ctx->srcSize  = srcSize;
+}
+
+static void
+cobsEncContinue(Codec *cdc)
+{
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
+	return cobsCEncodeContinue( ctx );
+}
+
+static int
+cobsEnc(Codec *cdc)
+{
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
 	return cobsCEncode( ctx );
 }
 
-static void cobsStuffContinue(Codec *cdc, StufferCtx *ctx)
+static void
+cobsEncAddComma(Codec *cdc)
 {
-	return cobsCEncodeContinue(ctx);
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
+	cobsCEncodeAppendEOF( ctx );
 }
 
-static int cobsDestuff(Codec *cdc, DestufferCtx *ctx)
+static size_t
+cobsEncGetSize(Codec *cdc)
 {
+CobsCEncoderCtx *ctx = (CobsCEncoderCtx*)cdc->stuffCtx;
+	return ctx->dstIndex;
+}
+
+static void
+cobsDecInitCtx(Codec *cdc)
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
+	cobsCDecodeInit( ctx );
+	ctx->dst      = NULL;
+	ctx->dstSize  = 0;
+	ctx->src      = cdc->rbufs;
+	ctx->srcSize  = 0;
+}
+
+static void
+cobsDecRewind(Codec *cdc)
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
+	cobsCDecodeRewind( ctx );
+}
+
+static size_t
+cobsDecGetSourceRemaining(Codec *cdc)
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
+	return ctx->srcSize - ctx->srcIndex;
+}
+
+static size_t
+cobsDecGetDestinationMissing(Codec *cdc)
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
+	return ctx->dstSize - ctx->dstIndex;
+}
+
+static void
+cobsDecSetSourceSize(Codec *cdc, size_t sz)
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
+	ctx->srcIndex = 0;
+	ctx->srcSize  = sz;
+}
+
+static void
+cobsDecSetDestination(Codec *cdc, uint8_t *dst, size_t dstSize)
+
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
+	ctx->dst      = dst;
+	ctx->dstIndex = 0;
+	ctx->dstSize  = dstSize;
+}
+
+static int
+cobsDec(Codec *cdc)
+{
+CobsCDecoderCtx *ctx = (CobsCDecoderCtx*)cdc->destuffCtx;
 	return cobsCDecode( ctx );
 }
 #endif
@@ -137,33 +236,6 @@ static void   destuffBytesSetSourceSize(Codec *cdc, size_t sz);
 static void   destuffBytesSetDestination(Codec *cdc, uint8_t *dst, size_t dstSize);
 
 static uint8_t stuffBytesComma(Codec *cdc) { return COMMA; }
-
-struct Codec {
-	uint8_t             tbufs[MAXLEN];
-	uint8_t             rbufs[MAXLEN];
-	void               *stuffCtx;
-	void               *destuffCtx;
-	uint8_t           (*comma)(Codec *);
-	void              (*stuffInitCtx)(Codec *);
-	void              (*stuffRewind)(Codec *);
-	/* returns 1 on success, 0 if not enough destination space
-	 */
-	void              (*stuffContinue)(Codec *);
-	void              (*stuffSetSource)(Codec *, const uint8_t *src, size_t srcSize);
-	int               (*stuff)(Codec *);
-	void              (*stuffAddComma)(Codec *);
-	size_t            (*stuffGetSize)(Codec *);
-
-	void              (*destuffInitCtx)(Codec *);
-	void              (*destuffRewind)(Codec *);
-	size_t            (*destuffGetSourceRemaining)(Codec *);
-	size_t            (*destuffGetDestinationMissing)(Codec *);
-	void              (*destuffSetSourceSize)(Codec *, size_t);
-	void              (*destuffSetDestination)(Codec *, uint8_t *, size_t);
-	/* must return 1 on EOF, -1 if no progress made
-	 */
-	int               (*destuff)(Codec *);
-};
 
 struct CmdFifoRec {
 	int       fd;
@@ -318,8 +390,8 @@ char           msg[4];
 	}
 
 	if ( CMD_FIFO_CFG_CODEC_BYTESTUFF == pcfg->codec ) {
-		fifo->codec.stuffCtx                     = calloc(1, sizeof(StufferCtx));
-		fifo->codec.destuffCtx                   = calloc(1, sizeof(DestufferCtx));
+		fifo->codec.stuffCtx                     = calloc(1, sizeof(StuffBytesCtx));
+		fifo->codec.destuffCtx                   = calloc(1, sizeof(DestuffBytesCtx));
 		fifo->codec.comma                        = stuffBytesComma;
 		fifo->codec.stuffInitCtx                 = stuffBytesInitCtx;
 		fifo->codec.stuffRewind                  = stuffBytesRewind;
@@ -337,12 +409,23 @@ char           msg[4];
 		fifo->codec.destuffSetDestination        = destuffBytesSetDestination;
 	} else if ( CMD_FIFO_CFG_CODEC_COBS == pcfg->codec ) {
 #ifdef CONFIG_WITH_COBS
-		fifo->codec.comma          = cobsComma;
-		fifo->codec.stuffInitCtx   = cobsInitEncCtx;
-		fifo->codec.destuffInitCtx = cobsInitDecCtx;
-		fifo->codec.stuff          = cobsStuff;
-		fifo->codec.stuffContinue  = cobsStuffContinue;
-		fifo->codec.destuff        = cobsDestuff;
+		fifo->codec.stuffCtx                     = calloc(1, sizeof(CobsCEncoderCtx));
+		fifo->codec.destuffCtx                   = calloc(1, sizeof(CobsCDecoderCtx));
+		fifo->codec.comma                        = cobsComma;
+		fifo->codec.stuffInitCtx                 = cobsEncInitCtx;
+		fifo->codec.stuffRewind                  = cobsEncRewind;
+		fifo->codec.stuffContinue                = cobsEncContinue;
+		fifo->codec.stuffSetSource               = cobsEncSetSource;
+		fifo->codec.stuff                        = cobsEnc;
+		fifo->codec.stuffAddComma                = cobsEncAddComma;
+		fifo->codec.stuffGetSize                 = cobsEncGetSize;
+		fifo->codec.destuffInitCtx               = cobsDecInitCtx;
+		fifo->codec.destuffRewind                = cobsDecRewind;
+		fifo->codec.destuff                      = cobsDec;
+		fifo->codec.destuffGetSourceRemaining    = cobsDecGetSourceRemaining;
+		fifo->codec.destuffGetDestinationMissing = cobsDecGetDestinationMissing;
+		fifo->codec.destuffSetSourceSize         = cobsDecSetSourceSize;
+		fifo->codec.destuffSetDestination        = cobsDecSetDestination;
 #else
 		status = -ENOTSUP;
 		goto bail;
@@ -462,7 +545,7 @@ size_t rval = 0;
 static int
 stuffBytes(Codec *cdc)
 {
-StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	while ( ( ctx->srcSize > ctx->srcIndex ) ) {
 		if ( ctx->dstIndex >= ctx->dstSize - 3 ) {
 			return 0;
@@ -477,14 +560,14 @@ StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
 static void
 stuffBytesContinue(Codec *cdc)
 {
-StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	ctx->dstIndex = 0;
 }
 
 static void
 stuffBytesAddComma(Codec *cdc)
 {
-StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	ctx->dst[ctx->dstIndex] = cdc->comma(cdc);
 	ctx->dstIndex++;
 }
@@ -492,7 +575,7 @@ StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
 static void
 stuffBytesSetSource(Codec *cdc, const uint8_t *src, size_t srcSize)
 {
-StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	ctx->srcIndex = 0;
 	ctx->src      = src;
 	ctx->srcSize  = srcSize;
@@ -501,7 +584,7 @@ StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
 static void
 stuffBytesInitCtx(Codec *cdc)
 {
-StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->dst        = cdc->tbufs;
 	ctx->dstSize    = sizeof(cdc->tbufs);
@@ -510,7 +593,7 @@ StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
 static void
 stuffBytesRewind(Codec *cdc)
 {
-StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	ctx->dstIndex   = 0;
 	ctx->srcIndex   = 0;
 	ctx->src        = NULL;
@@ -520,14 +603,14 @@ StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
 static size_t
 stuffBytesGetSize(Codec *cdc)
 {
-	StufferCtx *ctx = (StufferCtx*)cdc->stuffCtx;
+	StuffBytesCtx *ctx = (StuffBytesCtx*)cdc->stuffCtx;
 	return ctx->dstIndex;
 }
 
 static void
 destuffBytesInitCtx(Codec *cdc)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->state        = RX;
 	ctx->src          = cdc->rbufs;
@@ -539,7 +622,7 @@ DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
 static void
 destuffBytesRewind(Codec *cdc)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 	ctx->state        = RX;
 	ctx->dstIndex     = 0;
 	ctx->srcIndex     = 0;
@@ -551,21 +634,21 @@ DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
 static size_t
 destuffBytesGetSourceRemaining(Codec *cdc)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 	return ctx->srcSize - ctx->srcIndex;
 }
 
 static size_t
 destuffBytesGetDestinationMissing(Codec *cdc)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 	return ctx->dstSize - ctx->dstIndex;
 }
 
 static void
 destuffBytesSetSourceSize(Codec *cdc, size_t sz)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 	ctx->srcIndex = 0;
 	ctx->srcSize  = sz;
 }
@@ -573,7 +656,7 @@ DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
 static void
 destuffBytesSetDestination(Codec *cdc, uint8_t *dst, size_t dstSize)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 	ctx->dst      = dst;
 	ctx->dstIndex = 0;
 	ctx->dstSize  = dstSize;
@@ -588,7 +671,7 @@ DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
 static int
 destuffBytes(Codec *cdc)
 {
-DestufferCtx *ctx = (DestufferCtx*)cdc->destuffCtx;
+DestuffBytesCtx *ctx = (DestuffBytesCtx*)cdc->destuffCtx;
 size_t            j;
 uint8_t          *dstp;
 uint8_t          *dstend;
@@ -689,6 +772,11 @@ ssize_t             tidx, tend, ridx, rend;
 			fifo->codec.stuffSetSource( &fifo->codec, tbuf[tidx].buf, tbuf[tidx].len );
 		} else {
 			fifo->codec.stuffSetSource( &fifo->codec, NULL, 0 );
+		}
+		if ( ridx < rend ) {
+			fifo->codec.destuffSetDestination( &fifo->codec, rbuf[ridx].buf, rbuf[ridx].len );
+		} else {
+			fifo->codec.destuffSetDestination( &fifo->codec, NULL, 0 );
 		}
 	}
 
