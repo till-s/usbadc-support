@@ -151,6 +151,15 @@ CMakeLists.txt: makefile
 	@echo ''                                                     >> $@
 	@echo 'list( APPEND LIBS m )'                                >> $@
 	@echo ''                                                     >> $@
+	@echo '# define COBS_DIR (where cobsC.h is located) from'    >> $@
+	@echo '# the cmake command line (-D)'                        >> $@
+	@echo 'if(COBS_DIR)'                                         >> $@
+	@echo '  include_directories( $${COBS_DIR} )'                >> $@
+	@echo '  add_subdirectory( $${COBS_DIR} cobsC )'             >> $@
+	@echo '  add_compile_definitions( CONFIG_WITH_COBS=1 )'      >> $@
+	@echo '  list( APPEND SOURCES $$<TARGET_OBJECTS:cobsC_objs>)'>> $@
+	@echo 'endif()'                                              >> $@
+	@echo ''                                                     >> $@
 	@echo 'add_library( fwcomm $${SOURCES} )'                    >> $@
 	@echo ''                                                     >> $@
 	@for p in $(PROGS) ; do \
