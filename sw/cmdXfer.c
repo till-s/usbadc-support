@@ -691,7 +691,6 @@ int               rv = 0;
 		} else if ( ESC != ctx->state && ESCAP == rbufs[j] ) {
 			ctx->state = ESC;
 		} else {
-			ctx->state = RX;
 			if ( dstp >= dstend ) {
 				/* destination exhausted */
 				break;
@@ -816,6 +815,8 @@ ssize_t             tidx, tend, ridx, rend;
 			}
 			tlens = codec->stuffGetSize( codec );
 		}
+
+		assert( tlens > 0 || tidx >= tend );
 
 		if ( tlens > 0 && winSize > 0 ) {
 			FD_SET( fifo->fd, &tfds );
