@@ -39,6 +39,7 @@
 #include <string.h>
 #include <inttypes.h>
 #include <time.h>
+#include <assert.h>
 
 #include "cmdXfer.h"
 
