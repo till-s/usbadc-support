@@ -59,7 +59,7 @@ typedef struct CmdFifoConfig {
 	 * peer has limited buffer space.
 	 * Setting to zero is equivalent to selecting a very large
 	 * window. (Default: 0)
-     */
+	 */
 	size_t      windowSize;
 	/* Speed; this must be one of the termios macros, e.g., B115200
 	 * (Default: B115200)
