@@ -95,6 +95,9 @@ typedef struct CmdFifoConfig {
 #define CMD_FIFO_CFG_TTY_STDIN   (1<<2)
 #define CMD_FIFO_CFG_TTY_TCP     (1<<3)
 	unsigned    flags;
+	/* Debug level
+	 */
+    int         debug;
 } CmdFifoConfig;
 
 int fifoOpenConfig(CmdFifo *pfifo, const CmdFifoConfig *pcfg);

@@ -435,7 +435,8 @@ int            tcpPort = -1;
 		return -ENOMEM;
 	}
 
-	fifo->fd = -1;
+	fifo->fd  = -1;
+	fifo->dbg = pcfg->debug;
 
 	if ( pcfg->ttyName ) {
 		if ( ! (nameCpy = strdup(pcfg->ttyName)) ) {
@@ -816,6 +817,7 @@ fifoSetDebug(CmdFifo fifo, int val)
 int oldVal = fifo->dbg;
 	if ( val >= 0 ) {
 		fifo->dbg = val;
+		printf("FIFO debug %d\n", fifo->dbg);
 	}
 	return oldVal;
 }
