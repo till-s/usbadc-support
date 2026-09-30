@@ -415,7 +415,7 @@ struct termios att;
 int            fd = pcfg->ttyFd;
 char           msg[4];
 char          *nameCpy = NULL;
-const char    *tcpName = NULL;
+char          *tcpName = NULL;
 const char    *tcpPre  = "tcp:";
 char          *tcpPrtn = NULL;
 int            tcpPort = -1;
