@@ -41,7 +41,12 @@ extern "C" {
 typedef struct CmdFifoRec *CmdFifo;
 
 typedef struct CmdFifoConfig {
-	/* name of the device to open
+	/* name of the device to open; the name may start with 'tcp:' in
+	 * which case a TCP socket connection will be established;
+	 * the port number is extracted from a trailing ':port' string
+	 * (when present) and can be overridden by setting the 'port'
+	 * and associated flag; the flag does not have to be set if
+	 * the ttyName begins with 'tcp:' and has a port number.
 	 */
 	const char *ttyName;
 	/* filedescriptor to use; if both, ttyFd and ttyName
@@ -66,6 +71,11 @@ typedef struct CmdFifoConfig {
 	 */
 	unsigned    ttySpeed;
 
+	/* Port; if CMD_FIFO_CFG_TTY_TCP is set; 'ttyName' in this
+	 * case must be non-NULL and point to the host name.
+	 */
+	unsigned    port;
+
 	/* The codec to use (default: bytestuff)
 	 *
 	 * Note: The library must be built with COBS support
@@ -83,6 +93,7 @@ typedef struct CmdFifoConfig {
 #define CMD_FIFO_CFG_WINSIZE     (1<<0)
 #define CMD_FIFO_CFG_TTY_SPEED   (1<<1)
 #define CMD_FIFO_CFG_TTY_STDIN   (1<<2)
+#define CMD_FIFO_CFG_TTY_TCP     (1<<3)
 	unsigned    flags;
 } CmdFifoConfig;
 

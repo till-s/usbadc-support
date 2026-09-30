@@ -40,6 +40,11 @@
 #include <inttypes.h>
 #include <time.h>
 #include <assert.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 
 #include "cmdXfer.h"
 
@@ -249,6 +254,74 @@ struct CmdFifoRec {
 
 /* Basic communication with the USB-FIFO (FT245), byte-stuffer/de-stuffer and command multiplexer in firmware */
 
+static int sockOpen(const char *socknm, const char *srvcnm, int port)
+{
+struct addrinfo hints;
+struct addrinfo *ai = NULL;
+struct addrinfo *ap;
+struct sockaddr_in me;
+int    status;
+struct sockaddr_in *sin;
+int    sd = -1;
+int    rv = -1;
+int    iopt;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family   = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	if ( (status = getaddrinfo(socknm, srvcnm, &hints, &ai)) ) {
+		fprintf(stderr, "ERROR: getaddrinfo failed: %s\n", gai_strerror(status));
+		goto bail;
+	}
+	for ( ap = ai; ap; ap = ap->ai_next ) {
+		if ( AF_INET == ap->ai_addr->sa_family ) {
+			if ( port >= 0 ) {
+				sin = (struct sockaddr_in*)ap->ai_addr;
+				sin->sin_port = htons(port);
+			}
+			break;
+		}
+	}
+	if ( ap ) {
+		sd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+		if ( sd < 0 ) {
+			fprintf(stderr, "ERROR: socket(STREAM) failed: %s\n", strerror(errno));
+			goto bail;
+		}
+		me.sin_family      = AF_INET;
+		me.sin_addr.s_addr = INADDR_ANY;
+		me.sin_port        = htons(0);
+		if ( bind(sd, (struct sockaddr*)&me, sizeof(me)) ) {
+			fprintf(stderr, "ERROR: bind failed: %s\n", strerror(errno));
+			goto bail;
+		}
+		iopt = 1;
+		if ( setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, &iopt, sizeof(iopt)) ) {
+			fprintf(stderr, "ERROR: setsockopt(TCP_NODELAY) failed: %s\n", strerror(errno));
+			goto bail;
+		}
+		if ( connect(sd, ap->ai_addr, ap->ai_addrlen) ) {
+			fprintf(stderr, "ERROR: connect failed: %s\n", strerror(errno));
+			goto bail;
+		}
+	} else {
+		fprintf(stderr, "ERROR: addrinfo did not turn up any address for %s\n", socknm);
+		goto bail;
+	}
+
+	rv = sd;
+	sd = -1;
+bail:
+	if ( ai ) {
+		freeaddrinfo(ai);
+	}
+	if ( sd >= 0 ) {
+		close(sd);
+	}
+	return rv;
+}
+
 int fifoTtyOpen(const char *devn, unsigned speed)
 {
 int                fd   = -1;
@@ -341,6 +414,11 @@ int            i, put;
 struct termios att;
 int            fd = pcfg->ttyFd;
 char           msg[4];
+char          *nameCpy = NULL;
+const char    *tcpName = NULL;
+const char    *tcpPre  = "tcp:";
+char          *tcpPrtn = NULL;
+int            tcpPort = -1;
 
 	/* special case; zero is treated as unset unless accompanied by
 	 * flag.
@@ -360,12 +438,34 @@ char           msg[4];
 	fifo->fd = -1;
 
 	if ( pcfg->ttyName ) {
+		if ( ! (nameCpy = strdup(pcfg->ttyName)) ) {
+			return -ENOMEM;
+		}
+		/* TCP prefix ? */
+		if ( 0 == strncmp(nameCpy, tcpPre, strlen(tcpPre)) ) {
+			tcpName = nameCpy + strlen(tcpPre);
+		}
+		/* TCP flag ? */
+		if ( !! (pcfg->flags & CMD_FIFO_CFG_TTY_TCP) ) {
+			tcpPort = pcfg->port;
+			if ( ! tcpName ) {
+				tcpName = nameCpy;
+			}
+		}
 		if ( !! (pcfg->flags & CMD_FIFO_CFG_TTY_SPEED) ) {
 			fifo->ttySpeed = pcfg->ttySpeed;
 		} else {
 			fifo->ttySpeed = B115200;
 		}
-		status = fifoTtyOpen( pcfg->ttyName, fifo->ttySpeed );
+		if ( tcpName ) {
+			/* if ':<port>' is present break it off and remember */
+			if ( (tcpPrtn = strchr(tcpName, ':')) ) {
+				*tcpPrtn++ = 0;
+			}
+			status = sockOpen( tcpName, tcpPrtn, tcpPort );
+		} else {
+			status = fifoTtyOpen( pcfg->ttyName, fifo->ttySpeed );
+		}
 		if ( status < 0 ) {
 			goto bail;
 		}
@@ -458,6 +558,7 @@ char           msg[4];
 	status = 0;
 
 bail:
+	free(nameCpy);
 	fifoClose( fifo );
 	return status;
 }
