@@ -29,8 +29,6 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 
-use work.BasicPkg.all;
-
 package CommandMuxPkg is
 
    constant CMD_API_VERSION_C             : std_logic_vector(3 downto 0) := x"4";
