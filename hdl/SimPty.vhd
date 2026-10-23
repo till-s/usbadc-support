@@ -137,7 +137,7 @@ report "Updating data "&integer'image(di);
          rdy := wrRdy;
          if ( ( rdy and vldIb ) = '1' ) then
             writePty_C( st, to_integer( unsigned( datIb ) ) );
-			if ( st < 0 ) then
+            if ( st < 0 ) then
                wrAb <= '1';
             end if;
             rdy := '0';
@@ -146,7 +146,7 @@ report "Updating data "&integer'image(di);
             writePtyPoll_C( ri );
             if    ( ri > 0 ) then
                rdy := '1';
-			elsif ( ri < 0 ) then
+            elsif ( ri < 0 ) then
                wrAb <= '1';
             end if;
          end if;
